@@ -59,7 +59,7 @@ const DashboardsPage = () => {
           {/* Header Section */}
           <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
             <div>
-              <h1 className="text-3xl font-heading font-bold text-corporate-blue">
+              <h1 className="text-3xl font-heading font-bold text-rmh-primary">
                 Dashboards Corporativos
               </h1>
               <p className="text-corporate-gray mt-1">

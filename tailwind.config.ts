@@ -79,7 +79,8 @@ export default {
                                         darkGray: '#8b848b',
                                         lightGray: '#9ca2a3',
                                         white: '#FFFFFF',
-                                        black: '#000000'
+                                        black: '#000000',
+										lightGreen: '#165A5D'
                                 }
 			},
 			fontFamily: {

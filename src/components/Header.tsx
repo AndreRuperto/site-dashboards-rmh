@@ -22,22 +22,22 @@ const Header = () => {
   };
 
   return (
-    <header className="bg-white border-b border-rmh-lightGray shadow-sm">
+    <header className="bg-primary border-b border-rmh-lightGray shadow-sm">
       <div className="px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <RMHLogo size="md" showText={true} />
             <div className="hidden md:block">
-              <h1 className="text-xl font-heading font-bold text-rmh-primary">
+              <h1 className="text-xl font-heading font-bold text-rmh-white">
                 Dashboards Corporativos
               </h1>
             </div>
           </div>
 
           <div className="flex items-center space-x-4">
-            <div className="hidden md:flex items-center space-x-2 text-sm text-rmh-gray">
+            <div className="hidden md:flex items-center space-x-2 text-sm text-rmh-white">
               <span>Bem-vindo,</span>
-              <span className="font-medium text-rmh-primary">{user?.name}</span>
+              <span className="font-medium text-white">{user?.name}</span>
               {user?.role === 'admin' && (
                 <Shield className="h-4 w-4 text-amber-500" />
               )}
@@ -47,7 +47,7 @@ const Header = () => {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                   <Avatar className="h-10 w-10">
-                    <AvatarFallback className="bg-rmh-primary text-white font-medium">
+                    <AvatarFallback className="bg-rmh-lightGreen text-white font-medium">
                       {user ? getInitials(user.name) : 'U'}
                     </AvatarFallback>
                   </Avatar>
