@@ -70,7 +70,7 @@ const DashboardsPage = () => {
             {user?.role === 'admin' && (
               <Button
                 onClick={() => setIsFormOpen(true)}
-                className="bg-corporate-blue hover:bg-primary-800"
+                className="bg-rmh-primary hover:bg-primary-800"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Novo Dashboard

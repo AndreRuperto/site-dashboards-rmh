@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +16,7 @@ interface DashboardCardProps {
 const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDelete }) => {
   const { user } = useAuth();
   const [isViewerOpen, setIsViewerOpen] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   const formatDate = (date: Date) => {
     return new Intl.DateTimeFormat('pt-BR', {
@@ -27,6 +27,52 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
   };
 
   const canEdit = user?.role === 'admin' || dashboard.createdBy === user?.email;
+
+  const enterFullscreen = async () => {
+    try {
+      if (document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch (error) {
+      console.log('Fullscreen não suportado ou bloqueado:', error);
+    }
+  };
+
+  const exitFullscreen = async () => {
+    try {
+      if (document.fullscreenElement && document.exitFullscreen) {
+        await document.exitFullscreen();
+      }
+    } catch (error) {
+      console.log('Erro ao sair do fullscreen:', error);
+    }
+  };
+
+  const handleViewerOpen = async (open: boolean) => {
+    setIsViewerOpen(open);
+    
+    if (open) {
+      // Pequeno delay para garantir que o modal esteja renderizado
+      setTimeout(enterFullscreen, 100);
+    } else {
+      await exitFullscreen();
+    }
+  };
+
+  // Limpar fullscreen se o componente for desmontado
+  useEffect(() => {
+    return () => {
+      if (document.fullscreenElement) {
+        exitFullscreen();
+      }
+    };
+  }, []);
+
+  // Função para construir a URL com parâmetros de visualização otimizada
+  const getOptimizedUrl = (baseUrl: string) => {
+    const separator = baseUrl.includes('?') ? '&' : '?';
+    return `${baseUrl}${separator}chromeless=1&filterPaneEnabled=false&navContentPaneEnabled=false&autofit=1&zoom=fitToPage`;
+  };
 
   return (
     <>
@@ -67,9 +113,9 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
             </div>
 
             <div className="flex space-x-2">
-              <Dialog open={isViewerOpen} onOpenChange={setIsViewerOpen}>
+              <Dialog open={isViewerOpen} onOpenChange={handleViewerOpen}>
                 <DialogTrigger asChild>
-                  <Button className="flex-1 bg-corporate-blue hover:bg-primary-800">
+                  <Button className="flex-1 bg-primary hover:bg-primary-800">
                     <Eye className="h-4 w-4 mr-2" />
                     Visualizar
                   </Button>
@@ -105,39 +151,37 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
         </CardContent>
       </Card>
 
-      <Dialog open={isViewerOpen} onOpenChange={setIsViewerOpen}>
-        <DialogContent className="max-w-7xl max-h-[90vh] p-0">
-          <DialogHeader className="p-6 pb-4">
+      <Dialog open={isViewerOpen} onOpenChange={handleViewerOpen}>
+        <DialogContent ref={dialogRef} className="max-w-[100vw] max-h-[100vh] w-[100vw] h-[100vh] p-0 m-0 flex flex-col">
+          <DialogHeader className="p-2 pr-12 pb-2 flex-shrink-0 border-b border-gray-200">
             <div className="flex items-center justify-between">
-              <div>
-                <DialogTitle className="text-xl font-heading font-semibold text-corporate-blue">
+              <div className="min-w-0 flex-1">
+                <DialogTitle className="text-lg font-heading font-semibold text-corporate-blue truncate">
                   {dashboard.title}
                 </DialogTitle>
-                <p className="text-sm text-corporate-gray mt-1">{dashboard.description}</p>
+                <p className="text-xs text-corporate-gray mt-0.5 truncate">{dashboard.description}</p>
               </div>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => window.open(dashboard.iframeUrl, '_blank')}
-                className="border-corporate-blue text-corporate-blue hover:bg-corporate-blue hover:text-white"
+                className="border-corporate-blue text-corporate-blue hover:bg-corporate-blue hover:text-white ml-3 flex-shrink-0"
               >
                 <ExternalLink className="h-4 w-4 mr-1" />
                 Abrir em nova aba
               </Button>
             </div>
           </DialogHeader>
-          <div className="px-6 pb-6">
-            <div className="rounded-lg overflow-hidden border border-gray-200">
-              <iframe
-                src={dashboard.iframeUrl}
-                width="100%"
-                height={dashboard.height || 600}
-                frameBorder="0"
-                allowFullScreen
-                className="w-full"
-                title={dashboard.title}
-              />
-            </div>
+          <div className="flex-1 min-h-0 p-1">
+            <iframe
+              src={getOptimizedUrl(dashboard.iframeUrl)}
+              width="100%"
+              height="100%"
+              frameBorder="0"
+              allowFullScreen
+              className="w-full h-full border-0 rounded"
+              title={dashboard.title}
+            />
           </div>
         </DialogContent>
       </Dialog>
