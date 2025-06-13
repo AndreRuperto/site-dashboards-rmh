@@ -52,14 +52,12 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
     setIsViewerOpen(open);
     
     if (open) {
-      // Pequeno delay para garantir que o modal esteja renderizado
       setTimeout(enterFullscreen, 100);
     } else {
       await exitFullscreen();
     }
   };
 
-  // Limpar fullscreen se o componente for desmontado
   useEffect(() => {
     return () => {
       if (document.fullscreenElement) {
@@ -68,10 +66,91 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
     };
   }, []);
 
-  // Função para construir a URL com parâmetros de visualização otimizada
+  // Função para construir a URL otimizada
   const getOptimizedUrl = (baseUrl: string) => {
     const separator = baseUrl.includes('?') ? '&' : '?';
-    return `${baseUrl}${separator}chromeless=1&filterPaneEnabled=false&navContentPaneEnabled=false&autofit=1&zoom=fitToPage`;
+    const params = new URLSearchParams({
+      'chromeless': '1',
+      'filterPaneEnabled': 'false',
+      'navContentPaneEnabled': 'false',
+      'autofit': '1',
+      'fitToPage': '1',
+      'zoom': 'fitToPage',
+      'rs:embed': 'true',
+      'autoSize': 'true'
+    });
+
+    return `${baseUrl}${separator}${params.toString()}`;
+  };
+
+  // Função para clicar no botão específico do Power BI
+  const clickPowerBIFitButton = (iframe: HTMLIFrameElement) => {
+    console.log('🔍 Procurando botão "Ajustar à página"...');
+    
+    try {
+      if (iframe.contentWindow && iframe.contentDocument) {
+        console.log('✅ Acesso ao iframe permitido!');
+        const iframeDoc = iframe.contentDocument;
+        
+        // Seletores específicos baseados no elemento encontrado
+        const selectors = [
+          '#fitToPageButton',
+          'button[aria-label*="Ajustar à página"]',
+          'button[aria-label*="Fit to page"]',
+          '.smallImageButton[aria-label*="Ajustar"]',
+          '.resetButtonsContainer button[aria-label*="Ajustar"]'
+        ];
+        
+        let fitButton = null;
+        let usedSelector = '';
+        
+        for (const selector of selectors) {
+          fitButton = iframeDoc.querySelector(selector);
+          if (fitButton) {
+            usedSelector = selector;
+            break;
+          }
+        }
+        
+        if (fitButton) {
+          console.log('🎯 Botão encontrado com seletor:', usedSelector);
+          console.log('📝 Elemento:', fitButton);
+          (fitButton as HTMLElement).click();
+          
+          // Verifica se funcionou
+          setTimeout(() => {
+            const isPressed = fitButton.getAttribute('aria-pressed') === 'true';
+            console.log('✨ Resultado - Botão ativado:', isPressed);
+          }, 500);
+          
+          return true;
+        } else {
+          console.log('❌ Botão não encontrado com nenhum seletor');
+          
+          // Lista todos os botões disponíveis para debug
+          const allButtons = iframeDoc.querySelectorAll('button');
+          console.log('🔍 Botões disponíveis no iframe:', allButtons.length);
+          allButtons.forEach((btn, index) => {
+            if (index < 10) { // Mostra apenas os primeiros 10
+              console.log(`Botão ${index + 1}:`, {
+                id: btn.id,
+                className: btn.className,
+                ariaLabel: btn.getAttribute('aria-label'),
+                textContent: btn.textContent?.trim()
+              });
+            }
+          });
+          
+          return false;
+        }
+      } else {
+        console.log('❌ Sem acesso ao contentWindow ou contentDocument');
+        return false;
+      }
+    } catch (error) {
+      console.log('🚫 Erro ao acessar iframe (CORS):', error);
+      return false;
+    }
   };
 
   return (
@@ -172,7 +251,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
               </Button>
             </div>
           </DialogHeader>
-          <div className="flex-1 min-h-0 p-1">
+          <div className="flex-1 min-h-0 p-1" style={{ maxHeight: '1080px' }}>
             <iframe
               src={getOptimizedUrl(dashboard.iframeUrl)}
               width="100%"
@@ -181,6 +260,28 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
               allowFullScreen
               className="w-full h-full border-0 rounded"
               title={dashboard.title}
+              style={{
+                border: 'none',
+                overflow: 'hidden'
+              }}
+              onLoad={(e) => {
+                const iframe = e.target as HTMLIFrameElement;
+                console.log('🚀 IFRAME CARREGOU!', new Date().toLocaleTimeString());
+                console.log('📊 Dashboard:', dashboard.title);
+                console.log('🔗 URL:', iframe.src);
+                
+                // Primeira tentativa após 2 segundos
+                setTimeout(() => {
+                  console.log('⏰ Primeira tentativa (2s depois do load)...');
+                  clickPowerBIFitButton(iframe);
+                }, 2000);
+                
+                // Segunda tentativa após 5 segundos (caso o Power BI demore para renderizar)
+                setTimeout(() => {
+                  console.log('⏰ Segunda tentativa (5s depois do load)...');
+                  clickPowerBIFitButton(iframe);
+                }, 5000);
+              }}
             />
           </div>
         </DialogContent>
