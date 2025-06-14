@@ -1,5 +1,6 @@
 // contexts/AuthContext.tsx - Versão atualizada para API real
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { Navigate, useLocation } from 'react-router-dom';
 
 export type UserRole = 'usuario' | 'admin';
 
@@ -150,7 +151,7 @@ export const useAuth = () => {
 
 // Hook para requisições autenticadas
 export const useAuthenticatedFetch = () => {
-  const makeRequest = async (url: string, options: RequestInit = {}) => {
+  const makeRequest = async (url: string, options: RequestInit = {}): Promise<Response> => {
     const token = localStorage.getItem('authToken');
     
     const defaultOptions: RequestInit = {
@@ -265,8 +266,6 @@ export const authAPI = {
 };
 
 // Componente de rota protegida
-import { Navigate, useLocation } from 'react-router-dom';
-
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requireAdmin?: boolean;
