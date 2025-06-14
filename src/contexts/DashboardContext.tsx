@@ -1,113 +1,190 @@
-
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
+// Interface corrigida baseada no schema do banco
 export interface Dashboard {
   id: string;
-  title: string;
-  description: string;
-  category: string;
-  department: string;
-  iframeUrl: string;
-  createdAt: Date;
-  updatedAt: Date;
-  createdBy: string;
-  isActive: boolean;
-  width?: number;
-  height?: number;
+  titulo: string;
+  descricao?: string;
+  setor: string;  // no banco é 'setor', não 'category'/'department'
+  url_iframe: string;
+  ativo: boolean;
+  largura?: number;
+  altura?: number;
+  criado_por: string;
+  criado_em: string;
+  atualizado_em: string;
 }
 
 interface DashboardContextType {
   dashboards: Dashboard[];
-  categories: string[];
-  departments: string[];
-  addDashboard: (dashboard: Omit<Dashboard, 'id' | 'createdAt' | 'updatedAt'>) => void;
-  updateDashboard: (id: string, updates: Partial<Dashboard>) => void;
-  deleteDashboard: (id: string) => void;
-  getFilteredDashboards: (category?: string, department?: string) => Dashboard[];
+  setores: string[];  // mudei de 'categories' para 'setores'
+  isLoading: boolean;
+  error: string | null;
+  addDashboard: (dashboard: Omit<Dashboard, 'id' | 'criado_em' | 'atualizado_em'>) => Promise<void>;
+  updateDashboard: (id: string, updates: Partial<Dashboard>) => Promise<void>;
+  deleteDashboard: (id: string) => Promise<void>;
+  getFilteredDashboards: (setor?: string) => Dashboard[];
+  refreshDashboards: () => Promise<void>;
 }
 
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined);
 
-// Mock dashboards data
-const initialDashboards: Dashboard[] = [
-  {
-    id: '1',
-    title: 'Análise de Dados - Setor Inicial',
-    description: 'Dashboard principal com métricas do setor inicial para 2025',
-    category: 'Vendas',
-    department: 'Vendas',
-    iframeUrl: 'https://app.fabric.microsoft.com/view?r=eyJrIjoiMTVmNmU0NjItN2M5Yy00YzE3LWFmMWItOWI2YmVhM2U0MzgxIiwidCI6IjE0NjIzN2ZkLTU5MWYtNDVhMC1iM2VkLTA3NzNjMjdlODczZCJ9',
-    createdAt: new Date('2024-01-15'),
-    updatedAt: new Date('2024-01-15'),
-    createdBy: 'admin@resendemh.com.br',
-    isActive: true,
-    width: 1200,
-    height: 750
-  },
-  {
-    id: '2',
-    title: 'Relatório Financeiro',
-    description: 'Visão geral das métricas financeiras da empresa',
-    category: 'Financeiro',
-    department: 'Financeiro',
-    iframeUrl: 'https://app.powerbi.com/view?r=demo-financial',
-    createdAt: new Date('2024-01-10'),
-    updatedAt: new Date('2024-01-20'),
-    createdBy: 'maria.santos@resendemh.com.br',
-    isActive: true,
-    width: 1200,
-    height: 600
-  }
-];
+// Configuração da API
+const API_BASE_URL = process.env.NODE_ENV === 'production' 
+  ? 'https://site-api-rmh-up.railway.app'
+  : 'http://localhost:3001';
 
 export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [dashboards, setDashboards] = useState<Dashboard[]>(initialDashboards);
+  const [dashboards, setDashboards] = useState<Dashboard[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const categories = Array.from(new Set(dashboards.map(d => d.category)));
-  const departments = Array.from(new Set(dashboards.map(d => d.department)));
+  // Função para buscar dashboards da API
+  const fetchDashboards = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        throw new Error('Token não encontrado');
+      }
 
-  const addDashboard = (newDashboard: Omit<Dashboard, 'id' | 'createdAt' | 'updatedAt'>) => {
-    const dashboard: Dashboard = {
-      ...newDashboard,
-      id: Date.now().toString(),
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-    setDashboards(prev => [...prev, dashboard]);
+      const response = await fetch(`${API_BASE_URL}/api/dashboards`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Erro ao buscar dashboards');
+      }
+
+      const data = await response.json();
+      setDashboards(data.dashboards || []);
+    } catch (err) {
+      console.error('Erro ao buscar dashboards:', err);
+      setError(err instanceof Error ? err.message : 'Erro desconhecido');
+      // Fallback para dados mock em caso de erro
+      setDashboards([]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const updateDashboard = (id: string, updates: Partial<Dashboard>) => {
-    setDashboards(prev => 
-      prev.map(dashboard => 
-        dashboard.id === id 
-          ? { ...dashboard, ...updates, updatedAt: new Date() }
-          : dashboard
-      )
-    );
+  // Carregar dashboards ao inicializar
+  useEffect(() => {
+    fetchDashboards();
+  }, []);
+
+  // Extrair setores únicos dos dashboards
+  const setores = Array.from(new Set(dashboards.map(d => d.setor)));
+
+  const addDashboard = async (newDashboard: Omit<Dashboard, 'id' | 'criado_em' | 'atualizado_em'>) => {
+    try {
+      const token = localStorage.getItem('authToken');
+      if (!token) throw new Error('Token não encontrado');
+
+      const response = await fetch(`${API_BASE_URL}/api/dashboards`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(newDashboard)
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Erro ao criar dashboard');
+      }
+
+      // Recarregar dashboards após criar
+      await fetchDashboards();
+    } catch (error) {
+      console.error('Erro ao adicionar dashboard:', error);
+      throw error;
+    }
   };
 
-  const deleteDashboard = (id: string) => {
-    setDashboards(prev => prev.filter(dashboard => dashboard.id !== id));
+  const updateDashboard = async (id: string, updates: Partial<Dashboard>) => {
+    try {
+      const token = localStorage.getItem('authToken');
+      if (!token) throw new Error('Token não encontrado');
+
+      const response = await fetch(`${API_BASE_URL}/api/dashboards/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(updates)
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Erro ao atualizar dashboard');
+      }
+
+      // Recarregar dashboards após atualizar
+      await fetchDashboards();
+    } catch (error) {
+      console.error('Erro ao atualizar dashboard:', error);
+      throw error;
+    }
   };
 
-  const getFilteredDashboards = (category?: string, department?: string) => {
+  const deleteDashboard = async (id: string) => {
+    try {
+      const token = localStorage.getItem('authToken');
+      if (!token) throw new Error('Token não encontrado');
+
+      const response = await fetch(`${API_BASE_URL}/api/dashboards/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Erro ao deletar dashboard');
+      }
+
+      // Recarregar dashboards após deletar
+      await fetchDashboards();
+    } catch (error) {
+      console.error('Erro ao deletar dashboard:', error);
+      throw error;
+    }
+  };
+
+  const getFilteredDashboards = (setor?: string) => {
     return dashboards.filter(dashboard => {
-      if (!dashboard.isActive) return false;
-      if (category && dashboard.category !== category) return false;
-      if (department && dashboard.department !== department) return false;
+      if (!dashboard.ativo) return false;
+      if (setor && dashboard.setor !== setor) return false;
       return true;
     });
+  };
+
+  const refreshDashboards = async () => {
+    await fetchDashboards();
   };
 
   return (
     <DashboardContext.Provider value={{
       dashboards,
-      categories,
-      departments,
+      setores,
+      isLoading,
+      error,
       addDashboard,
       updateDashboard,
       deleteDashboard,
-      getFilteredDashboards
+      getFilteredDashboards,
+      refreshDashboards
     }}>
       {children}
     </DashboardContext.Provider>

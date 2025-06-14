@@ -1,4 +1,5 @@
-// contexts/AuthContext.tsx - Versão atualizada para API real
+/* eslint-disable react-refresh/only-export-components */
+// contexts/AuthContext.tsx - Versão limpa
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 
@@ -10,7 +11,9 @@ export interface User {
   email: string;
   departamento: string;
   tipo_usuario: UserRole;
-  criado_em?: string;
+  email_verificado: boolean;
+  criado_em: string;
+  atualizado_em: string;
   ultimo_login?: string;
 }
 
@@ -26,7 +29,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Configuração da API
 const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://site-api-rmh-up.railway.app' // Trocar pela sua URL real do Railway
+  ? 'https://site-api-rmh-up.railway.app'
   : 'http://localhost:3001';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -90,7 +93,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!response.ok) {
         // Tratar diferentes tipos de erro
         if (response.status === 401) {
-          if (data.error.includes('não verificado')) {
+          if (data.error && data.error.includes('não verificado')) {
             throw new Error('Email não verificado. Verifique sua caixa de entrada.');
           } else {
             throw new Error('Email ou senha incorretos.');
@@ -149,122 +152,6 @@ export const useAuth = () => {
   return context;
 };
 
-// Hook para requisições autenticadas
-export const useAuthenticatedFetch = () => {
-  const makeRequest = async (url: string, options: RequestInit = {}): Promise<Response> => {
-    const token = localStorage.getItem('authToken');
-    
-    const defaultOptions: RequestInit = {
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` }),
-        ...options.headers,
-      },
-      ...options,
-    };
-
-    const response = await fetch(`${API_BASE_URL}${url}`, defaultOptions);
-    
-    // Se token expirou, fazer logout automático
-    if (response.status === 401) {
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
-      throw new Error('Sessão expirada');
-    }
-
-    return response;
-  };
-
-  return { makeRequest };
-};
-
-// Serviço de API para operações comuns
-export const authAPI = {
-  // Buscar perfil do usuário
-  async getProfile(): Promise<User> {
-    const token = localStorage.getItem('authToken');
-    if (!token) throw new Error('Token não encontrado');
-
-    const response = await fetch(`${API_BASE_URL}/api/auth/profile`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error('Erro ao buscar perfil');
-    }
-
-    const data = await response.json();
-    return data.user;
-  },
-
-  // Registrar novo usuário
-  async register(userData: {
-    nome: string;
-    email: string;
-    senha: string;
-    departamento: string;
-  }): Promise<{ message: string; user: User }> {
-    const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(userData)
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Erro no registro');
-    }
-
-    return data;
-  },
-
-  // Verificar email
-  async verifyEmail(token: string, email: string): Promise<{ message: string }> {
-    const response = await fetch(`${API_BASE_URL}/api/auth/verify-email`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ token, email })
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Erro na verificação');
-    }
-
-    return data;
-  },
-
-  // Buscar dashboards (exemplo de uso autenticado)
-  async getDashboards(): Promise<any[]> {
-    const token = localStorage.getItem('authToken');
-    if (!token) throw new Error('Token não encontrado');
-
-    const response = await fetch(`${API_BASE_URL}/api/dashboards`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error('Erro ao buscar dashboards');
-    }
-
-    const data = await response.json();
-    return data.dashboards;
-  }
-};
-
 // Componente de rota protegida
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -312,29 +199,6 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   return <>{children}</>;
-};
-
-// Interceptor para requisições (intercepta 401 e faz logout automático)
-export const setupAPIInterceptor = () => {
-  // Interceptar fetch global para tratar 401
-  const originalFetch = window.fetch;
-  
-  window.fetch = async (...args) => {
-    const response = await originalFetch(...args);
-    
-    // Se receber 401 em qualquer requisição, fazer logout
-    if (response.status === 401 && response.url.includes(API_BASE_URL)) {
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('user');
-      
-      // Só redirecionar se não estiver já na página de login
-      if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login';
-      }
-    }
-    
-    return response;
-  };
 };
 
 // Hook para verificação de permissões
