@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-// contexts/AuthContext.tsx - Versão limpa
+// contexts/AuthContext.tsx - Para API unificada
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 
@@ -27,10 +27,10 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Configuração da API
+// Configuração da API - SIMPLIFICADA para usar o mesmo domínio
 const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://site-api-rmh-up.railway.app'
-  : 'http://localhost:3001';
+  ? '' // String vazia = mesmo domínio (https://site-api-rmh-up.railway.app)
+  : 'http://localhost:3001'; // Local ainda usa porta separada
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);

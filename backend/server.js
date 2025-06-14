@@ -1,4 +1,4 @@
-// server.js - Backend completo adaptado para schema português
+// server.js - Backend completo servindo também o frontend
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -10,6 +10,7 @@ const Joi = require('joi');
 const { Resend } = require('resend');
 const crypto = require('crypto');
 const { Pool } = require('pg');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -23,79 +24,18 @@ const pool = new Pool({
 // Inicializar Resend
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// Desabilitar helmet para CORS
+// Middleware de segurança
 app.use(helmet({
   crossOriginResourcePolicy: false,
   crossOriginEmbedderPolicy: false
 }));
 
-// CORS mais agressivo - ANTES de qualquer middleware
-app.all('*', (req, res, next) => {
-  const origin = req.headers.origin;
-  
-  // Lista completa de origins permitidas
-  const allowedOrigins = [
-    'https://resendemh.up.railway.app',
-    'https://site-api-rmh-up.railway.app',
-    'http://localhost:3000',
-    'http://localhost:5173', 
-    'http://localhost:8080'
-  ];
-  
-  console.log('🌐 Request origin:', origin);
-  console.log('🔧 Method:', req.method);
-  
-  // Sempre setar headers CORS, mesmo sem origin
-  if (!origin || allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin || 'https://resendemh.up.railway.app');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Pragma');
-    
-    // Remover headers conflitantes que o Railway pode estar setando
-    res.removeHeader('x-frame-options');
-    res.removeHeader('content-security-policy');
-  }
-  
-  // Responder imediatamente para OPTIONS (preflight)
-  if (req.method === 'OPTIONS') {
-    console.log('✅ Handling OPTIONS preflight');
-    return res.status(200).end();
-  }
-  
-  next();
-});
-
-// Middleware adicional para forçar headers
-app.use((req, res, next) => {
-  // Força headers em todas as respostas
-  const originalSend = res.send;
-  const originalJson = res.json;
-  
-  res.send = function(data) {
-    if (req.headers.origin === 'https://resendemh.up.railway.app') {
-      this.header('Access-Control-Allow-Origin', 'https://resendemh.up.railway.app');
-    }
-    return originalSend.call(this, data);
-  };
-  
-  res.json = function(data) {
-    if (req.headers.origin === 'https://resendemh.up.railway.app') {
-      this.header('Access-Control-Allow-Origin', 'https://resendemh.up.railway.app');
-    }
-    return originalJson.call(this, data);
-  };
-  
-  next();
-});
-
 // Rate limiting (mais permissivo para health checks)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200, // Aumentado para permitir health checks
+  max: 200,
   message: { error: 'Muitas tentativas, tente novamente em 15 minutos' },
   skip: (req) => {
-    // Pular rate limiting para health checks
     return req.path === '/health' || req.path === '/ping' || req.path === '/';
   }
 });
@@ -103,7 +43,7 @@ app.use(limiter);
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10, // Aumentado um pouco
+  max: 10,
   message: { error: 'Muitas tentativas de autenticação, tente novamente em 15 minutos' }
 });
 
@@ -115,6 +55,12 @@ app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
+
+// Servir arquivos estáticos do frontend EM PRODUÇÃO
+if (process.env.NODE_ENV === 'production') {
+  console.log('🎨 Servindo frontend estático da pasta dist/');
+  app.use(express.static(path.join(__dirname, 'dist')));
+}
 
 // Schemas de validação
 const schemaRegistro = Joi.object({
@@ -171,14 +117,13 @@ app.get('/', (req, res) => {
     status: 'online',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    cors: 'fixed'
+    frontend: process.env.NODE_ENV === 'production' ? 'served' : 'separate'
   });
 });
 
 // Health check para Railway
 app.get('/health', async (req, res) => {
   try {
-    // Testar conexão com banco
     await pool.query('SELECT 1');
     
     res.status(200).json({ 
@@ -287,7 +232,7 @@ app.post('/api/auth/register', async (req, res) => {
     );
 
     // Enviar email de verificação
-    const urlVerificacao = `${process.env.FRONTEND_URL || 'https://resendemh.up.railway.app'}/verify-email?token=${tokenVerificacao}&email=${email}`;
+    const urlVerificacao = `${process.env.FRONTEND_URL || 'https://site-api-rmh-up.railway.app'}/verify-email?token=${tokenVerificacao}&email=${email}`;
     
     try {
       await resend.emails.send({
@@ -516,6 +461,27 @@ function gerarTemplateVerificacao(nome, urlVerificacao) {
   `;
 }
 
+// SERVIR FRONTEND EM PRODUÇÃO - SPA fallback
+if (process.env.NODE_ENV === 'production') {
+  // Capturar todas as rotas não-API e servir index.html (SPA)
+  app.get('*', (req, res) => {
+    // Se não é uma rota de API, servir o index.html
+    if (!req.path.startsWith('/api') && 
+        !req.path.startsWith('/health') && 
+        !req.path.startsWith('/ping') && 
+        !req.path.startsWith('/send-test-email')) {
+      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+    } else {
+      res.status(404).json({ error: 'Endpoint não encontrado' });
+    }
+  });
+} else {
+  // Em desenvolvimento, manter o 404 handler normal
+  app.use('*', (req, res) => {
+    res.status(404).json({ error: 'Endpoint não encontrado' });
+  });
+}
+
 // Conectar ao banco e iniciar servidor
 async function iniciarServidor() {
   try {
@@ -527,14 +493,16 @@ async function iniciarServidor() {
       console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
       console.log(`📧 Resend configurado`);
       console.log(`🗄️ PostgreSQL conectado`);
-      console.log(`🔧 CORS configurado agressivamente`);
+      if (process.env.NODE_ENV === 'production') {
+        console.log(`🎨 Frontend sendo servido da pasta dist/`);
+      }
     });
 
     // Keep-alive para Railway em produção
     if (process.env.NODE_ENV === 'production') {
       setInterval(() => {
         console.log('🏓 Keep-alive ping:', new Date().toISOString());
-      }, 30000); // A cada 30 segundos
+      }, 30000);
     }
 
     // Graceful shutdown
@@ -567,11 +535,6 @@ async function iniciarServidor() {
 }
 
 iniciarServidor();
-
-// 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({ error: 'Endpoint não encontrado' });
-});
 
 // Error handler
 app.use((error, req, res, next) => {
