@@ -1,4 +1,4 @@
-// server.js - Backend completo servindo também o frontend
+// server.js - Backend completo com correção CORS
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -31,16 +31,34 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      connectSrc: ["'self'", "https://*.railway.app"], // Permitir conexões para Railway
+      connectSrc: ["'self'", "https://*.railway.app", "https://api.resend.com"],
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       imgSrc: ["'self'", "data:", "https:"],
       fontSrc: ["'self'", "https:", "data:"]
     },
   },
 }));
 
-// Rate limiting (mais permissivo para health checks)
+// ❗ CORS configurado corretamente
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' 
+    ? [
+        'https://resendemh.up.railway.app',
+        'https://railway.com',
+        process.env.FRONTEND_URL
+      ]
+    : [
+        'http://localhost:3000', 
+        'http://localhost:5173', 
+        'http://localhost:8080'
+      ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 200,
@@ -62,7 +80,7 @@ app.use(express.json({ limit: '10mb' }));
 
 // Logging
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - Origin: ${req.get('Origin')}`);
   next();
 });
 
@@ -191,16 +209,15 @@ app.post('/send-test-email', async (req, res) => {
       success: true, 
       data: { id: data.id, message: 'Email enviado com sucesso!' }
     });
-  } catch (err) {
-    res.status(500).json({ success: false, error: 'Erro interno do servidor' });
+
+  } catch (error) {
+    console.error('Erro no teste de email:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 // ROTAS DE AUTENTICAÇÃO
-app.use('/api/auth', authLimiter);
-
-// Registro de usuário
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
     const { error, value } = schemaRegistro.validate(req.body);
     if (error) {
@@ -209,110 +226,79 @@ app.post('/api/auth/register', async (req, res) => {
 
     const { nome, email, senha, departamento } = value;
 
-    // Verificar se usuário já existe
-    const existingUser = await pool.query(
+    // Verificar se o usuário já existe
+    const userExists = await pool.query(
       'SELECT id FROM usuarios WHERE email = $1',
       [email]
     );
 
-    if (existingUser.rows.length > 0) {
+    if (userExists.rows.length > 0) {
       return res.status(400).json({ error: 'Email já cadastrado' });
     }
 
-    // Hash da senha
-    const senhaHash = await bcrypt.hash(senha, 12);
-
-    // Criar usuário
-    const userResult = await pool.query(
-      `INSERT INTO usuarios (nome, email, senha, departamento, tipo_usuario) 
-       VALUES ($1, $2, $3, $4, $5) RETURNING id, nome, email, departamento, tipo_usuario`,
-      [nome, email, senhaHash, departamento, email === 'admin@resendemh.com.br' ? 'admin' : 'usuario']
-    );
-
-    const user = userResult.rows[0];
+    // Criptografar senha
+    const saltRounds = 10;
+    const senhaHash = await bcrypt.hash(senha, saltRounds);
 
     // Gerar token de verificação
     const tokenVerificacao = crypto.randomBytes(32).toString('hex');
-    const expiraEm = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 horas
 
-    await pool.query(
-      `INSERT INTO verificacoes_email (usuario_id, token, expira_em) 
-       VALUES ($1, $2, $3)`,
-      [user.id, tokenVerificacao, expiraEm]
+    // Inserir usuário
+    const result = await pool.query(
+      `INSERT INTO usuarios (nome, email, senha_hash, departamento, token_verificacao)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id, nome, email, departamento`,
+      [nome, email, senhaHash, departamento, tokenVerificacao]
     );
 
+    const newUser = result.rows[0];
+
     // Enviar email de verificação
-    const urlVerificacao = `${process.env.FRONTEND_URL || 'https://site-api-rmh-up.railway.app'}/verify-email?token=${tokenVerificacao}&email=${email}`;
-    
     try {
+      const urlVerificacao = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${tokenVerificacao}&email=${email}`;
+      
       await resend.emails.send({
         from: 'onboarding@resend.dev',
         to: [email],
-        subject: '🔐 Ative sua conta - Dashboards Corporativos RMH',
-        html: gerarTemplateVerificacao(nome, urlVerificacao)
+        subject: '🔐 Confirme seu email - RMH Dashboards',
+        html: gerarTemplateEmailVerificacao(nome, urlVerificacao)
       });
 
-      // Log do email
-      await pool.query(
-        `INSERT INTO logs_email (usuario_id, email_para, tipo_email, status) 
-         VALUES ($1, $2, 'verificacao', 'enviado')`,
-        [user.id, email]
-      );
+      console.log(`Email de verificação enviado para: ${email}`);
     } catch (emailError) {
-      console.error('Erro ao enviar email:', emailError);
+      console.error('Erro ao enviar email de verificação:', emailError);
     }
 
     res.status(201).json({
-      message: 'Usuário registrado! Verifique seu email para ativar a conta.',
-      user: {
-        id: user.id,
-        nome: user.nome,
-        email: user.email,
-        departamento: user.departamento
-      }
+      message: 'Usuário cadastrado com sucesso. Verifique seu email para ativar a conta.',
+      user: newUser
     });
 
   } catch (error) {
     console.error('Erro no registro:', error);
+    if (error.code === '23505') {
+      return res.status(400).json({ error: 'Email já cadastrado' });
+    }
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 
-// Verificação de email
-app.post('/api/auth/verify-email', async (req, res) => {
+// Verificar email
+app.get('/api/auth/verify-email', async (req, res) => {
   try {
-    const { token, email } = req.body;
+    const { token, email } = req.query;
 
     if (!token || !email) {
       return res.status(400).json({ error: 'Token e email são obrigatórios' });
     }
 
-    // Buscar token válido
-    const tokenResult = await pool.query(
-      `SELECT ve.*, u.id as usuario_id, u.nome, u.email 
-       FROM verificacoes_email ve
-       JOIN usuarios u ON ve.usuario_id = u.id
-       WHERE ve.token = $1 AND u.email = $2 AND ve.expira_em > NOW() AND ve.usado_em IS NULL`,
+    const result = await pool.query(
+      'UPDATE usuarios SET email_verificado = true, verificado_em = NOW() WHERE token_verificacao = $1 AND email = $2 RETURNING id, nome, email',
       [token, email]
     );
 
-    if (tokenResult.rows.length === 0) {
+    if (result.rows.length === 0) {
       return res.status(400).json({ error: 'Token inválido ou expirado' });
     }
-
-    const verification = tokenResult.rows[0];
-
-    // Marcar usuário como verificado
-    await pool.query(
-      'UPDATE usuarios SET email_verificado = TRUE WHERE id = $1',
-      [verification.usuario_id]
-    );
-
-    // Marcar token como usado
-    await pool.query(
-      'UPDATE verificacoes_email SET usado_em = NOW() WHERE id = $1',
-      [verification.id]
-    );
 
     res.json({ message: 'Email verificado com sucesso!' });
 
@@ -323,7 +309,7 @@ app.post('/api/auth/verify-email', async (req, res) => {
 });
 
 // Login
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const { error, value } = schemaLogin.validate(req.body);
     if (error) {
@@ -333,21 +319,21 @@ app.post('/api/auth/login', async (req, res) => {
     const { email, senha } = value;
 
     // Buscar usuário
-    const userResult = await pool.query(
-      'SELECT * FROM usuarios WHERE email = $1',
+    const result = await pool.query(
+      'SELECT id, nome, email, senha_hash, departamento, tipo_usuario, email_verificado FROM usuarios WHERE email = $1',
       [email]
     );
 
-    if (userResult.rows.length === 0) {
-      return res.status(401).json({ error: 'Credenciais inválidas' });
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Email ou senha incorretos' });
     }
 
-    const user = userResult.rows[0];
+    const user = result.rows[0];
 
     // Verificar senha
-    const senhaValida = await bcrypt.compare(senha, user.senha);
+    const senhaValida = await bcrypt.compare(senha, user.senha_hash);
     if (!senhaValida) {
-      return res.status(401).json({ error: 'Credenciais inválidas' });
+      return res.status(401).json({ error: 'Email ou senha incorretos' });
     }
 
     // Verificar se email foi verificado
@@ -415,10 +401,9 @@ app.get('/api/auth/profile', authMiddleware, async (req, res) => {
 app.get('/api/dashboards', authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT d.*, u.nome as criado_por_nome 
+      `SELECT d.*, u.nome as criador_nome 
        FROM dashboards d 
-       JOIN usuarios u ON d.criado_por = u.id 
-       WHERE d.ativo = TRUE 
+       LEFT JOIN usuarios u ON d.criado_por = u.id 
        ORDER BY d.criado_em DESC`
     );
 
@@ -429,28 +414,124 @@ app.get('/api/dashboards', authMiddleware, async (req, res) => {
   }
 });
 
-// Template de email de verificação
-function gerarTemplateVerificacao(nome, urlVerificacao) {
+app.get('/api/dashboards/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const result = await pool.query(
+      `SELECT d.*, u.nome as criador_nome 
+       FROM dashboards d 
+       LEFT JOIN usuarios u ON d.criado_por = u.id 
+       WHERE d.id = $1`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Dashboard não encontrado' });
+    }
+
+    res.json({ dashboard: result.rows[0] });
+  } catch (error) {
+    console.error('Erro ao buscar dashboard:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+app.post('/api/dashboards', authMiddleware, async (req, res) => {
+  try {
+    const { titulo, descricao, categoria, departamento, tags, url_embed } = req.body;
+
+    if (!titulo || !categoria || !departamento) {
+      return res.status(400).json({ error: 'Título, categoria e departamento são obrigatórios' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO dashboards (titulo, descricao, categoria, departamento, tags, url_embed, criado_por)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [titulo, descricao, categoria, departamento, tags, url_embed, req.user.id]
+    );
+
+    res.status(201).json({ 
+      message: 'Dashboard criado com sucesso',
+      dashboard: result.rows[0] 
+    });
+
+  } catch (error) {
+    console.error('Erro ao criar dashboard:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+app.put('/api/dashboards/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { titulo, descricao, categoria, departamento, tags, url_embed } = req.body;
+
+    const result = await pool.query(
+      `UPDATE dashboards 
+       SET titulo = $1, descricao = $2, categoria = $3, departamento = $4, 
+           tags = $5, url_embed = $6, atualizado_em = NOW()
+       WHERE id = $7 AND (criado_por = $8 OR $9 = 'admin')
+       RETURNING *`,
+      [titulo, descricao, categoria, departamento, tags, url_embed, id, req.user.id, req.user.tipo_usuario]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Dashboard não encontrado ou sem permissão' });
+    }
+
+    res.json({ 
+      message: 'Dashboard atualizado com sucesso',
+      dashboard: result.rows[0] 
+    });
+
+  } catch (error) {
+    console.error('Erro ao atualizar dashboard:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+app.delete('/api/dashboards/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      'DELETE FROM dashboards WHERE id = $1 AND (criado_por = $2 OR $3 = \'admin\') RETURNING *',
+      [id, req.user.id, req.user.tipo_usuario]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Dashboard não encontrado ou sem permissão' });
+    }
+
+    res.json({ message: 'Dashboard excluído com sucesso' });
+
+  } catch (error) {
+    console.error('Erro ao excluir dashboard:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Função para gerar template de email
+function gerarTemplateEmailVerificacao(nome, urlVerificacao) {
   return `
     <!DOCTYPE html>
     <html>
     <head>
       <meta charset="utf-8">
-      <title>Ative sua conta</title>
+      <title>Confirmar Email - RMH Dashboards</title>
       <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; }
-        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .header { background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); color: white; padding: 30px 20px; text-align: center; }
-        .content { padding: 30px; }
-        .button { display: inline-block; padding: 16px 32px; background: #10b981; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; }
-        .footer { padding: 20px; text-align: center; font-size: 12px; color: #666; background: #f9fafb; }
+        .container { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #1e40af; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+        .content { background: #f8fafc; padding: 30px; border-radius: 0 0 8px 8px; }
+        .button { display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; }
+        .footer { text-align: center; margin-top: 20px; color: #64748b; font-size: 12px; }
       </style>
     </head>
     <body>
       <div class="container">
         <div class="header">
-          <h1>🏢 Dashboards Corporativos</h1>
-          <p>Resende MH</p>
+          <h1>🔐 Confirme seu Email</h1>
         </div>
         <div class="content">
           <h2>Olá, ${nome}!</h2>
