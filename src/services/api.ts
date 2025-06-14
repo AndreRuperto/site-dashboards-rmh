@@ -4,7 +4,7 @@ import type { User, Dashboard, RegisterRequest } from '@/types';
 
 // Configuração da API
 const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://site-api-rmh-up.railway.app'
+  ? 'https://rmh.up.railway.app'
   : 'http://localhost:3001';
 
 // Hook para requisições autenticadas

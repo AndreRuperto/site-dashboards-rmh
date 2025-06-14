@@ -49,7 +49,7 @@ const AuthSystem = () => {
 
 // Configuração da API
 const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://site-api-rmh-up.railway.app' // URL do seu backend no Railway
+  ? 'https://rmh.up.railway.app' // URL do seu backend no Railway
   : 'http://localhost:3001';
 
 // LoginView Component

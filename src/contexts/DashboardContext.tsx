@@ -32,7 +32,7 @@ const DashboardContext = createContext<DashboardContextType | undefined>(undefin
 
 // Configuração da API
 const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://site-api-rmh-up.railway.app'
+  ? 'https://rmh.up.railway.app'
   : 'http://localhost:3001';
 
 export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
