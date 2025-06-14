@@ -27,7 +27,17 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 // Middleware de segurança
 app.use(helmet({
   crossOriginResourcePolicy: false,
-  crossOriginEmbedderPolicy: false
+  crossOriginEmbedderPolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      connectSrc: ["'self'", "https://*.railway.app"], // Permitir conexões para Railway
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      fontSrc: ["'self'", "https:", "data:"]
+    },
+  },
 }));
 
 // Rate limiting (mais permissivo para health checks)
