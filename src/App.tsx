@@ -9,6 +9,7 @@ import { DashboardProvider } from "@/contexts/DashboardContext";
 import LoginForm from "@/components/LoginForm";
 import DashboardsPage from "@/pages/Dashboards";
 import NotFound from "./pages/NotFound";
+import { setupAPIInterceptor } from './contexts/AuthContext';
 
 const queryClient = new QueryClient();
 
