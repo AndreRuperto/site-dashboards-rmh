@@ -23,56 +23,71 @@ const pool = new Pool({
 // Inicializar Resend
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// Middleware de segurança
-app.use(helmet());
+// Desabilitar helmet para CORS
+app.use(helmet({
+  crossOriginResourcePolicy: false,
+  crossOriginEmbedderPolicy: false
+}));
 
-app.use((req, res, next) => {
-  console.log('🌐 Origin:', req.headers.origin);
-  console.log('🔧 FRONTEND_URL:', process.env.FRONTEND_URL);
-  next();
-});
-
-app.use((req, res, next) => {
+// CORS mais agressivo - ANTES de qualquer middleware
+app.all('*', (req, res, next) => {
   const origin = req.headers.origin;
+  
+  // Lista completa de origins permitidas
   const allowedOrigins = [
     'https://resendemh.up.railway.app',
-    'https://site-api-rmh-up.railway.app'
+    'https://site-api-rmh-up.railway.app',
+    'http://localhost:3000',
+    'http://localhost:5173', 
+    'http://localhost:8080'
   ];
   
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
+  console.log('🌐 Request origin:', origin);
+  console.log('🔧 Method:', req.method);
+  
+  // Sempre setar headers CORS, mesmo sem origin
+  if (!origin || allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin || 'https://resendemh.up.railway.app');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Pragma');
+    
+    // Remover headers conflitantes que o Railway pode estar setando
+    res.removeHeader('x-frame-options');
+    res.removeHeader('content-security-policy');
   }
   
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  
+  // Responder imediatamente para OPTIONS (preflight)
   if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
+    console.log('✅ Handling OPTIONS preflight');
+    return res.status(200).end();
   }
   
   next();
 });
 
-// CORS
-app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://resendemh.up.railway.app', process.env.FRONTEND_URL].filter(Boolean)
-    : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:8080'],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
-  optionsSuccessStatus: 200
-}));
-
-// Handle preflight requests
-app.options('*', cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://resendemh.up.railway.app', process.env.FRONTEND_URL].filter(Boolean)
-    : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:8080'],
-  credentials: true
-}));
+// Middleware adicional para forçar headers
+app.use((req, res, next) => {
+  // Força headers em todas as respostas
+  const originalSend = res.send;
+  const originalJson = res.json;
+  
+  res.send = function(data) {
+    if (req.headers.origin === 'https://resendemh.up.railway.app') {
+      this.header('Access-Control-Allow-Origin', 'https://resendemh.up.railway.app');
+    }
+    return originalSend.call(this, data);
+  };
+  
+  res.json = function(data) {
+    if (req.headers.origin === 'https://resendemh.up.railway.app') {
+      this.header('Access-Control-Allow-Origin', 'https://resendemh.up.railway.app');
+    }
+    return originalJson.call(this, data);
+  };
+  
+  next();
+});
 
 // Rate limiting (mais permissivo para health checks)
 const limiter = rateLimit({
@@ -155,7 +170,8 @@ app.get('/', (req, res) => {
     },
     status: 'online',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    cors: 'fixed'
   });
 });
 
@@ -511,6 +527,7 @@ async function iniciarServidor() {
       console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
       console.log(`📧 Resend configurado`);
       console.log(`🗄️ PostgreSQL conectado`);
+      console.log(`🔧 CORS configurado agressivamente`);
     });
 
     // Keep-alive para Railway em produção
