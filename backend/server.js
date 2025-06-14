@@ -26,14 +26,29 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 // Middleware de segurança
 app.use(helmet());
 
+app.use((req, res, next) => {
+  console.log('🌐 Origin:', req.headers.origin);
+  console.log('🔧 FRONTEND_URL:', process.env.FRONTEND_URL);
+  next();
+});
+
 // CORS
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? [process.env.FRONTEND_URL, 'https://resendemh.up.railway.app']
+    ? ['https://resendemh.up.railway.app', process.env.FRONTEND_URL].filter(Boolean)
     : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:8080'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  optionsSuccessStatus: 200
+}));
+
+// Handle preflight requests
+app.options('*', cors({
+  origin: process.env.NODE_ENV === 'production' 
+    ? ['https://resendemh.up.railway.app', process.env.FRONTEND_URL].filter(Boolean)
+    : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:8080'],
+  credentials: true
 }));
 
 // Rate limiting (mais permissivo para health checks)
