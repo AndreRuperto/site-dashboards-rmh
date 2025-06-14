@@ -29,24 +29,28 @@ app.use(helmet());
 // CORS
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? [process.env.FRONTEND_URL]
+    ? [process.env.FRONTEND_URL, 'https://resendemh.up.railway.app']
     : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:8080'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Rate limiting
+// Rate limiting (mais permissivo para health checks)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: { error: 'Muitas tentativas, tente novamente em 15 minutos' }
+  max: 200, // Aumentado para permitir health checks
+  message: { error: 'Muitas tentativas, tente novamente em 15 minutos' },
+  skip: (req) => {
+    // Pular rate limiting para health checks
+    return req.path === '/health' || req.path === '/ping' || req.path === '/';
+  }
 });
 app.use(limiter);
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 10, // Aumentado um pouco
   message: { error: 'Muitas tentativas de autenticação, tente novamente em 15 minutos' }
 });
 
@@ -99,7 +103,7 @@ const authMiddleware = async (req, res, next) => {
   }
 };
 
-// Rotas principais
+// ROTAS DE HEALTH CHECK E KEEP-ALIVE
 app.get('/', (req, res) => {
   res.json({
     message: '🚀 RMH Dashboards API',
@@ -107,15 +111,42 @@ app.get('/', (req, res) => {
     environment: process.env.NODE_ENV || 'development',
     endpoints: {
       auth: '/api/auth',
-      dashboards: '/api/dashboards'
+      dashboards: '/api/dashboards',
+      health: '/health',
+      ping: '/ping'
     },
     status: 'online',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
   });
 });
 
-app.get('/health', (req, res) => {
-  res.json({ status: 'healthy', timestamp: new Date().toISOString() });
+// Health check para Railway
+app.get('/health', async (req, res) => {
+  try {
+    // Testar conexão com banco
+    await pool.query('SELECT 1');
+    
+    res.status(200).json({ 
+      status: 'healthy', 
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      database: 'connected',
+      memory: process.memoryUsage(),
+      version: '1.0.0'
+    });
+  } catch (error) {
+    res.status(503).json({ 
+      status: 'unhealthy', 
+      timestamp: new Date().toISOString(),
+      error: error.message 
+    });
+  }
+});
+
+// Ping para keep-alive
+app.get('/ping', (req, res) => {
+  res.status(200).send('pong');
 });
 
 // Rota de teste (manter para compatibilidade)
@@ -202,7 +233,7 @@ app.post('/api/auth/register', async (req, res) => {
     );
 
     // Enviar email de verificação
-    const urlVerificacao = `${process.env.FRONTEND_URL || 'http://localhost:8080'}/verify-email?token=${tokenVerificacao}&email=${email}`;
+    const urlVerificacao = `${process.env.FRONTEND_URL || 'https://resendemh.up.railway.app'}/verify-email?token=${tokenVerificacao}&email=${email}`;
     
     try {
       await resend.emails.send({
@@ -437,12 +468,43 @@ async function iniciarServidor() {
     await pool.query('SELECT NOW()');
     console.log('✅ Conectado ao PostgreSQL');
     
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
       console.log(`🚀 Servidor rodando na porta ${PORT}`);
       console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
       console.log(`📧 Resend configurado`);
       console.log(`🗄️ PostgreSQL conectado`);
     });
+
+    // Keep-alive para Railway em produção
+    if (process.env.NODE_ENV === 'production') {
+      setInterval(() => {
+        console.log('🏓 Keep-alive ping:', new Date().toISOString());
+      }, 30000); // A cada 30 segundos
+    }
+
+    // Graceful shutdown
+    process.on('SIGTERM', () => {
+      console.log('📴 Recebido SIGTERM, encerrando graciosamente...');
+      server.close(() => {
+        console.log('🔴 Servidor encerrado');
+        pool.end(() => {
+          console.log('🔴 Conexão com PostgreSQL encerrada');
+          process.exit(0);
+        });
+      });
+    });
+
+    process.on('SIGINT', () => {
+      console.log('📴 Recebido SIGINT, encerrando graciosamente...');
+      server.close(() => {
+        console.log('🔴 Servidor encerrado');
+        pool.end(() => {
+          console.log('🔴 Conexão com PostgreSQL encerrada');
+          process.exit(0);
+        });
+      });
+    });
+
   } catch (error) {
     console.error('❌ Erro ao iniciar servidor:', error);
     process.exit(1);
