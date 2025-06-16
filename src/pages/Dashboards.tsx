@@ -21,8 +21,7 @@ const DashboardsPage = () => {
   const { toast } = useToast();
 
   const filteredDashboards = getFilteredDashboards(
-    selectedCategory === 'all' ? undefined : selectedCategory,
-    selectedDepartment === 'all' ? undefined : selectedDepartment
+    selectedCategory === 'all' ? undefined : selectedCategory
   );
 
   const handleClearFilters = () => {
@@ -67,7 +66,7 @@ const DashboardsPage = () => {
               </p>
             </div>
             
-            {user?.role === 'admin' && (
+            {user?.tipo_usuario === 'admin' && (
               <Button
                 onClick={() => setIsFormOpen(true)}
                 className="bg-rmh-primary hover:bg-primary-800"

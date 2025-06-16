@@ -84,10 +84,11 @@ app.use(cors({
     ? [
         'https://rmh.up.railway.app',
         'https://railway.com',
-        process.env.FRONTEND_URL
+        process.env.FRONTEND_URL,
+        'http://localhost:3001'
       ]
     : [
-        'http://localhost:3000', 
+        'http://localhost:3001', 
         'http://localhost:5173', 
         'http://localhost:8080'
       ],
@@ -142,11 +143,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// Servir arquivos estáticos do frontend EM PRODUÇÃO
-if (process.env.NODE_ENV === 'production') {
-  console.log('🎨 Servindo frontend estático da pasta dist/');
-  app.use(express.static(path.join(__dirname, 'dist')));
-}
+console.log('🎨 Servindo frontend estático da pasta dist/');
+app.use(express.static(path.join(__dirname, 'dist')));
 
 // Schemas de validação
 const schemaRegistro = Joi.object({
@@ -579,26 +577,17 @@ function gerarTemplateVerificacao(nome, codigo, email) {
   `;
 }
 
-// SERVIR FRONTEND EM PRODUÇÃO - SPA fallback
-if (process.env.NODE_ENV === 'production') {
-  // Capturar todas as rotas não-API e servir index.html (SPA)
-  app.get('*', (req, res) => {
-    // Se não é uma rota de API, servir o index.html
-    if (!req.path.startsWith('/api') && 
-        !req.path.startsWith('/health') && 
-        !req.path.startsWith('/ping') && 
-        !req.path.startsWith('/send-test-email')) {
-      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-    } else {
-      res.status(404).json({ error: 'Endpoint não encontrado' });
-    }
-  });
-} else {
-  // Em desenvolvimento, manter o 404 handler normal
-  app.use('*', (req, res) => {
+app.get('*', (req, res) => {
+  // Se não é uma rota de API, servir o index.html
+  if (!req.path.startsWith('/api') && 
+      !req.path.startsWith('/health') && 
+      !req.path.startsWith('/ping') && 
+      !req.path.startsWith('/send-test-email')) {
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  } else {
     res.status(404).json({ error: 'Endpoint não encontrado' });
-  });
-}
+  }
+});
 
 // Inicialização melhorada para Railway COM RETRY
 async function iniciarServidor() {

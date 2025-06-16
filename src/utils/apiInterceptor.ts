@@ -2,7 +2,7 @@
 // Configuração da API
 const API_BASE_URL = process.env.NODE_ENV === 'production' 
   ? 'https://rmh.up.railway.app'
-  : 'http://localhost:3001';
+  : 'http://localhost:3001'
 
 // Interceptor para requisições (intercepta 401 e faz logout automático)
 export const setupAPIInterceptor = () => {
@@ -13,13 +13,20 @@ export const setupAPIInterceptor = () => {
     const response = await originalFetch(...args);
     
     // Se receber 401 em qualquer requisição, fazer logout
-    if (response.status === 401 && response.url.includes(API_BASE_URL)) {
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('user');
+    if (response.status === 401) {
+      // Verificar se a requisição é para nossa API
+      const isApiRequest = API_BASE_URL 
+        ? response.url.includes(API_BASE_URL)
+        : response.url.includes('/api');
       
-      // Só redirecionar se não estiver já na página de login
-      if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login';
+      if (isApiRequest) {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
+        
+        // Só redirecionar se não estiver já na página de login
+        if (!window.location.pathname.includes('/login')) {
+          window.location.href = '/login';
+        }
       }
     }
     
