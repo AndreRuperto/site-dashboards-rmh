@@ -1,7 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
-// contexts/AuthContext.tsx - Para API unificada
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 export type UserRole = 'usuario' | 'admin';
 
@@ -27,9 +26,9 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Configuração da API - SIMPLIFICADA para usar o mesmo domínio
+// Configuração da API
 const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://rmh.up.railway.app'  // ← NOVA
+  ? 'https://rmh.up.railway.app'
   : 'http://localhost:3001';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -127,6 +126,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('authToken');
     localStorage.removeItem('user');
     setUser(null);
+    
+    // Redirecionar para login
+    window.location.href = '/login';
   };
 
   const value: AuthContextType = {

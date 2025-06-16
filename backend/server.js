@@ -1,4 +1,4 @@
-// server.js - VERSÃO COMPLETA COM SISTEMA DE VERIFICAÇÃO DE EMAIL
+// server.js - VERSÃO COM CONEXÃO ROBUSTA PARA DESENVOLVIMENTO
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -18,11 +18,46 @@ const PORT = process.env.PORT || 3001;
 // Configurar trust proxy para Railway
 app.set('trust proxy', 1);
 
-// Configuração do banco PostgreSQL
+// Configuração do banco PostgreSQL com RETRY e TIMEOUT
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  // Configurações para desenvolvimento local mais robustas
+  max: 5, // máximo 5 conexões
+  idleTimeoutMillis: 30000, // 30 segundos
+  connectionTimeoutMillis: 10000, // 10 segundos para conectar
+  query_timeout: 30000, // 30 segundos para queries
+  statement_timeout: 30000, // 30 segundos para statements
+  idle_in_transaction_session_timeout: 30000, // 30 segundos idle
 });
+
+// Event listeners para debug da conexão
+pool.on('connect', () => {
+  console.log('🔌 Nova conexão estabelecida com PostgreSQL');
+});
+
+pool.on('error', (err) => {
+  console.error('❌ Erro inesperado no pool de conexões:', err);
+});
+
+// Função para testar conexão com retry
+async function testarConexao(tentativas = 3) {
+  for (let i = 1; i <= tentativas; i++) {
+    try {
+      console.log(`🔄 Tentativa ${i}/${tentativas} de conexão com PostgreSQL...`);
+      const result = await pool.query('SELECT NOW() as hora, version() as versao');
+      console.log(`✅ Conectado ao PostgreSQL! Hora: ${result.rows[0].hora}`);
+      return true;
+    } catch (error) {
+      console.error(`❌ Erro na tentativa ${i}:`, error.message);
+      if (i < tentativas) {
+        console.log('⏳ Aguardando 5 segundos antes da próxima tentativa...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+    }
+  }
+  throw new Error('Não foi possível conectar ao PostgreSQL após múltiplas tentativas');
+}
 
 // Inicializar Resend
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -172,7 +207,7 @@ app.get('/', (req, res) => {
   });
 });
 
-// Health check para Railway
+// Health check para Railway com teste de conexão
 app.get('/health', async (req, res) => {
   try {
     await pool.query('SELECT 1');
@@ -420,94 +455,6 @@ app.post('/api/auth/verify-email', async (req, res) => {
   }
 });
 
-// REENVIAR CÓDIGO DE VERIFICAÇÃO
-app.post('/api/auth/resend-verification', authLimiter, async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ error: 'Email é obrigatório' });
-    }
-
-    // Buscar usuário
-    const userResult = await pool.query(
-      'SELECT id, nome, email, email_verificado FROM usuarios WHERE email = $1',
-      [email]
-    );
-
-    if (userResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Usuário não encontrado' });
-    }
-
-    const user = userResult.rows[0];
-
-    if (user.email_verificado) {
-      return res.status(400).json({ error: 'Email já verificado' });
-    }
-
-    // Verificar se não enviou recentemente (rate limiting)
-    const recentToken = await pool.query(
-      `SELECT criado_em FROM verificacoes_email 
-       WHERE usuario_id = $1 
-         AND tipo_token = 'verificacao_email' 
-         AND criado_em > NOW() - INTERVAL '2 minutes'
-       ORDER BY criado_em DESC 
-       LIMIT 1`,
-      [user.id]
-    );
-
-    if (recentToken.rows.length > 0) {
-      return res.status(429).json({ 
-        error: 'Aguarde 2 minutos antes de solicitar um novo código' 
-      });
-    }
-
-    // Invalidar tokens anteriores
-    await pool.query(
-      `UPDATE verificacoes_email 
-       SET usado_em = NOW() 
-       WHERE usuario_id = $1 
-         AND tipo_token = 'verificacao_email' 
-         AND usado_em IS NULL`,
-      [user.id]
-    );
-
-    // Gerar novo código
-    const novoCodigoVerificacao = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiraEm = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 horas
-
-    // Salvar novo token
-    await pool.query(
-      `INSERT INTO verificacoes_email (usuario_id, token, tipo_token, expira_em) 
-       VALUES ($1, $2, $3, $4)`,
-      [user.id, novoCodigoVerificacao, 'verificacao_email', expiraEm]
-    );
-
-    // Enviar novo email
-    try {
-      await resend.emails.send({
-        from: 'onboarding@resend.dev',
-        to: [email],
-        subject: '🔐 Novo código de verificação - Dashboards RMH',
-        html: gerarTemplateReenvio(user.nome, novoCodigoVerificacao, email)
-      });
-
-      console.log(`✅ Novo código enviado para: ${email} - Código: ${novoCodigoVerificacao}`);
-    } catch (emailError) {
-      console.error('❌ Erro ao reenviar email:', emailError);
-      return res.status(500).json({ error: 'Erro ao enviar email' });
-    }
-
-    res.json({
-      message: 'Novo código de verificação enviado! Verifique seu email.'
-    });
-
-  } catch (error) {
-    console.error('Erro ao reenviar código:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
-
 // LOGIN COM VERIFICAÇÃO DE EMAIL
 app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
@@ -580,46 +527,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
   }
 });
 
-// Obter perfil do usuário
-app.get('/api/auth/profile', authMiddleware, async (req, res) => {
-  try {
-    const userResult = await pool.query(
-      'SELECT id, nome, email, departamento, tipo_usuario, criado_em, ultimo_login FROM usuarios WHERE id = $1',
-      [req.user.id]
-    );
-
-    if (userResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Usuário não encontrado' });
-    }
-
-    res.json({ user: userResult.rows[0] });
-  } catch (error) {
-    console.error('Erro ao obter perfil:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
-
-// ROTAS DE DASHBOARDS
-app.get('/api/dashboards', authMiddleware, async (req, res) => {
-  try {
-    const result = await pool.query(
-      `SELECT d.*, u.nome as criador_nome 
-       FROM dashboards d 
-       LEFT JOIN usuarios u ON d.criado_por = u.id 
-       ORDER BY d.criado_em DESC`
-    );
-
-    res.json({ dashboards: result.rows });
-  } catch (error) {
-    console.error('Erro ao buscar dashboards:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
-
-// ===============================================
-// TEMPLATES DE EMAIL
-// ===============================================
-
+// Templates de email (manter os mesmos)
 function gerarTemplateVerificacao(nome, codigo, email) {
   return `
     <!DOCTYPE html>
@@ -671,56 +579,6 @@ function gerarTemplateVerificacao(nome, codigo, email) {
   `;
 }
 
-function gerarTemplateReenvio(nome, codigo, email) {
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <title>Novo código de verificação - RMH Dashboards</title>
-      <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; background: #f5f5f5; }
-        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.1); }
-        .header { background: linear-gradient(135deg, #f59e0b 0%, #f97316 100%); color: white; padding: 40px 30px; text-align: center; }
-        .header h1 { margin: 0; font-size: 28px; font-weight: 700; }
-        .content { padding: 40px 30px; text-align: center; }
-        .code-box { background: #f8fafc; border: 2px dashed #f59e0b; border-radius: 12px; padding: 30px; margin: 30px 0; }
-        .code { font-size: 36px; font-weight: 900; color: #f59e0b; letter-spacing: 8px; font-family: 'Courier New', monospace; }
-        .footer { padding: 30px; text-align: center; font-size: 14px; color: #64748b; background: #f8fafc; }
-        .expire-info { background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; color: #92400e; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>🔄 Novo Código de Verificação</h1>
-          <p>Dashboards Corporativos - Resende MH</p>
-        </div>
-        <div class="content">
-          <h2>Olá, ${nome}!</h2>
-          <p>Você solicitou um novo código de verificação.</p>
-          <p>Aqui está seu novo código:</p>
-          
-          <div class="code-box">
-            <p style="margin: 0; font-size: 16px; color: #64748b;">Seu novo código:</p>
-            <div class="code">${codigo}</div>
-          </div>
-
-          <div class="expire-info">
-            ⏰ <strong>Este código expira em 24 horas</strong>
-          </div>
-
-          <p><strong>Nota:</strong> Os códigos anteriores foram invalidados.</p>
-        </div>
-        <div class="footer">
-          <p><strong>Resende MH</strong> - Este é um email automático, não responda.</p>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
-}
-
 // SERVIR FRONTEND EM PRODUÇÃO - SPA fallback
 if (process.env.NODE_ENV === 'production') {
   // Capturar todas as rotas não-API e servir index.html (SPA)
@@ -742,12 +600,11 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// Inicialização melhorada para Railway
+// Inicialização melhorada para Railway COM RETRY
 async function iniciarServidor() {
   try {
-    // Testar conexão com banco
-    await pool.query('SELECT NOW()');
-    console.log('✅ Conectado ao PostgreSQL');
+    // Testar conexão com banco COM RETRY
+    await testarConexao(3);
     
     const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Servidor rodando na porta ${PORT}`);
@@ -760,11 +617,11 @@ async function iniciarServidor() {
       }
     });
 
-    // Keep-alive reduzido para Railway (melhor performance)
+    // Keep-alive apenas em produção
     if (process.env.NODE_ENV === 'production') {
       setInterval(() => {
         console.log('🏓 Keep-alive ping:', new Date().toISOString());
-      }, 60000); // Reduzido para 1 minuto
+      }, 60000);
     }
 
     // Graceful shutdown melhorado
