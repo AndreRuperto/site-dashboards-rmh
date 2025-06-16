@@ -1,4 +1,4 @@
-// server.js - VERSÃO CORRIGIDA PARA RAILWAY
+// server.js - VERSÃO COMPLETA COM SISTEMA DE VERIFICAÇÃO DE EMAIL
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -15,8 +15,8 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// ❗ CORREÇÃO 1: Configurar trust proxy para Railway
-app.set('trust proxy', 1); // Trust primeiro proxy (Railway)
+// Configurar trust proxy para Railway
+app.set('trust proxy', 1);
 
 // Configuração do banco PostgreSQL
 const pool = new Pool({
@@ -61,15 +61,14 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// ❗ CORREÇÃO 2: Rate limiting melhorado para Railway
+// Rate limiting melhorado para Railway
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
   max: 200, // Máximo 200 requests por 15 min
   message: { error: 'Muitas tentativas, tente novamente em 15 minutos' },
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  standardHeaders: true,
+  legacyHeaders: false,
   skip: (req) => {
-    // Pular rate limit para rotas de health e assets
     return req.path === '/health' || 
            req.path === '/ping' || 
            req.path === '/' || 
@@ -79,9 +78,7 @@ const limiter = rateLimit({
            req.path.includes('.css') ||
            req.path.includes('.js');
   },
-  // ❗ CORREÇÃO 3: Key generator customizado para Railway
   keyGenerator: (req) => {
-    // Usar IP real do Railway
     return req.ip || req.connection.remoteAddress || 'unknown';
   }
 });
@@ -212,7 +209,7 @@ app.post('/send-test-email', async (req, res) => {
       html: `
         <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px;">
           <h2 style="color: #1e40af;">🚀 Backend Completo Funcionando!</h2>
-          <p>Agora com PostgreSQL e sistema completo de autenticação.</p>
+          <p>Agora com sistema completo de verificação de email!</p>
           <div style="background: #10b981; color: white; padding: 15px; border-radius: 8px; margin: 20px 0; text-align: center;">
             <h3 style="margin: 0;">✅ SISTEMA COMPLETO!</h3>
           </div>
@@ -220,6 +217,7 @@ app.post('/send-test-email', async (req, res) => {
             <li>✅ PostgreSQL conectado</li>
             <li>✅ JWT funcionando</li>
             <li>✅ Resend integrado</li>
+            <li>✅ Verificação de email</li>
             <li>✅ Schema em português</li>
           </ul>
           <p><strong>Data/Hora:</strong> ${new Date().toLocaleString('pt-BR')}</p>
@@ -242,7 +240,11 @@ app.post('/send-test-email', async (req, res) => {
   }
 });
 
-// ROTAS DE AUTENTICAÇÃO
+// ===============================================
+// ROTAS DE AUTENTICAÇÃO COM VERIFICAÇÃO DE EMAIL
+// ===============================================
+
+// REGISTRO COM VERIFICAÇÃO DE EMAIL
 app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
     const { error, value } = schemaRegistro.validate(req.body);
@@ -254,49 +256,72 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
 
     // Verificar se o usuário já existe
     const userExists = await pool.query(
-      'SELECT id FROM usuarios WHERE email = $1',
+      'SELECT id, email_verificado FROM usuarios WHERE email = $1',
       [email]
     );
 
     if (userExists.rows.length > 0) {
-      return res.status(400).json({ error: 'Email já cadastrado' });
+      const existingUser = userExists.rows[0];
+      if (existingUser.email_verificado) {
+        return res.status(400).json({ error: 'Email já cadastrado e verificado' });
+      } else {
+        return res.status(400).json({ 
+          error: 'Email já cadastrado. Verifique sua caixa de entrada ou solicite um novo código.',
+          user_id: existingUser.id,
+          verification_required: true
+        });
+      }
     }
 
     // Criptografar senha
     const saltRounds = 10;
     const senhaHash = await bcrypt.hash(senha, saltRounds);
 
-    // Gerar token de verificação
-    const tokenVerificacao = crypto.randomBytes(32).toString('hex');
-
-    // Inserir usuário
+    // Inserir usuário SEM verificação
     const result = await pool.query(
-      `INSERT INTO usuarios (nome, email, senha, departamento, token_verificacao)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id, nome, email, departamento`,
-      [nome, email, senhaHash, departamento, tokenVerificacao]
+      `INSERT INTO usuarios (nome, email, senha, departamento, tipo_usuario, email_verificado) 
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, nome, email, departamento, tipo_usuario`,
+      [nome, email, senhaHash, departamento, 'usuario', false] // email_verificado = false
     );
 
     const newUser = result.rows[0];
 
+    // Gerar código de verificação (6 dígitos)
+    const codigoVerificacao = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiraEm = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 horas
+
+    // Salvar token na tabela de verificações
+    await pool.query(
+      `INSERT INTO verificacoes_email (usuario_id, token, tipo_token, expira_em) 
+       VALUES ($1, $2, $3, $4)`,
+      [newUser.id, codigoVerificacao, 'verificacao_email', expiraEm]
+    );
+
     // Enviar email de verificação
     try {
-      const urlVerificacao = `${process.env.FRONTEND_URL || 'https://rmh.up.railway.app'}/verify-email?token=${tokenVerificacao}&email=${email}`;
-      
       await resend.emails.send({
         from: 'onboarding@resend.dev',
         to: [email],
-        subject: '🔐 Confirme seu email - RMH Dashboards',
-        html: gerarTemplateEmailVerificacao(nome, urlVerificacao)
+        subject: '🔐 Confirme seu email - Dashboards RMH',
+        html: gerarTemplateVerificacao(nome, codigoVerificacao, email)
       });
 
-      console.log(`Email de verificação enviado para: ${email}`);
+      console.log(`✅ Email de verificação enviado para: ${email} - Código: ${codigoVerificacao}`);
     } catch (emailError) {
-      console.error('Erro ao enviar email de verificação:', emailError);
+      console.error('❌ Erro ao enviar email de verificação:', emailError);
+      // Não falhar o registro se o email der erro
     }
 
     res.status(201).json({
-      message: 'Usuário cadastrado com sucesso. Verifique seu email para ativar a conta.',
-      user: newUser
+      message: 'Usuário cadastrado! Verifique seu email e digite o código de 6 dígitos.',
+      user: {
+        id: newUser.id,
+        nome: newUser.nome,
+        email: newUser.email,
+        departamento: newUser.departamento,
+        email_verificado: false
+      },
+      verification_required: true
     });
 
   } catch (error) {
@@ -308,25 +333,86 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
   }
 });
 
-// Verificar email
-app.get('/api/auth/verify-email', async (req, res) => {
+// VERIFICAR CÓDIGO DE EMAIL
+app.post('/api/auth/verify-email', async (req, res) => {
   try {
-    const { token, email } = req.query;
+    const { email, codigo } = req.body;
 
-    if (!token || !email) {
-      return res.status(400).json({ error: 'Token e email são obrigatórios' });
+    if (!email || !codigo) {
+      return res.status(400).json({ error: 'Email e código são obrigatórios' });
     }
 
-    const result = await pool.query(
-      'UPDATE usuarios SET email_verificado = true, verificado_em = NOW() WHERE token_verificacao = $1 AND email = $2 RETURNING id, nome, email',
-      [token, email]
+    // Buscar usuário
+    const userResult = await pool.query(
+      'SELECT id, nome, email, email_verificado FROM usuarios WHERE email = $1',
+      [email]
     );
 
-    if (result.rows.length === 0) {
-      return res.status(400).json({ error: 'Token inválido ou expirado' });
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
     }
 
-    res.json({ message: 'Email verificado com sucesso!' });
+    const user = userResult.rows[0];
+
+    if (user.email_verificado) {
+      return res.status(400).json({ error: 'Email já verificado' });
+    }
+
+    // Buscar token válido
+    const tokenResult = await pool.query(
+      `SELECT id, token, expira_em, usado_em 
+       FROM verificacoes_email 
+       WHERE usuario_id = $1 
+         AND token = $2 
+         AND tipo_token = 'verificacao_email' 
+         AND expira_em > NOW() 
+         AND usado_em IS NULL
+       ORDER BY criado_em DESC 
+       LIMIT 1`,
+      [user.id, codigo]
+    );
+
+    if (tokenResult.rows.length === 0) {
+      return res.status(400).json({ 
+        error: 'Código inválido ou expirado. Solicite um novo código.' 
+      });
+    }
+
+    const verification = tokenResult.rows[0];
+
+    // Marcar usuário como verificado
+    await pool.query(
+      'UPDATE usuarios SET email_verificado = TRUE, verificado_em = NOW() WHERE id = $1',
+      [user.id]
+    );
+
+    // Marcar token como usado
+    await pool.query(
+      'UPDATE verificacoes_email SET usado_em = NOW() WHERE id = $1',
+      [verification.id]
+    );
+
+    // Gerar JWT para login automático após verificação
+    const token = jwt.sign(
+      { 
+        id: user.id, 
+        email: user.email, 
+        tipo_usuario: 'usuario'
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    );
+
+    res.json({
+      message: 'Email verificado com sucesso! Você foi logado automaticamente.',
+      token,
+      user: {
+        id: user.id,
+        nome: user.nome,
+        email: user.email,
+        email_verificado: true
+      }
+    });
 
   } catch (error) {
     console.error('Erro na verificação:', error);
@@ -334,7 +420,95 @@ app.get('/api/auth/verify-email', async (req, res) => {
   }
 });
 
-// ❗ CORREÇÃO 4: Login com nomes de colunas corretos
+// REENVIAR CÓDIGO DE VERIFICAÇÃO
+app.post('/api/auth/resend-verification', authLimiter, async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email é obrigatório' });
+    }
+
+    // Buscar usuário
+    const userResult = await pool.query(
+      'SELECT id, nome, email, email_verificado FROM usuarios WHERE email = $1',
+      [email]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const user = userResult.rows[0];
+
+    if (user.email_verificado) {
+      return res.status(400).json({ error: 'Email já verificado' });
+    }
+
+    // Verificar se não enviou recentemente (rate limiting)
+    const recentToken = await pool.query(
+      `SELECT criado_em FROM verificacoes_email 
+       WHERE usuario_id = $1 
+         AND tipo_token = 'verificacao_email' 
+         AND criado_em > NOW() - INTERVAL '2 minutes'
+       ORDER BY criado_em DESC 
+       LIMIT 1`,
+      [user.id]
+    );
+
+    if (recentToken.rows.length > 0) {
+      return res.status(429).json({ 
+        error: 'Aguarde 2 minutos antes de solicitar um novo código' 
+      });
+    }
+
+    // Invalidar tokens anteriores
+    await pool.query(
+      `UPDATE verificacoes_email 
+       SET usado_em = NOW() 
+       WHERE usuario_id = $1 
+         AND tipo_token = 'verificacao_email' 
+         AND usado_em IS NULL`,
+      [user.id]
+    );
+
+    // Gerar novo código
+    const novoCodigoVerificacao = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiraEm = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 horas
+
+    // Salvar novo token
+    await pool.query(
+      `INSERT INTO verificacoes_email (usuario_id, token, tipo_token, expira_em) 
+       VALUES ($1, $2, $3, $4)`,
+      [user.id, novoCodigoVerificacao, 'verificacao_email', expiraEm]
+    );
+
+    // Enviar novo email
+    try {
+      await resend.emails.send({
+        from: 'onboarding@resend.dev',
+        to: [email],
+        subject: '🔐 Novo código de verificação - Dashboards RMH',
+        html: gerarTemplateReenvio(user.nome, novoCodigoVerificacao, email)
+      });
+
+      console.log(`✅ Novo código enviado para: ${email} - Código: ${novoCodigoVerificacao}`);
+    } catch (emailError) {
+      console.error('❌ Erro ao reenviar email:', emailError);
+      return res.status(500).json({ error: 'Erro ao enviar email' });
+    }
+
+    res.json({
+      message: 'Novo código de verificação enviado! Verifique seu email.'
+    });
+
+  } catch (error) {
+    console.error('Erro ao reenviar código:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// LOGIN COM VERIFICAÇÃO DE EMAIL
 app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const { error, value } = schemaLogin.validate(req.body);
@@ -344,7 +518,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 
     const { email, senha } = value;
 
-    // Buscar usuário - CORRIGIDO: usar 'senha' ao invés de 'senha_hash'
+    // Buscar usuário
     const result = await pool.query(
       'SELECT id, nome, email, senha, departamento, tipo_usuario, email_verificado FROM usuarios WHERE email = $1',
       [email]
@@ -356,7 +530,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 
     const user = result.rows[0];
 
-    // Verificar senha - CORRIGIDO: usar 'user.senha' ao invés de 'user.senha_hash'
+    // Verificar senha
     const senhaValida = await bcrypt.compare(senha, user.senha);
     if (!senhaValida) {
       return res.status(401).json({ error: 'Email ou senha incorretos' });
@@ -365,7 +539,9 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     // Verificar se email foi verificado
     if (!user.email_verificado) {
       return res.status(401).json({ 
-        error: 'Email não verificado. Verifique sua caixa de entrada.' 
+        error: 'Email não verificado. Verifique sua caixa de entrada.',
+        verification_required: true,
+        user_email: email
       });
     }
 
@@ -440,39 +616,104 @@ app.get('/api/dashboards', authMiddleware, async (req, res) => {
   }
 });
 
-// Função para gerar template de email
-function gerarTemplateEmailVerificacao(nome, urlVerificacao) {
+// ===============================================
+// TEMPLATES DE EMAIL
+// ===============================================
+
+function gerarTemplateVerificacao(nome, codigo, email) {
   return `
     <!DOCTYPE html>
     <html>
     <head>
       <meta charset="utf-8">
-      <title>Confirmar Email - RMH Dashboards</title>
+      <title>Confirme seu email - RMH Dashboards</title>
       <style>
-        .container { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: #1e40af; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-        .content { background: #f8fafc; padding: 30px; border-radius: 0 0 8px 8px; }
-        .button { display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; }
-        .footer { text-align: center; margin-top: 20px; color: #64748b; font-size: 12px; }
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); color: white; padding: 40px 30px; text-align: center; }
+        .header h1 { margin: 0; font-size: 28px; font-weight: 700; }
+        .content { padding: 40px 30px; text-align: center; }
+        .code-box { background: #f8fafc; border: 2px dashed #3b82f6; border-radius: 12px; padding: 30px; margin: 30px 0; }
+        .code { font-size: 36px; font-weight: 900; color: #1e40af; letter-spacing: 8px; font-family: 'Courier New', monospace; }
+        .footer { padding: 30px; text-align: center; font-size: 14px; color: #64748b; background: #f8fafc; }
+        .expire-info { background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; color: #92400e; }
       </style>
     </head>
     <body>
       <div class="container">
         <div class="header">
           <h1>🔐 Confirme seu Email</h1>
+          <p>Dashboards Corporativos - Resende MH</p>
         </div>
         <div class="content">
           <h2>Olá, ${nome}!</h2>
           <p>Bem-vindo aos Dashboards Corporativos da Resende MH!</p>
-          <p>Para ativar sua conta, clique no botão abaixo:</p>
-          <p style="text-align: center;">
-            <a href="${urlVerificacao}" class="button">✅ Ativar Conta</a>
-          </p>
-          <p>Ou copie este link: <br><code>${urlVerificacao}</code></p>
-          <p><small>Este link expira em 24 horas.</small></p>
+          <p>Para ativar sua conta, digite este código no site:</p>
+          
+          <div class="code-box">
+            <p style="margin: 0; font-size: 16px; color: #64748b;">Seu código de verificação:</p>
+            <div class="code">${codigo}</div>
+          </div>
+
+          <div class="expire-info">
+            ⏰ <strong>Este código expira em 24 horas</strong>
+          </div>
+
+          <p>Se você não solicitou este cadastro, ignore este email.</p>
         </div>
         <div class="footer">
-          <p>Resende MH - Este é um email automático, não responda.</p>
+          <p><strong>Resende MH</strong> - Este é um email automático, não responda.</p>
+          <p>Se precisar de ajuda, entre em contato conosco.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+function gerarTemplateReenvio(nome, codigo, email) {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>Novo código de verificação - RMH Dashboards</title>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #f59e0b 0%, #f97316 100%); color: white; padding: 40px 30px; text-align: center; }
+        .header h1 { margin: 0; font-size: 28px; font-weight: 700; }
+        .content { padding: 40px 30px; text-align: center; }
+        .code-box { background: #f8fafc; border: 2px dashed #f59e0b; border-radius: 12px; padding: 30px; margin: 30px 0; }
+        .code { font-size: 36px; font-weight: 900; color: #f59e0b; letter-spacing: 8px; font-family: 'Courier New', monospace; }
+        .footer { padding: 30px; text-align: center; font-size: 14px; color: #64748b; background: #f8fafc; }
+        .expire-info { background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; color: #92400e; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>🔄 Novo Código de Verificação</h1>
+          <p>Dashboards Corporativos - Resende MH</p>
+        </div>
+        <div class="content">
+          <h2>Olá, ${nome}!</h2>
+          <p>Você solicitou um novo código de verificação.</p>
+          <p>Aqui está seu novo código:</p>
+          
+          <div class="code-box">
+            <p style="margin: 0; font-size: 16px; color: #64748b;">Seu novo código:</p>
+            <div class="code">${codigo}</div>
+          </div>
+
+          <div class="expire-info">
+            ⏰ <strong>Este código expira em 24 horas</strong>
+          </div>
+
+          <p><strong>Nota:</strong> Os códigos anteriores foram invalidados.</p>
+        </div>
+        <div class="footer">
+          <p><strong>Resende MH</strong> - Este é um email automático, não responda.</p>
         </div>
       </div>
     </body>
@@ -501,7 +742,7 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// ❗ CORREÇÃO 5: Inicialização melhorada para Railway
+// Inicialização melhorada para Railway
 async function iniciarServidor() {
   try {
     // Testar conexão com banco
@@ -513,19 +754,20 @@ async function iniciarServidor() {
       console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
       console.log(`📧 Resend configurado`);
       console.log(`🗄️ PostgreSQL conectado`);
+      console.log(`🔐 Sistema de verificação de email ativo`);
       if (process.env.NODE_ENV === 'production') {
         console.log(`🎨 Frontend sendo servido da pasta dist/`);
       }
     });
 
-    // ❗ CORREÇÃO 6: Keep-alive reduzido para Railway (melhor performance)
+    // Keep-alive reduzido para Railway (melhor performance)
     if (process.env.NODE_ENV === 'production') {
       setInterval(() => {
         console.log('🏓 Keep-alive ping:', new Date().toISOString());
       }, 60000); // Reduzido para 1 minuto
     }
 
-    // ❗ CORREÇÃO 7: Graceful shutdown melhorado
+    // Graceful shutdown melhorado
     const gracefulShutdown = (signal) => {
       console.log(`📴 Recebido ${signal}, encerrando graciosamente...`);
       server.close((err) => {
