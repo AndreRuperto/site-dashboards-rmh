@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,7 +17,12 @@ const Header = () => {
   const { user, logout } = useAuth();
 
   const getInitials = (name: string) => {
-    return name.split(' ').map(n => n[0]).join('').toUpperCase();
+    if (!name) return 'U';
+    return name.split(' ')
+      .map(n => n[0])
+      .join('')
+      .toUpperCase()
+      .substring(0, 2);
   };
 
   return (
@@ -26,19 +30,25 @@ const Header = () => {
       <div className="px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <RMHLogo size="md" showText={true} />
+            {/* 🔧 OPÇÃO 1: RMHLogo sem props problemáticas */}
+            <RMHLogo />
+            
+            {/* 🔧 OPÇÃO 2: Substituir por texto simples se o componente der problema */}
+            {/* <div className="flex items-center space-x-2">
+              <div className="w-8 h-8 bg-rmh-lightGreen rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-sm">RMH</span>
+              </div>
+            </div> */}
+            
             <div className="hidden md:block">
-              <h1 className="text-xl font-heading font-bold text-rmh-white">
-                Dashboards Corporativos
-              </h1>
             </div>
           </div>
 
           <div className="flex items-center space-x-4">
             <div className="hidden md:flex items-center space-x-2 text-sm text-rmh-white">
               <span>Bem-vindo,</span>
-              <span className="font-medium text-white">{user?.name}</span>
-              {user?.role === 'admin' && (
+              <span className="font-medium text-white">{user?.nome}</span>
+              {user?.tipo_usuario === 'admin' && (
                 <Shield className="h-4 w-4 text-amber-500" />
               )}
             </div>
@@ -48,7 +58,7 @@ const Header = () => {
                 <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                   <Avatar className="h-10 w-10">
                     <AvatarFallback className="bg-rmh-lightGreen text-white font-medium">
-                      {user ? getInitials(user.name) : 'U'}
+                      {user ? getInitials(user.nome) : 'U'}
                     </AvatarFallback>
                   </Avatar>
                 </Button>
@@ -56,12 +66,12 @@ const Header = () => {
               <DropdownMenuContent className="w-56" align="end" forceMount>
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium leading-none">{user?.name}</p>
+                    <p className="text-sm font-medium leading-none">{user?.nome}</p>
                     <p className="text-xs leading-none text-muted-foreground">
                       {user?.email}
                     </p>
                     <p className="text-xs leading-none text-muted-foreground">
-                      {user?.department} • {user?.role === 'admin' ? 'Administrador' : 'Usuário'}
+                      {user?.departamento} • {user?.tipo_usuario === 'admin' ? 'Administrador' : 'Usuário'}
                     </p>
                   </div>
                 </DropdownMenuLabel>

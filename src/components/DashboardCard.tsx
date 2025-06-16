@@ -18,15 +18,21 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
   const [isViewerOpen, setIsViewerOpen] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
 
-  const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    }).format(date);
+  const formatDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      return new Intl.DateTimeFormat('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      }).format(date);
+    } catch (error) {
+      return 'Data inválida';
+    }
   };
 
-  const canEdit = user?.role === 'admin' || dashboard.createdBy === user?.email;
+  // 🔧 CORREÇÃO: Verificar se o usuário pode editar
+  const canEdit = user?.tipo_usuario === 'admin' || dashboard.criado_por === user?.id;
 
   const enterFullscreen = async () => {
     try {
@@ -126,21 +132,6 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
           return true;
         } else {
           console.log('❌ Botão não encontrado com nenhum seletor');
-          
-          // Lista todos os botões disponíveis para debug
-          const allButtons = iframeDoc.querySelectorAll('button');
-          console.log('🔍 Botões disponíveis no iframe:', allButtons.length);
-          allButtons.forEach((btn, index) => {
-            if (index < 10) { // Mostra apenas os primeiros 10
-              console.log(`Botão ${index + 1}:`, {
-                id: btn.id,
-                className: btn.className,
-                ariaLabel: btn.getAttribute('aria-label'),
-                textContent: btn.textContent?.trim()
-              });
-            }
-          });
-          
           return false;
         }
       } else {
@@ -159,22 +150,23 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between">
             <div className="space-y-1 flex-1">
+              {/* 🔧 CORREÇÃO: dashboard.titulo em vez de dashboard.title */}
               <CardTitle className="text-lg font-heading font-semibold text-corporate-blue line-clamp-1">
-                {dashboard.title}
+                {dashboard.titulo}
               </CardTitle>
+              {/* 🔧 CORREÇÃO: dashboard.descricao em vez de dashboard.description */}
               <CardDescription className="text-sm text-corporate-gray line-clamp-2">
-                {dashboard.description}
+                {dashboard.descricao || 'Sem descrição'}
               </CardDescription>
             </div>
           </div>
 
           <div className="flex flex-wrap gap-2 mt-3">
+            {/* 🔧 CORREÇÃO: dashboard.setor em vez de dashboard.category */}
             <Badge variant="secondary" className="bg-corporate-lightGray text-corporate-blue">
-              {dashboard.category}
+              {dashboard.setor}
             </Badge>
-            <Badge variant="outline" className="border-corporate-blue text-corporate-blue">
-              {dashboard.department}
-            </Badge>
+            {/* 🔧 CORREÇÃO: Removido dashboard.department que não existe */}
           </div>
         </CardHeader>
 
@@ -183,11 +175,13 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
             <div className="flex items-center justify-between text-xs text-corporate-gray">
               <div className="flex items-center space-x-1">
                 <Calendar className="h-3 w-3" />
-                <span>Atualizado em {formatDate(dashboard.updatedAt)}</span>
+                {/* 🔧 CORREÇÃO: dashboard.atualizado_em em vez de dashboard.updatedAt */}
+                <span>Atualizado em {formatDate(dashboard.atualizado_em)}</span>
               </div>
               <div className="flex items-center space-x-1">
                 <User className="h-3 w-3" />
-                <span>{dashboard.createdBy.split('@')[0]}</span>
+                {/* 🔧 CORREÇÃO: Mostrar criado_por ou nome do usuário */}
+                <span>Por: {user?.nome || 'Sistema'}</span>
               </div>
             </div>
 
@@ -213,7 +207,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
                       <Edit className="h-4 w-4" />
                     </Button>
                   )}
-                  {onDelete && user?.role === 'admin' && (
+                  {onDelete && user?.tipo_usuario === 'admin' && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -235,15 +229,19 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
           <DialogHeader className="p-2 pr-12 pb-2 flex-shrink-0 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1">
+                {/* 🔧 CORREÇÃO: dashboard.titulo */}
                 <DialogTitle className="text-lg font-heading font-semibold text-corporate-blue truncate">
-                  {dashboard.title}
+                  {dashboard.titulo}
                 </DialogTitle>
-                <p className="text-xs text-corporate-gray mt-0.5 truncate">{dashboard.description}</p>
+                {/* 🔧 CORREÇÃO: dashboard.descricao */}
+                <p className="text-xs text-corporate-gray mt-0.5 truncate">
+                  {dashboard.descricao || 'Sem descrição'}
+                </p>
               </div>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => window.open(dashboard.iframeUrl, '_blank')}
+                onClick={() => window.open(dashboard.url_iframe, '_blank')}
                 className="border-corporate-blue text-corporate-blue hover:bg-corporate-blue hover:text-white ml-3 flex-shrink-0"
               >
                 <ExternalLink className="h-4 w-4 mr-1" />
@@ -253,13 +251,13 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
           </DialogHeader>
           <div className="flex-1 min-h-0 p-1" style={{ maxHeight: '1080px' }}>
             <iframe
-              src={getOptimizedUrl(dashboard.iframeUrl)}
+              src={getOptimizedUrl(dashboard.url_iframe)}
               width="100%"
               height="100%"
               frameBorder="0"
               allowFullScreen
               className="w-full h-full border-0 rounded"
-              title={dashboard.title}
+              title={dashboard.titulo}
               style={{
                 border: 'none',
                 overflow: 'hidden'
@@ -267,7 +265,8 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
               onLoad={(e) => {
                 const iframe = e.target as HTMLIFrameElement;
                 console.log('🚀 IFRAME CARREGOU!', new Date().toLocaleTimeString());
-                console.log('📊 Dashboard:', dashboard.title);
+                {/* 🔧 CORREÇÃO: dashboard.titulo */}
+                console.log('📊 Dashboard:', dashboard.titulo);
                 console.log('🔗 URL:', iframe.src);
                 
                 // Primeira tentativa após 2 segundos
@@ -276,7 +275,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
                   clickPowerBIFitButton(iframe);
                 }, 2000);
                 
-                // Segunda tentativa após 5 segundos (caso o Power BI demore para renderizar)
+                // Segunda tentativa após 5 segundos
                 setTimeout(() => {
                   console.log('⏰ Segunda tentativa (5s depois do load)...');
                   clickPowerBIFitButton(iframe);

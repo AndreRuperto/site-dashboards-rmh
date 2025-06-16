@@ -1,9 +1,8 @@
-
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Filter, X } from 'lucide-react';
-import { useDashboards } from '@/contexts/DashboardContext';
+import { useDashboard } from '@/contexts/DashboardContext';
 
 interface DashboardFiltersProps {
   selectedCategory: string;
@@ -20,7 +19,8 @@ const DashboardFilters: React.FC<DashboardFiltersProps> = ({
   onDepartmentChange,
   onClearFilters
 }) => {
-  const { categories, departments } = useDashboards();
+  // 🔧 CORREÇÃO: useDashboard em vez de useDashboards
+  const { setores } = useDashboard();
 
   const hasActiveFilters = selectedCategory !== 'all' || selectedDepartment !== 'all';
 
@@ -46,16 +46,18 @@ const DashboardFilters: React.FC<DashboardFiltersProps> = ({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <label className="text-sm font-medium text-corporate-gray">Categoria</label>
+          {/* 🔧 CORREÇÃO: Usar "Setor" em vez de "Categoria" */}
+          <label className="text-sm font-medium text-corporate-gray">Setor</label>
           <Select value={selectedCategory} onValueChange={onCategoryChange}>
             <SelectTrigger>
-              <SelectValue placeholder="Todas as categorias" />
+              <SelectValue placeholder="Todos os setores" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todas as categorias</SelectItem>
-              {categories.map(category => (
-                <SelectItem key={category} value={category}>
-                  {category}
+              <SelectItem value="all">Todos os setores</SelectItem>
+              {/* 🔧 CORREÇÃO: Usar setores do contexto */}
+              {setores.map(setor => (
+                <SelectItem key={setor} value={setor}>
+                  {setor}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -63,6 +65,7 @@ const DashboardFilters: React.FC<DashboardFiltersProps> = ({
         </div>
 
         <div className="space-y-2">
+          {/* 🔧 NOTA: Este campo pode ser removido já que temos apenas "setor" na interface */}
           <label className="text-sm font-medium text-corporate-gray">Departamento</label>
           <Select value={selectedDepartment} onValueChange={onDepartmentChange}>
             <SelectTrigger>
@@ -70,14 +73,20 @@ const DashboardFilters: React.FC<DashboardFiltersProps> = ({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos os departamentos</SelectItem>
-              {departments.map(department => (
-                <SelectItem key={department} value={department}>
-                  {department}
+              {/* 🔧 CORREÇÃO: Usar setores também aqui ou remover este campo */}
+              {setores.map(setor => (
+                <SelectItem key={setor} value={setor}>
+                  {setor}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      {/* 🔧 SUGESTÃO: Mostrar quantos dashboards foram encontrados */}
+      <div className="mt-3 text-xs text-corporate-gray">
+        Use os filtros acima para encontrar dashboards específicos
       </div>
     </div>
   );

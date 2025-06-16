@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Plus, LayoutDashboard } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useDashboards, Dashboard } from '@/contexts/DashboardContext';
+import { useDashboard, Dashboard } from '@/contexts/DashboardContext';
 import { useToast } from '@/hooks/use-toast';
 import Header from '@/components/Header';
 import DashboardFilters from '@/components/DashboardFilters';
@@ -17,7 +17,7 @@ const DashboardsPage = () => {
   const [editingDashboard, setEditingDashboard] = useState<Dashboard | null>(null);
 
   const { user } = useAuth();
-  const { getFilteredDashboards, deleteDashboard } = useDashboards();
+  const { getFilteredDashboards, deleteDashboard } = useDashboard();
   const { toast } = useToast();
 
   const filteredDashboards = getFilteredDashboards(

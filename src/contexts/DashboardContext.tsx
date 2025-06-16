@@ -191,7 +191,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   );
 };
 
-export const useDashboards = () => {
+export const useDashboard = () => {
   const context = useContext(DashboardContext);
   if (context === undefined) {
     throw new Error('useDashboards must be used within a DashboardProvider');

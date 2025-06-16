@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
-import { useDashboards, Dashboard } from '@/contexts/DashboardContext';
+import { useDashboard, Dashboard } from '@/contexts/DashboardContext';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface DashboardFormProps {
@@ -19,50 +18,49 @@ interface DashboardFormProps {
 
 const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboard }) => {
   const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    category: '',
-    department: '',
-    iframeUrl: '',
-    isActive: true,
-    width: 1200,
-    height: 600
+    titulo: '',
+    descricao: '',
+    setor: '',
+    url_iframe: '',
+    ativo: true,
+    largura: 1200,
+    altura: 600
   });
 
-  const { addDashboard, updateDashboard, categories, departments } = useDashboards();
+  // 🔧 CORREÇÃO: useDashboard em vez de useDashboards
+  const { addDashboard, updateDashboard, setores } = useDashboard();
   const { user } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {
     if (dashboard) {
       setFormData({
-        title: dashboard.title,
-        description: dashboard.description,
-        category: dashboard.category,
-        department: dashboard.department,
-        iframeUrl: dashboard.iframeUrl,
-        isActive: dashboard.isActive,
-        width: dashboard.width || 1200,
-        height: dashboard.height || 600
+        // 🔧 CORREÇÃO: Usar nomes em português
+        titulo: dashboard.titulo,
+        descricao: dashboard.descricao || '',
+        setor: dashboard.setor,
+        url_iframe: dashboard.url_iframe,
+        ativo: dashboard.ativo,
+        largura: dashboard.largura || 1200,
+        altura: dashboard.altura || 600
       });
     } else {
       setFormData({
-        title: '',
-        description: '',
-        category: '',
-        department: '',
-        iframeUrl: '',
-        isActive: true,
-        width: 1200,
-        height: 600
+        titulo: '',
+        descricao: '',
+        setor: '',
+        url_iframe: '',
+        ativo: true,
+        largura: 1200,
+        altura: 600
       });
     }
   }, [dashboard, isOpen]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.title.trim() || !formData.iframeUrl.trim()) {
+    if (!formData.titulo.trim() || !formData.url_iframe.trim()) {
       toast({
         title: "Erro",
         description: "Título e URL do iframe são obrigatórios",
@@ -73,15 +71,16 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
 
     try {
       if (dashboard) {
-        updateDashboard(dashboard.id, formData);
+        await updateDashboard(dashboard.id, formData);
         toast({
           title: "Sucesso",
           description: "Dashboard atualizado com sucesso"
         });
       } else {
-        addDashboard({
+        await addDashboard({
           ...formData,
-          createdBy: user?.email || ''
+          // 🔧 CORREÇÃO: criado_por em vez de createdBy
+          criado_por: user?.id || ''
         });
         toast({
           title: "Sucesso",
@@ -90,6 +89,7 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
       }
       onClose();
     } catch (error) {
+      console.error('Erro ao salvar dashboard:', error);
       toast({
         title: "Erro",
         description: "Erro ao salvar dashboard",
@@ -98,8 +98,8 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
     }
   };
 
-  const predefinedCategories = ['Vendas', 'Financeiro', 'Marketing', 'Operações', 'RH', 'TI'];
-  const predefinedDepartments = ['Vendas', 'Financeiro', 'Marketing', 'Operações', 'RH', 'TI', 'Diretoria'];
+  // 🔧 CORREÇÃO: Usar setores predefinidos
+  const setoresPredefinidos = ['Vendas', 'Financeiro', 'Marketing', 'Operações', 'RH', 'TI', 'Diretoria'];
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -113,91 +113,75 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
         <form onSubmit={handleSubmit} className="space-y-6 mt-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2 space-y-2">
-              <Label htmlFor="title">Título *</Label>
+              <Label htmlFor="titulo">Título *</Label>
               <Input
-                id="title"
-                value={formData.title}
-                onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+                id="titulo"
+                value={formData.titulo}
+                onChange={(e) => setFormData(prev => ({ ...prev, titulo: e.target.value }))}
                 placeholder="Nome do dashboard"
                 required
               />
             </div>
 
             <div className="md:col-span-2 space-y-2">
-              <Label htmlFor="description">Descrição</Label>
+              <Label htmlFor="descricao">Descrição</Label>
               <Textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                id="descricao"
+                value={formData.descricao}
+                onChange={(e) => setFormData(prev => ({ ...prev, descricao: e.target.value }))}
                 placeholder="Descreva o que este dashboard apresenta"
                 rows={3}
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="category">Categoria</Label>
-              <Select value={formData.category} onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}>
+            <div className="md:col-span-2 space-y-2">
+              <Label htmlFor="setor">Setor</Label>
+              <Select value={formData.setor} onValueChange={(value) => setFormData(prev => ({ ...prev, setor: value }))}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecione uma categoria" />
+                  <SelectValue placeholder="Selecione um setor" />
                 </SelectTrigger>
                 <SelectContent>
-                  {predefinedCategories.map(cat => (
-                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                  {setoresPredefinidos.map(setor => (
+                    <SelectItem key={setor} value={setor}>{setor}</SelectItem>
                   ))}
-                  {categories.filter(cat => !predefinedCategories.includes(cat)).map(cat => (
-                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="department">Departamento</Label>
-              <Select value={formData.department} onValueChange={(value) => setFormData(prev => ({ ...prev, department: value }))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione um departamento" />
-                </SelectTrigger>
-                <SelectContent>
-                  {predefinedDepartments.map(dept => (
-                    <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                  ))}
-                  {departments.filter(dept => !predefinedDepartments.includes(dept)).map(dept => (
-                    <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                  {/* 🔧 CORREÇÃO: Usar setores do contexto */}
+                  {setores.filter(setor => !setoresPredefinidos.includes(setor)).map(setor => (
+                    <SelectItem key={setor} value={setor}>{setor}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
             <div className="md:col-span-2 space-y-2">
-              <Label htmlFor="iframeUrl">URL do Power BI *</Label>
+              <Label htmlFor="url_iframe">URL do Power BI *</Label>
               <Input
-                id="iframeUrl"
-                value={formData.iframeUrl}
-                onChange={(e) => setFormData(prev => ({ ...prev, iframeUrl: e.target.value }))}
+                id="url_iframe"
+                value={formData.url_iframe}
+                onChange={(e) => setFormData(prev => ({ ...prev, url_iframe: e.target.value }))}
                 placeholder="https://app.fabric.microsoft.com/view?r=..."
                 required
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="width">Largura (px)</Label>
+              <Label htmlFor="largura">Largura (px)</Label>
               <Input
-                id="width"
+                id="largura"
                 type="number"
-                value={formData.width}
-                onChange={(e) => setFormData(prev => ({ ...prev, width: parseInt(e.target.value) || 1200 }))}
+                value={formData.largura}
+                onChange={(e) => setFormData(prev => ({ ...prev, largura: parseInt(e.target.value) || 1200 }))}
                 min="600"
                 max="2000"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="height">Altura (px)</Label>
+              <Label htmlFor="altura">Altura (px)</Label>
               <Input
-                id="height"
+                id="altura"
                 type="number"
-                value={formData.height}
-                onChange={(e) => setFormData(prev => ({ ...prev, height: parseInt(e.target.value) || 600 }))}
+                value={formData.altura}
+                onChange={(e) => setFormData(prev => ({ ...prev, altura: parseInt(e.target.value) || 600 }))}
                 min="400"
                 max="1200"
               />
@@ -205,11 +189,11 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
 
             <div className="md:col-span-2 flex items-center space-x-2">
               <Switch
-                id="isActive"
-                checked={formData.isActive}
-                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, isActive: checked }))}
+                id="ativo"
+                checked={formData.ativo}
+                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, ativo: checked }))}
               />
-              <Label htmlFor="isActive">Dashboard ativo</Label>
+              <Label htmlFor="ativo">Dashboard ativo</Label>
             </div>
           </div>
 
