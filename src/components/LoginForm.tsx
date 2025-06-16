@@ -1,3 +1,4 @@
+// src/components/LoginForm.tsx
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,6 +8,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Eye, EyeOff, UserPlus, ArrowLeft, Mail } from 'lucide-react';
 import EmailVerificationForm from './EmailVerificationForm';
+
+// Definir tipos para o usuário
+interface User {
+  id: string;
+  nome: string;
+  email: string;
+  email_verificado: boolean;
+}
 
 type AuthView = 'login' | 'register' | 'verification';
 
@@ -36,7 +45,7 @@ const AuthSystem = () => {
       {currentView === 'verification' && (
         <EmailVerificationForm
           email={verificationEmail}
-          onVerificationSuccess={(token, user) => {
+          onVerificationSuccess={(token: string, user: User) => {
             // Salvar dados e redirecionar
             localStorage.setItem('authToken', token);
             localStorage.setItem('user', JSON.stringify(user));
@@ -51,7 +60,7 @@ const AuthSystem = () => {
 
 // Configuração da API
 const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://rmh.up.railway.app'  // ← ATUALIZAR URL
+  ? 'https://rmh.up.railway.app'
   : 'http://localhost:3001';
 
 // LoginView Component
@@ -64,6 +73,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onSwitchToRegister, onSwitchToVer
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isTestingEmail, setIsTestingEmail] = useState(false);
   const { login, isLoading } = useAuth();
   const { toast } = useToast();
 
@@ -98,15 +108,59 @@ const LoginView: React.FC<LoginViewProps> = ({ onSwitchToRegister, onSwitchToVer
     }
   };
 
+  const testEmailService = async () => {
+    setIsTestingEmail(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/send-test-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || `Erro HTTP: ${response.status}`);
+      }
+
+      toast({
+        title: "✅ Email de teste enviado!",
+        description: "Verifique se o email chegou em andreruperto@gmail.com",
+        variant: "default",
+      });
+
+    } catch (error) {
+      console.error('❌ Erro:', error);
+      toast({
+        title: "❌ Erro ao testar email",
+        description: error instanceof Error ? error.message : "Erro desconhecido",
+        variant: "destructive",
+      });
+    } finally {
+      setIsTestingEmail(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-primary flex items-center justify-center p-4">
       <Card className="w-full max-w-md shadow-2xl">
         <CardHeader className="text-center space-y-4">
-          <CardTitle className="text-2xl font-bold text-gray-900">
-            Entrar
+          <div className="flex items-center justify-center">
+            <img 
+              src="/logo-rmh.png" 
+              alt="Resende MH" 
+              className="h-16 w-auto"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+          </div>
+          <CardTitle className="text-2xl font-heading font-bold text-corporate-blue">
+            Bem-vindo
           </CardTitle>
-          <CardDescription className="text-gray-600">
-            Acesse os Dashboards Corporativos
+          <CardDescription className="text-corporate-gray">
+            Acesse os Dashboards Corporativos da Resende MH
           </CardDescription>
         </CardHeader>
 
@@ -121,6 +175,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onSwitchToRegister, onSwitchToVer
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                className="transition-all duration-200 focus:ring-2 focus:ring-primary-500"
               />
             </div>
 
@@ -134,43 +189,74 @@ const LoginView: React.FC<LoginViewProps> = ({ onSwitchToRegister, onSwitchToVer
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="pr-10"
+                  className="transition-all duration-200 focus:ring-2 focus:ring-primary-500 pr-10"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 flex items-center pr-3"
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 transition-colors"
+                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
 
-            <Button 
-              type="submit" 
-              className="w-full bg-blue-600 hover:bg-blue-700"
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Entrando...
-                </>
-              ) : (
-                'Entrar'
-              )}
-            </Button>
+            <div className="pt-3">
+              <Button 
+                type="submit" 
+                className="w-full bg-rmh-lightGreen hover:bg-primary-800 transition-colors duration-200"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Entrando...
+                  </>
+                ) : (
+                  'Entrar'
+                )}
+              </Button>
+            </div>
           </form>
+          
+          <div className="mt-6 space-y-4">
+            <div className="text-center">
+              <Button
+                onClick={onSwitchToRegister}
+                variant="ghost"
+                className="text-corporate-blue hover:text-primary-800"
+              >
+                <UserPlus className="mr-2 h-4 w-4" />
+                Não tem uma conta? Cadastre-se
+              </Button>
+            </div>
+            
+            <div className="text-center text-sm text-corporate-gray border-t pt-4">
+              <p><strong>Acesso admin:</strong> admin@resendemh.com.br | Senha: 123456</p>
+            </div>
 
-          <div className="mt-6 text-center">
-            <Button
-              onClick={onSwitchToRegister}
-              variant="ghost"
-              className="text-blue-600"
-            >
-              <UserPlus className="mr-2 h-4 w-4" />
-              Não tem uma conta? Cadastre-se
-            </Button>
+            <div className="text-center">
+              <Button
+                onClick={testEmailService}
+                variant="outline"
+                size="sm"
+                disabled={isTestingEmail}
+                className="text-xs"
+              >
+                {isTestingEmail ? (
+                  <>
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                    Testando...
+                  </>
+                ) : (
+                  <>
+                    <Mail className="mr-1 h-3 w-3" />
+                    Testar Email
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -258,13 +344,23 @@ const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin, onSwitchToVe
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-primary flex items-center justify-center p-4">
       <Card className="w-full max-w-md shadow-2xl">
         <CardHeader className="text-center space-y-4">
-          <CardTitle className="text-2xl font-bold text-gray-900">
+          <div className="flex items-center justify-center">
+            <img 
+              src="/logo-rmh.png" 
+              alt="Resende MH" 
+              className="h-16 w-auto"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+          </div>
+          <CardTitle className="text-2xl font-heading font-bold text-corporate-blue">
             Criar Conta
           </CardTitle>
-          <CardDescription className="text-gray-600">
+          <CardDescription className="text-corporate-gray">
             Cadastre-se com seu email @resendemh.com.br
           </CardDescription>
         </CardHeader>
@@ -326,7 +422,7 @@ const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin, onSwitchToVe
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 flex items-center pr-3"
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -348,34 +444,34 @@ const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin, onSwitchToVe
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute inset-y-0 right-0 flex items-center pr-3"
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400"
                 >
                   {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
 
-            <Button 
-              type="submit" 
-              className="w-full bg-green-600 hover:bg-green-700"
+            <Button
+              type="submit"
+              className="w-full bg-rmh-lightGreen hover:bg-primary-800"
               disabled={isLoading}
             >
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Cadastrando...
+                  Criando conta...
                 </>
               ) : (
                 'Criar Conta'
               )}
             </Button>
           </form>
-
+          
           <div className="mt-6 text-center">
             <Button
               onClick={onBackToLogin}
               variant="ghost"
-              className="text-gray-600"
+              className="text-corporate-blue hover:text-primary-800"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
               Já tem uma conta? Entrar

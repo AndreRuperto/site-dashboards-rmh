@@ -145,44 +145,56 @@ const EmailVerificationForm: React.FC<EmailVerificationFormProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-primary flex items-center justify-center p-4">
       <Card className="w-full max-w-md shadow-2xl">
         <CardHeader className="text-center space-y-4">
           <div className="flex items-center justify-center">
-            <Mail className="h-12 w-12 text-blue-600" />
+            <img 
+              src="/logo-rmh.png" 
+              alt="Resende MH" 
+              className="h-16 w-auto mb-4"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
           </div>
-          <CardTitle className="text-2xl font-bold text-gray-900">
+          <div className="flex items-center justify-center">
+            <Mail className="h-12 w-12 text-corporate-blue" />
+          </div>
+          <CardTitle className="text-2xl font-heading font-bold text-corporate-blue">
             Verifique seu Email
           </CardTitle>
-          <CardDescription className="text-gray-600">
+          <CardDescription className="text-corporate-gray">
             Enviamos um código de 6 dígitos para
             <br />
-            <strong>{email}</strong>
+            <strong className="text-corporate-blue">{email}</strong>
           </CardDescription>
         </CardHeader>
 
         <CardContent>
           <form onSubmit={handleVerifyCode} className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="codigo">Código de Verificação</Label>
+              <Label htmlFor="codigo" className="text-corporate-blue font-medium">
+                Código de Verificação
+              </Label>
               <Input
                 id="codigo"
                 type="text"
                 placeholder="123456"
                 value={codigo}
                 onChange={(e) => setCodigo(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                className="text-center text-2xl font-mono tracking-widest"
+                className="text-center text-2xl font-mono tracking-widest border-2 border-corporate-blue/20 focus:border-corporate-blue focus:ring-2 focus:ring-corporate-blue/20"
                 maxLength={6}
                 required
               />
-              <p className="text-sm text-gray-500 text-center">
+              <p className="text-sm text-corporate-gray text-center">
                 Digite o código de 6 dígitos enviado por email
               </p>
             </div>
 
             <Button 
               type="submit" 
-              className="w-full bg-blue-600 hover:bg-blue-700"
+              className="w-full bg-rmh-lightGreen hover:bg-primary-800 transition-colors duration-200"
               disabled={isVerifying || codigo.length !== 6}
             >
               {isVerifying ? (
@@ -198,12 +210,12 @@ const EmailVerificationForm: React.FC<EmailVerificationFormProps> = ({
 
           <div className="mt-6 space-y-4">
             <div className="text-center">
-              <p className="text-sm text-gray-600 mb-3">
+              <p className="text-sm text-corporate-gray mb-3">
                 Não recebeu o código?
               </p>
               
               {countdown > 0 ? (
-                <p className="text-sm text-blue-600 font-medium">
+                <p className="text-sm text-corporate-blue font-medium">
                   Reenviar em {formatCountdown(countdown)}
                 </p>
               ) : (
@@ -211,7 +223,7 @@ const EmailVerificationForm: React.FC<EmailVerificationFormProps> = ({
                   variant="outline"
                   onClick={handleResendCode}
                   disabled={isResending}
-                  className="w-full"
+                  className="w-full border-corporate-blue text-corporate-blue hover:bg-corporate-blue hover:text-white"
                 >
                   {isResending ? (
                     <>
@@ -232,7 +244,7 @@ const EmailVerificationForm: React.FC<EmailVerificationFormProps> = ({
               <Button
                 variant="ghost"
                 onClick={onBackToLogin}
-                className="text-gray-600"
+                className="text-corporate-gray hover:text-corporate-blue"
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Voltar ao Login
@@ -240,8 +252,8 @@ const EmailVerificationForm: React.FC<EmailVerificationFormProps> = ({
             </div>
           </div>
 
-          <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-            <p className="text-sm text-blue-800">
+          <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-corporate-blue/20">
+            <p className="text-sm text-corporate-blue">
               <strong>💡 Dica:</strong> Verifique também sua caixa de spam se não encontrar o email.
             </p>
           </div>
