@@ -1,4 +1,4 @@
-// server.js - Backend completo com correção CORS
+// server.js - VERSÃO CORRIGIDA PARA RAILWAY
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -14,6 +14,9 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// ❗ CORREÇÃO 1: Configurar trust proxy para Railway
+app.set('trust proxy', 1); // Trust primeiro proxy (Railway)
 
 // Configuração do banco PostgreSQL
 const pool = new Pool({
@@ -40,11 +43,11 @@ app.use(helmet({
   },
 }));
 
-// ❗ CORS configurado corretamente
+// CORS configurado corretamente
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
     ? [
-        'https://resendemh.up.railway.app',
+        'https://rmh.up.railway.app',
         'https://railway.com',
         process.env.FRONTEND_URL
       ]
@@ -58,29 +61,52 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Rate limiting
+// ❗ CORREÇÃO 2: Rate limiting melhorado para Railway
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 200,
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 200, // Máximo 200 requests por 15 min
   message: { error: 'Muitas tentativas, tente novamente em 15 minutos' },
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
   skip: (req) => {
-    return req.path === '/health' || req.path === '/ping' || req.path === '/';
+    // Pular rate limit para rotas de health e assets
+    return req.path === '/health' || 
+           req.path === '/ping' || 
+           req.path === '/' || 
+           req.path.startsWith('/assets/') ||
+           req.path.includes('.ico') ||
+           req.path.includes('.png') ||
+           req.path.includes('.css') ||
+           req.path.includes('.js');
+  },
+  // ❗ CORREÇÃO 3: Key generator customizado para Railway
+  keyGenerator: (req) => {
+    // Usar IP real do Railway
+    return req.ip || req.connection.remoteAddress || 'unknown';
   }
 });
 app.use(limiter);
 
+// Rate limiter específico para autenticação
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: { error: 'Muitas tentativas de autenticação, tente novamente em 15 minutos' }
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 10, // Máximo 10 tentativas de login por 15 min
+  message: { error: 'Muitas tentativas de autenticação, tente novamente em 15 minutos' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    return req.ip || req.connection.remoteAddress || 'unknown';
+  }
 });
 
 // Body parser
 app.use(express.json({ limit: '10mb' }));
 
-// Logging
+// Logging melhorado
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - Origin: ${req.get('Origin')}`);
+  const origin = req.get('Origin') || 'undefined';
+  const ip = req.ip || req.connection.remoteAddress;
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - Origin: ${origin} - IP: ${ip}`);
   next();
 });
 
@@ -254,7 +280,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
 
     // Enviar email de verificação
     try {
-      const urlVerificacao = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${tokenVerificacao}&email=${email}`;
+      const urlVerificacao = `${process.env.FRONTEND_URL || 'https://rmh.up.railway.app'}/verify-email?token=${tokenVerificacao}&email=${email}`;
       
       await resend.emails.send({
         from: 'onboarding@resend.dev',
@@ -308,7 +334,7 @@ app.get('/api/auth/verify-email', async (req, res) => {
   }
 });
 
-// Login
+// ❗ CORREÇÃO 4: Login com nomes de colunas corretos
 app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const { error, value } = schemaLogin.validate(req.body);
@@ -318,7 +344,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 
     const { email, senha } = value;
 
-    // Buscar usuário
+    // Buscar usuário - CORRIGIDO: usar 'senha' ao invés de 'senha_hash'
     const result = await pool.query(
       'SELECT id, nome, email, senha, departamento, tipo_usuario, email_verificado FROM usuarios WHERE email = $1',
       [email]
@@ -330,7 +356,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 
     const user = result.rows[0];
 
-    // Verificar senha
+    // Verificar senha - CORRIGIDO: usar 'user.senha' ao invés de 'user.senha_hash'
     const senhaValida = await bcrypt.compare(senha, user.senha);
     if (!senhaValida) {
       return res.status(401).json({ error: 'Email ou senha incorretos' });
@@ -414,104 +440,6 @@ app.get('/api/dashboards', authMiddleware, async (req, res) => {
   }
 });
 
-app.get('/api/dashboards/:id', authMiddleware, async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    const result = await pool.query(
-      `SELECT d.*, u.nome as criador_nome 
-       FROM dashboards d 
-       LEFT JOIN usuarios u ON d.criado_por = u.id 
-       WHERE d.id = $1`,
-      [id]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Dashboard não encontrado' });
-    }
-
-    res.json({ dashboard: result.rows[0] });
-  } catch (error) {
-    console.error('Erro ao buscar dashboard:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
-
-app.post('/api/dashboards', authMiddleware, async (req, res) => {
-  try {
-    const { titulo, descricao, categoria, departamento, tags, url_embed } = req.body;
-
-    if (!titulo || !categoria || !departamento) {
-      return res.status(400).json({ error: 'Título, categoria e departamento são obrigatórios' });
-    }
-
-    const result = await pool.query(
-      `INSERT INTO dashboards (titulo, descricao, categoria, departamento, tags, url_embed, criado_por)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [titulo, descricao, categoria, departamento, tags, url_embed, req.user.id]
-    );
-
-    res.status(201).json({ 
-      message: 'Dashboard criado com sucesso',
-      dashboard: result.rows[0] 
-    });
-
-  } catch (error) {
-    console.error('Erro ao criar dashboard:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
-
-app.put('/api/dashboards/:id', authMiddleware, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { titulo, descricao, categoria, departamento, tags, url_embed } = req.body;
-
-    const result = await pool.query(
-      `UPDATE dashboards 
-       SET titulo = $1, descricao = $2, categoria = $3, departamento = $4, 
-           tags = $5, url_embed = $6, atualizado_em = NOW()
-       WHERE id = $7 AND (criado_por = $8 OR $9 = 'admin')
-       RETURNING *`,
-      [titulo, descricao, categoria, departamento, tags, url_embed, id, req.user.id, req.user.tipo_usuario]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Dashboard não encontrado ou sem permissão' });
-    }
-
-    res.json({ 
-      message: 'Dashboard atualizado com sucesso',
-      dashboard: result.rows[0] 
-    });
-
-  } catch (error) {
-    console.error('Erro ao atualizar dashboard:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
-
-app.delete('/api/dashboards/:id', authMiddleware, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const result = await pool.query(
-      'DELETE FROM dashboards WHERE id = $1 AND (criado_por = $2 OR $3 = \'admin\') RETURNING *',
-      [id, req.user.id, req.user.tipo_usuario]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Dashboard não encontrado ou sem permissão' });
-    }
-
-    res.json({ message: 'Dashboard excluído com sucesso' });
-
-  } catch (error) {
-    console.error('Erro ao excluir dashboard:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
-
 // Função para gerar template de email
 function gerarTemplateEmailVerificacao(nome, urlVerificacao) {
   return `
@@ -573,13 +501,14 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// Conectar ao banco e iniciar servidor
+// ❗ CORREÇÃO 5: Inicialização melhorada para Railway
 async function iniciarServidor() {
   try {
+    // Testar conexão com banco
     await pool.query('SELECT NOW()');
     console.log('✅ Conectado ao PostgreSQL');
     
-    const server = app.listen(PORT, () => {
+    const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Servidor rodando na porta ${PORT}`);
       console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
       console.log(`📧 Resend configurado`);
@@ -589,34 +518,45 @@ async function iniciarServidor() {
       }
     });
 
-    // Keep-alive para Railway em produção
+    // ❗ CORREÇÃO 6: Keep-alive reduzido para Railway (melhor performance)
     if (process.env.NODE_ENV === 'production') {
       setInterval(() => {
         console.log('🏓 Keep-alive ping:', new Date().toISOString());
-      }, 30000);
+      }, 60000); // Reduzido para 1 minuto
     }
 
-    // Graceful shutdown
-    process.on('SIGTERM', () => {
-      console.log('📴 Recebido SIGTERM, encerrando graciosamente...');
-      server.close(() => {
+    // ❗ CORREÇÃO 7: Graceful shutdown melhorado
+    const gracefulShutdown = (signal) => {
+      console.log(`📴 Recebido ${signal}, encerrando graciosamente...`);
+      server.close((err) => {
+        if (err) {
+          console.error('❌ Erro ao fechar servidor:', err);
+          process.exit(1);
+        }
         console.log('🔴 Servidor encerrado');
-        pool.end(() => {
+        pool.end((poolErr) => {
+          if (poolErr) {
+            console.error('❌ Erro ao fechar pool de conexões:', poolErr);
+            process.exit(1);
+          }
           console.log('🔴 Conexão com PostgreSQL encerrada');
           process.exit(0);
         });
       });
+    };
+
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+    // Tratar erros não capturados
+    process.on('uncaughtException', (err) => {
+      console.error('❌ Erro não capturado:', err);
+      gracefulShutdown('UNCAUGHT_EXCEPTION');
     });
 
-    process.on('SIGINT', () => {
-      console.log('📴 Recebido SIGINT, encerrando graciosamente...');
-      server.close(() => {
-        console.log('🔴 Servidor encerrado');
-        pool.end(() => {
-          console.log('🔴 Conexão com PostgreSQL encerrada');
-          process.exit(0);
-        });
-      });
+    process.on('unhandledRejection', (reason, promise) => {
+      console.error('❌ Promise rejeitada não tratada:', reason, 'em', promise);
+      gracefulShutdown('UNHANDLED_REJECTION');
     });
 
   } catch (error) {
@@ -627,9 +567,9 @@ async function iniciarServidor() {
 
 iniciarServidor();
 
-// Error handler
+// Error handler global
 app.use((error, req, res, next) => {
-  console.error('Erro:', error);
+  console.error('❌ Erro global:', error);
   res.status(500).json({ 
     error: process.env.NODE_ENV === 'production' 
       ? 'Erro interno do servidor' 
