@@ -245,7 +245,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
 
     // Inserir usuário
     const result = await pool.query(
-      `INSERT INTO usuarios (nome, email, senha_hash, departamento, token_verificacao)
+      `INSERT INTO usuarios (nome, email, senha, departamento, token_verificacao)
        VALUES ($1, $2, $3, $4, $5) RETURNING id, nome, email, departamento`,
       [nome, email, senhaHash, departamento, tokenVerificacao]
     );
@@ -320,7 +320,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 
     // Buscar usuário
     const result = await pool.query(
-      'SELECT id, nome, email, senha_hash, departamento, tipo_usuario, email_verificado FROM usuarios WHERE email = $1',
+      'SELECT id, nome, email, senha, departamento, tipo_usuario, email_verificado FROM usuarios WHERE email = $1',
       [email]
     );
 
@@ -331,7 +331,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     const user = result.rows[0];
 
     // Verificar senha
-    const senhaValida = await bcrypt.compare(senha, user.senha_hash);
+    const senhaValida = await bcrypt.compare(senha, user.senha);
     if (!senhaValida) {
       return res.status(401).json({ error: 'Email ou senha incorretos' });
     }
