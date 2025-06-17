@@ -149,16 +149,6 @@ const EmailVerificationForm: React.FC<EmailVerificationFormProps> = ({
       <Card className="w-full max-w-md shadow-2xl">
         <CardHeader className="text-center space-y-4">
           <div className="flex items-center justify-center">
-            <img 
-              src="/logo-rmh.png" 
-              alt="Resende MH" 
-              className="h-16 w-auto mb-4"
-              onError={(e) => {
-                e.currentTarget.style.display = 'none';
-              }}
-            />
-          </div>
-          <div className="flex items-center justify-center">
             <Mail className="h-12 w-12 text-corporate-blue" />
           </div>
           <CardTitle className="text-2xl font-heading font-bold text-corporate-blue">

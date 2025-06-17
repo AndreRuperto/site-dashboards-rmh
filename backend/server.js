@@ -1,4 +1,4 @@
-// server.js - VERSÃO COM CONEXÃO ROBUSTA PARA DESENVOLVIMENTO
+// server.js - VERSÃO LIMPA E CORRIGIDA
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -23,13 +23,12 @@ app.set('trust proxy', 1);
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  // Configurações para desenvolvimento local mais robustas
-  max: 5, // máximo 5 conexões
-  idleTimeoutMillis: 30000, // 30 segundos
-  connectionTimeoutMillis: 10000, // 10 segundos para conectar
-  query_timeout: 30000, // 30 segundos para queries
-  statement_timeout: 30000, // 30 segundos para statements
-  idle_in_transaction_session_timeout: 30000, // 30 segundos idle
+  max: 5,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+  query_timeout: 30000,
+  statement_timeout: 30000,
+  idle_in_transaction_session_timeout: 30000,
 });
 
 // Event listeners para debug da conexão
@@ -100,8 +99,8 @@ app.use(cors({
 
 // Rate limiting melhorado para Railway
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 200, // Máximo 200 requests por 15 min
+  windowMs: 15 * 60 * 1000,
+  max: 200,
   message: { error: 'Muitas tentativas, tente novamente em 15 minutos' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -123,8 +122,8 @@ app.use(limiter);
 
 // Rate limiter específico para autenticação
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 10, // Máximo 10 tentativas de login por 15 min
+  windowMs: 15 * 60 * 1000,
+  max: 10,
   message: { error: 'Muitas tentativas de autenticação, tente novamente em 15 minutos' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -136,7 +135,7 @@ const authLimiter = rateLimit({
 // Body parser
 app.use(express.json({ limit: '10mb' }));
 
-// 1. Modificar o middleware de logging existente:
+// Middleware de logging
 app.use((req, res, next) => {
   const origin = req.get('Origin') || 'undefined';
   const ip = req.ip || req.connection.remoteAddress;
@@ -145,7 +144,6 @@ app.use((req, res, next) => {
   console.log(`🔍 ${new Date().toISOString()} - ${req.method} ${req.path}`);
   console.log(`   📍 Origin: ${origin} | IP: ${ip} | Auth: ${auth}`);
   
-  // Log específico para rotas API
   if (req.path.startsWith('/api/')) {
     console.log(`   📝 Body:`, JSON.stringify(req.body, null, 2));
     console.log(`   🎯 Headers:`, {
@@ -213,7 +211,127 @@ const authMiddleware = async (req, res, next) => {
   }
 };
 
+// Função para gerar template de email
+async function gerarTemplateVerificacao(nome, codigo, email) {
+  const base64Path = path.resolve('./base64.txt');
+  const base64 = await fs.readFile(base64Path, 'utf8');
+
+  return `
+  <!DOCTYPE html>
+  <html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Confirmação de Email - RMH</title>
+    <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;600&family=Ruda:wght@900&display=swap" rel="stylesheet">
+    <style>
+      body {
+        margin: 0;
+        font-family: 'Raleway', sans-serif;
+        background-color: #DADADA;
+        color: #0d3638;
+        padding: 20px;
+      }
+      .container {
+        max-width: 600px;
+        margin: auto;
+        background-color: #f9f9f9;
+        border-radius: 16px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+        overflow: hidden;
+      }
+      .header {
+        background-color: #165A5D;
+        padding: 20px 0px;
+        text-align: center;
+      }
+      .header img {
+        height: 60px;
+        /* margin-bottom: 15px; */
+      }
+      .header h1 {
+        font-family: 'Ruda', sans-serif;
+        font-size: 22px;
+        color: #ffffff;
+        margin: 0;
+        letter-spacing: 0.5px;
+      }
+      .content {
+        padding: 20px 30px 30px 30px;
+        text-align: center;
+        font-family: 'Cooper Hewitt', sans-serif;
+      }
+      .content h2 {
+        font-size: 20px;
+        color: #0d3638;
+        margin-bottom: 8px;
+      }
+      .content p {
+        font-size: 15px;
+        color: #555;
+        margin-top: 0;
+      }
+      .code-box {
+        margin: 30px auto;
+        background-color: #f8f8f8;
+        border: 2px dashed #165A5D;
+        border-radius: 12px;
+        padding: 20px;
+        font-size: 32px;
+        font-weight: bold;
+        color: #165A5D;
+        letter-spacing: 10px;
+        font-family: 'Courier New', monospace;
+        max-width: 300px;
+      }
+      .note {
+        font-size: 13px;
+        color: #8b848b;
+        background-color: #EFEFEF;
+        padding: 15px;
+        border-radius: 10px;
+        margin-top: 20px;
+      }
+      .footer {
+        font-size: 12px;
+        color: #9ca2a3;
+        text-align: center;
+        padding: 18px;
+        border-top: 1px solid #eee;
+        background-color: #f9f9f9;
+      }
+      @media (max-width: 600px) {
+        .content {
+          padding: 30px 20px;
+        }
+        .code-box {
+          font-size: 26px;
+          letter-spacing: 6px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <img src="https://rmh.up.railway.app/logo.png" alt="Logo RMH" style="height: 80px;" />
+        <h1>Confirme seu email</h1>
+      </div>
+      <div class="content">
+        <h2>Olá, ${nome}!</h2>
+        <p>Insira o código abaixo para confirmar seu email e ativar seu acesso aos dashboards da RMH:</p>
+        <div class="code-box">${codigo}</div>
+        <p class="note">Este código expira em 24 horas. Se você não solicitou este cadastro, ignore este e-mail.</p>
+      </div>
+    </div>
+  </body>
+  </html>
+  `;
+}
+
+// ===============================================
 // ROTAS DE HEALTH CHECK E KEEP-ALIVE
+// ===============================================
 app.get('/', (req, res) => {
   res.json({
     message: '🚀 RMH Dashboards API',
@@ -232,11 +350,9 @@ app.get('/', (req, res) => {
   });
 });
 
-// Health check para Railway com teste de conexão
 app.get('/health', async (req, res) => {
   try {
     await pool.query('SELECT 1');
-    
     res.status(200).json({ 
       status: 'healthy', 
       timestamp: new Date().toISOString(),
@@ -254,12 +370,10 @@ app.get('/health', async (req, res) => {
   }
 });
 
-// Ping para keep-alive
 app.get('/ping', (req, res) => {
   res.status(200).send('pong');
 });
 
-// Rota de teste (manter para compatibilidade)
 app.post('/send-test-email', async (req, res) => {
   try {
     const { data, error } = await resend.emails.send({
@@ -301,7 +415,7 @@ app.post('/send-test-email', async (req, res) => {
 });
 
 // ===============================================
-// ROTAS DE AUTENTICAÇÃO COM VERIFICAÇÃO DE EMAIL
+// ROTAS DE AUTENTICAÇÃO
 // ===============================================
 
 // REGISTRO COM VERIFICAÇÃO DE EMAIL
@@ -341,7 +455,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     const result = await pool.query(
       `INSERT INTO usuarios (nome, email, senha, departamento, tipo_usuario, email_verificado) 
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, nome, email, departamento, tipo_usuario`,
-      [nome, email, senhaHash, departamento, 'usuario', false] // email_verificado = false
+      [nome, email, senhaHash, departamento, 'usuario', false]
     );
 
     const newUser = result.rows[0];
@@ -364,12 +478,16 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     ⏰ Expira em: ${expiraEm}
     =========================================
     `);
+
     try {
+      // CORREÇÃO: Aguardar a geração do template HTML
+      const htmlTemplate = await gerarTemplateVerificacao(nome, codigoVerificacao, email);
+      
       const emailResult = await resend.emails.send({
         from: 'onboarding@resend.dev',
         to: [email],
         subject: '🔐 Confirme seu email - Dashboards RMH',
-        html: gerarTemplateVerificacao(nome, codigoVerificacao, email)
+        html: htmlTemplate
       });
 
       console.log(`✅ Email enviado com sucesso!`, emailResult);
@@ -378,8 +496,8 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
       console.error('❌ ERRO DETALHADO NO EMAIL:', emailError);
       console.error('📧 Tentando enviar para:', email);
       console.error('🔐 Código era:', codigoVerificacao);
-      // Não falhar o registro se o email der erro
     }
+
     res.status(201).json({
       message: 'Usuário cadastrado! Verifique seu email e digite o código de 6 dígitos.',
       user: {
@@ -560,180 +678,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
   }
 });
 
-async function gerarTemplateVerificacao(nome, codigo, email) {
-  const base64Path = path.resolve('./base64.txt');
-  const base64 = await fs.readFile(base64Path, 'utf8');
-
-  return `
-  <!DOCTYPE html>
-  <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Confirmação de Email - RMH</title>
-    <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;600&family=Ruda:wght@900&display=swap" rel="stylesheet">
-    <style>
-      body {
-        margin: 0;
-        font-family: 'Raleway', sans-serif;
-        background-color: #f5f5f5;
-        color: #0d3638;
-        padding: 30px;
-      }
-      .container {
-        max-width: 600px;
-        margin: auto;
-        background-color: #ffffff;
-        border-radius: 12px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-        overflow: hidden;
-      }
-      .header {
-        background-color: #165A5D;
-        padding: 30px;
-        text-align: center;
-      }
-      .header img {
-        height: 50px;
-        margin-bottom: 15px;
-      }
-      .header h1 {
-        font-family: 'Ruda', sans-serif;
-        font-size: 24px;
-        color: #ffffff;
-        margin: 0;
-      }
-      .content {
-        padding: 40px 30px;
-        text-align: center;
-      }
-      .content h2 {
-        font-size: 22px;
-        color: #0d3638;
-        margin-bottom: 10px;
-      }
-      .content p {
-        font-size: 16px;
-        color: #555555;
-      }
-      .code-box {
-        margin: 30px 0;
-        background-color: #f8f8f8;
-        border: 2px dashed #165A5D;
-        border-radius: 10px;
-        padding: 25px;
-        font-size: 32px;
-        font-weight: bold;
-        color: #165A5D;
-        letter-spacing: 8px;
-        font-family: 'Courier New', monospace;
-      }
-      .note {
-        font-size: 14px;
-        color: #8b848b;
-        background-color: #efefef;
-        padding: 15px;
-        border-radius: 8px;
-        margin-top: 20px;
-      }
-      .footer {
-        font-size: 13px;
-        color: #9ca2a3;
-        text-align: center;
-        padding: 20px;
-        border-top: 1px solid #eee;
-        background-color: #f9f9f9;
-      }
-      @media (max-width: 600px) {
-        .content {
-          padding: 30px 20px;
-        }
-        .code-box {
-          font-size: 26px;
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <div class="header">
-        <img src="data:image/png;base64,${base64.trim()}" alt="Logo RMH" />
-        <h1>Confirme seu email</h1>
-      </div>
-      <div class="content">
-        <h2>Olá, ${nome} 👋</h2>
-        <p>Insira o código abaixo para confirmar seu email e ativar seu acesso aos dashboards da RMH:</p>
-        <div class="code-box">${codigo}</div>
-        <p class="note">Este código expira em 24 horas. Se você não solicitou este cadastro, ignore este e-mail.</p>
-      </div>
-      <div class="footer">
-        Email enviado para: ${email}<br>
-        ${new Date().toLocaleDateString('pt-BR', {
-          day: '2-digit',
-          month: 'long',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        })}
-      </div>
-    </div>
-  </body>
-  </html>
-  `;
-}
-
-app.get('/api/auth/profile', (req, res, next) => {
-  console.log('🔐 TENTATIVA DE ACESSO AO PROFILE');
-  console.log('   Token presente:', !!req.header('Authorization'));
-  console.log('   Authorization header:', req.header('Authorization')?.substring(0, 50) + '...');
-  next();
-}, authMiddleware, async (req, res) => {
-  try {
-    console.log('✅ PROFILE: Usuário autenticado:', req.user.email);
-    
-    const user = {
-      id: req.user.id,
-      nome: req.user.nome,
-      email: req.user.email,
-      tipo_usuario: req.user.tipo_usuario,
-      email_verificado: req.user.email_verificado
-    };
-    
-    console.log('📤 PROFILE: Enviando dados:', user);
-    
-    res.json({ user });
-  } catch (error) {
-    console.error('❌ PROFILE: Erro ao buscar perfil:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
-
-// ROTA PARA LISTAR DASHBOARDS (mover para cima se já existir)
-app.get('/api/dashboards', (req, res, next) => {
-  console.log('📊 TENTATIVA DE ACESSO AOS DASHBOARDS');
-  next();
-}, authMiddleware, async (req, res) => {
-  try {
-    console.log('✅ DASHBOARDS: Usuário autenticado:', req.user.email);
-    console.log('🔍 DASHBOARDS: Buscando no banco...');
-    
-    const result = await pool.query(
-      'SELECT * FROM dashboards WHERE ativo = true ORDER BY titulo'
-    );
-
-    console.log(`📊 DASHBOARDS: Encontrados ${result.rows.length} dashboards`);
-    console.log('📤 DASHBOARDS: Dados encontrados:', result.rows);
-
-    res.json({
-      dashboards: result.rows || []
-    });
-  } catch (error) {
-    console.error('❌ DASHBOARDS: Erro ao buscar:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
-
-// ROTA PARA REENVIAR CÓDIGO DE VERIFICAÇÃO
+// ROTA PARA REENVIAR CÓDIGO DE VERIFICAÇÃO (VERSÃO CORRIGIDA)
 app.post('/api/auth/resend-verification', async (req, res) => {
   try {
     const { email } = req.body;
@@ -771,7 +716,9 @@ app.post('/api/auth/resend-verification', async (req, res) => {
 
     // Enviar email
     try {
-      const htmlTemplate = await gerarTemplateVerificacao(nome, codigoVerificacao, email);
+      // CORREÇÃO: Aguardar a geração do template HTML
+      const htmlTemplate = await gerarTemplateVerificacao(user.nome, codigoVerificacao, email);
+      
       await resend.emails.send({
         from: 'onboarding@resend.dev',
         to: [email],
@@ -794,6 +741,62 @@ app.post('/api/auth/resend-verification', async (req, res) => {
   }
 });
 
+// PERFIL DO USUÁRIO
+app.get('/api/auth/profile', (req, res, next) => {
+  console.log('🔐 TENTATIVA DE ACESSO AO PROFILE');
+  console.log('   Token presente:', !!req.header('Authorization'));
+  console.log('   Authorization header:', req.header('Authorization')?.substring(0, 50) + '...');
+  next();
+}, authMiddleware, async (req, res) => {
+  try {
+    console.log('✅ PROFILE: Usuário autenticado:', req.user.email);
+    
+    const user = {
+      id: req.user.id,
+      nome: req.user.nome,
+      email: req.user.email,
+      tipo_usuario: req.user.tipo_usuario,
+      email_verificado: req.user.email_verificado
+    };
+    
+    console.log('📤 PROFILE: Enviando dados:', user);
+    
+    res.json({ user });
+  } catch (error) {
+    console.error('❌ PROFILE: Erro ao buscar perfil:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// LISTAR DASHBOARDS
+app.get('/api/dashboards', (req, res, next) => {
+  console.log('📊 TENTATIVA DE ACESSO AOS DASHBOARDS');
+  next();
+}, authMiddleware, async (req, res) => {
+  try {
+    console.log('✅ DASHBOARDS: Usuário autenticado:', req.user.email);
+    console.log('🔍 DASHBOARDS: Buscando no banco...');
+    
+    const result = await pool.query(
+      'SELECT * FROM dashboards WHERE ativo = true ORDER BY titulo'
+    );
+
+    console.log(`📊 DASHBOARDS: Encontrados ${result.rows.length} dashboards`);
+    console.log('📤 DASHBOARDS: Dados encontrados:', result.rows);
+
+    res.json({
+      dashboards: result.rows || []
+    });
+  } catch (error) {
+    console.error('❌ DASHBOARDS: Erro ao buscar:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// ===============================================
+// CATCH-ALL ROUTES
+// ===============================================
+
 app.get('*', (req, res) => {
   // Se não é uma rota de API, servir o index.html
   if (!req.path.startsWith('/api') && 
@@ -806,14 +809,17 @@ app.get('*', (req, res) => {
   }
 });
 
-// Inicialização melhorada para Railway COM RETRY
+// ===============================================
+// INICIALIZAÇÃO DO SERVIDOR
+// ===============================================
+
 async function iniciarServidor() {
   try {
     // Testar conexão com banco COM RETRY
     await testarConexao(3);
     
     const server = app.listen(PORT, '0.0.0.0', () => {
-      console.log(`🚀 Servidor rodando em ${process.env.API_BASE_URL} na porta ${PORT}`);
+      console.log(`🚀 Servidor rodando em ${process.env.API_BASE_URL || 'http://localhost:3001'} na porta ${PORT}`);
       console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
       console.log(`📧 Resend configurado`);
       console.log(`🗄️ PostgreSQL conectado`);
@@ -870,6 +876,7 @@ async function iniciarServidor() {
   }
 }
 
+// Iniciar o servidor
 iniciarServidor();
 
 // Error handler global
