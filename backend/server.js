@@ -212,10 +212,7 @@ const authMiddleware = async (req, res, next) => {
 };
 
 // Função para gerar template de email
-async function gerarTemplateVerificacao(nome, codigo, email) {
-  const base64Path = path.resolve('./base64.txt');
-  const base64 = await fs.readFile(base64Path, 'utf8');
-
+async function gerarTemplateVerificacao(nome, codigo) {
   return `
   <!DOCTYPE html>
   <html lang="pt-BR">
@@ -314,7 +311,7 @@ async function gerarTemplateVerificacao(nome, codigo, email) {
   <body>
     <div class="container">
       <div class="header">
-        <img src="https://rmh.up.railway.app/logo.png" alt="Logo RMH" style="height: 80px;" />
+        <img src="https://rmh.up.railway.app/logo-rmh.ico" alt="Logo RMH" style="height: 50px; margin-bottom: 20px;" />
         <h1>Confirme seu email</h1>
       </div>
       <div class="content">
@@ -481,7 +478,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
 
     try {
       // CORREÇÃO: Aguardar a geração do template HTML
-      const htmlTemplate = await gerarTemplateVerificacao(nome, codigoVerificacao, email);
+      const htmlTemplate = await gerarTemplateVerificacao(nome, codigoVerificacao);
       
       const emailResult = await resend.emails.send({
         from: 'onboarding@resend.dev',
@@ -717,7 +714,7 @@ app.post('/api/auth/resend-verification', async (req, res) => {
     // Enviar email
     try {
       // CORREÇÃO: Aguardar a geração do template HTML
-      const htmlTemplate = await gerarTemplateVerificacao(user.nome, codigoVerificacao, email);
+      const htmlTemplate = await gerarTemplateVerificacao(user.nome, codigoVerificacao);
       
       await resend.emails.send({
         from: 'onboarding@resend.dev',
