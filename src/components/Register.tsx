@@ -14,12 +14,14 @@ type TipoColaborador = 'estagiario' | 'clt_associado';
 const API_BASE_URL = 'http://localhost:3001'; // Adjust for production
 
 interface RegisterProps {
+  tipoPreSelecionado?: TipoColaborador;
   onBackToLogin: () => void;
   onEmailSent: (email: string) => void;
   onSwitchToVerification: (email: string) => void;
 }
 
 const Register: React.FC<RegisterProps> = ({ 
+  tipoPreSelecionado = 'clt_associado',
   onBackToLogin, 
   onEmailSent, 
   onSwitchToVerification 
@@ -31,7 +33,7 @@ const Register: React.FC<RegisterProps> = ({
     senha: '',
     confirmarSenha: '',
     setor: '',
-    tipo_colaborador: 'clt_associado' as TipoColaborador
+    tipo_colaborador: tipoPreSelecionado // ← Usar tipo pré-selecionado
   });
   
   const [showPassword, setShowPassword] = useState(false);
@@ -40,8 +42,20 @@ const Register: React.FC<RegisterProps> = ({
   const { toast } = useToast();
 
   const setors = [
-    'Vendas', 'Financeiro', 'Marketing', 'Operações', 'RH', 'TI', 'Diretoria', 'Jurídico', 'Compras'
-  ];
+    'Carteira',
+    'Atendimento',
+    'Prazos',
+    'Trabalhista',
+    'Projetos',
+    'Inicial',
+    'Criminal',
+    'Financeiro',
+    'Saúde',
+    'Comercial/Marketing',
+    'Administrativo',
+    'Família e Sucessões'
+    ];
+
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -224,7 +238,6 @@ const Register: React.FC<RegisterProps> = ({
                 <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-gray-50">
                   <RadioGroupItem value="clt_associado" id="clt_associado" />
                   <Label htmlFor="clt_associado" className="flex items-center space-x-2 cursor-pointer flex-1">
-                    <Building className="h-4 w-4 text-blue-600" />
                     <div>
                       <div className="font-medium">CLT/Associado</div>
                       <div className="text-sm text-gray-500">Login com email corporativo</div>
@@ -235,7 +248,6 @@ const Register: React.FC<RegisterProps> = ({
                 <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-gray-50">
                   <RadioGroupItem value="estagiario" id="estagiario" />
                   <Label htmlFor="estagiario" className="flex items-center space-x-2 cursor-pointer flex-1">
-                    <Users className="h-4 w-4 text-green-600" />
                     <div>
                       <div className="font-medium">Estagiário</div>
                       <div className="text-sm text-gray-500">Login com email pessoal</div>
@@ -257,16 +269,12 @@ const Register: React.FC<RegisterProps> = ({
                   onChange={handleInputChange}
                   required={!isEstagiario}
                 />
-                <p className="text-xs text-gray-500">
-                  <Mail className="h-3 w-3 inline mr-1" />
-                  Usado para login e comunicação corporativa
-                </p>
               </div>
             )}
 
             <div className="space-y-2">
               <Label htmlFor="email_pessoal">
-                {isEstagiario ? 'Email Pessoal (Login)' : 'Email Pessoal'}
+                {isEstagiario ? 'Email Pessoal' : 'Email Pessoal'}
               </Label>
               <Input
                 id="email_pessoal"
@@ -277,13 +285,6 @@ const Register: React.FC<RegisterProps> = ({
                 onChange={handleInputChange}
                 required
               />
-              <p className="text-xs text-gray-500">
-                <Mail className="h-3 w-3 inline mr-1" />
-                {isEstagiario 
-                  ? 'Usado para login e comunicação'
-                  : 'Usado para envio do contracheque'
-                }
-              </p>
             </div>
 
             <div className="space-y-2">

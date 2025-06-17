@@ -1,4 +1,4 @@
-// server.js - VERSÃO LIMPA E CORRIGIDA
+// server.js - VERSÃO ATUALIZADA PARA TIPOS DE COLABORADOR
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -158,12 +158,21 @@ app.use((req, res, next) => {
 console.log('🎨 Servindo frontend estático da pasta dist/');
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// Schemas de validação
+// ===============================================
+// SCHEMAS DE VALIDAÇÃO ATUALIZADOS
+// ===============================================
+
 const schemaRegistro = Joi.object({
   nome: Joi.string().min(2).max(100).required(),
-  email: Joi.string().email().pattern(/@resendemh\.com\.br$/).required(),
+  email: Joi.when('tipo_colaborador', {
+    is: 'clt_associado',
+    then: Joi.string().email().regex(/@resendemh\.com\.br$/).required(),
+    otherwise: Joi.string().email().optional().allow(null, '')
+  }),
+  email_pessoal: Joi.string().email().required(),
   senha: Joi.string().min(6).required(),
-  setor: Joi.string().required()
+  setor: Joi.string().required(),
+  tipo_colaborador: Joi.string().valid('estagiario', 'clt_associado').required()
 });
 
 const schemaLogin = Joi.object({
@@ -171,7 +180,48 @@ const schemaLogin = Joi.object({
   senha: Joi.string().required()
 });
 
-// Middleware de autenticação
+// Validação personalizada para registro
+const validateRegistro = (data) => {
+  const { nome, email, email_pessoal, senha, setor, tipo_colaborador } = data;
+
+  // Validações básicas
+  if (!nome || nome.trim().length < 2) {
+    return { error: 'Nome deve ter pelo menos 2 caracteres' };
+  }
+
+  if (!email_pessoal || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email_pessoal)) {
+    return { error: 'Email pessoal deve ter formato válido' };
+  }
+
+  if (!senha || senha.length < 6) {
+    return { error: 'Senha deve ter pelo menos 6 caracteres' };
+  }
+
+  if (!setor || setor.trim().length === 0) {
+    return { error: 'Setor é obrigatório' };
+  }
+
+  if (!tipo_colaborador || !['estagiario', 'clt_associado'].includes(tipo_colaborador)) {
+    return { error: 'Tipo de colaborador deve ser "estagiario" ou "clt_associado"' };
+  }
+
+  // Validação específica para CLT/Associado
+  if (tipo_colaborador === 'clt_associado') {
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return { error: 'Email corporativo é obrigatório para CLT/Associado' };
+    }
+    if (!email.endsWith('@resendemh.com.br')) {
+      return { error: 'Email corporativo deve terminar com @resendemh.com.br' };
+    }
+  }
+
+  return { value: data };
+};
+
+// ===============================================
+// MIDDLEWARE DE AUTENTICAÇÃO ATUALIZADO
+// ===============================================
+
 const authMiddleware = async (req, res, next) => {
   try {
     console.log('🔒 AUTH MIDDLEWARE: Iniciando verificação');
@@ -188,7 +238,8 @@ const authMiddleware = async (req, res, next) => {
     console.log('✅ AUTH: Token válido para usuário ID:', decoded.id);
     
     const result = await pool.query(
-      'SELECT id, nome, email, tipo_usuario, email_verificado FROM usuarios WHERE id = $1',
+      `SELECT id, nome, email, email_pessoal, setor, tipo_usuario, tipo_colaborador, email_verificado 
+       FROM usuarios WHERE id = $1`,
       [decoded.id]
     );
 
@@ -203,7 +254,9 @@ const authMiddleware = async (req, res, next) => {
     }
 
     req.user = result.rows[0];
-    console.log('✅ AUTH: Usuário autenticado:', req.user.email);
+    console.log('✅ AUTH: Usuário autenticado:', 
+      req.user.tipo_colaborador === 'estagiario' ? req.user.email_pessoal : req.user.email
+    );
     next();
   } catch (error) {
     console.error('❌ AUTH: Erro na verificação:', error.message);
@@ -211,8 +264,16 @@ const authMiddleware = async (req, res, next) => {
   }
 };
 
-// Função para gerar template de email
-async function gerarTemplateVerificacao(nome, codigo) {
+// ===============================================
+// TEMPLATE DE EMAIL ATUALIZADO
+// ===============================================
+
+async function gerarTemplateVerificacao(nome, codigo, email, tipo_colaborador) {
+  const tipoTexto = tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado';
+  const emailInfo = tipo_colaborador === 'estagiario' 
+    ? 'Este é seu email de login para a plataforma.'
+    : 'Este email será usado para login corporativo.';
+
   return `
   <!DOCTYPE html>
   <html lang="pt-BR">
@@ -244,7 +305,6 @@ async function gerarTemplateVerificacao(nome, codigo) {
       }
       .header img {
         height: 60px;
-        /* margin-bottom: 15px; */
       }
       .header h1 {
         font-family: 'Ruda', sans-serif;
@@ -267,6 +327,16 @@ async function gerarTemplateVerificacao(nome, codigo) {
         font-size: 17px;
         color: #555;
         margin-top: 0;
+      }
+      .tipo-badge {
+        display: inline-block;
+        padding: 6px 12px;
+        background-color: ${tipo_colaborador === 'estagiario' ? '#165A5D' : '#165A5D'};
+        color: white;
+        border-radius: 20px;
+        font-size: 14px;
+        font-weight: 600;
+        margin: 10px 0;
       }
       .code-box {
         margin: 30px auto;
@@ -316,8 +386,10 @@ async function gerarTemplateVerificacao(nome, codigo) {
       </div>
       <div class="content">
         <h2>Olá, ${nome}!</h2>
+        <div class="tipo-badge">${tipoTexto}</div>
         <p>Insira o código abaixo para confirmar seu email e ativar seu acesso ao site da RMH:</p>
         <div class="code-box">${codigo}</div>
+        <p>${emailInfo}</p>
         <p class="note">Este código expira em 24 horas. Se você não solicitou este cadastro, ignore este e-mail.</p>
       </div>
     </div>
@@ -329,6 +401,7 @@ async function gerarTemplateVerificacao(nome, codigo) {
 // ===============================================
 // ROTAS DE HEALTH CHECK E KEEP-ALIVE
 // ===============================================
+
 app.get('/', (req, res) => {
   res.json({
     message: '🚀 RMH Dashboards API',
@@ -372,27 +445,46 @@ app.get('/ping', (req, res) => {
 });
 
 // ===============================================
-// ROTAS DE AUTENTICAÇÃO
+// ROTAS DE AUTENTICAÇÃO ATUALIZADAS
 // ===============================================
 
 // REGISTRO COM VERIFICAÇÃO DE EMAIL
 app.post('/api/auth/register', authLimiter, async (req, res) => {
+  const client = await pool.connect();
+  
   try {
-    const { error, value } = schemaRegistro.validate(req.body);
-    if (error) {
-      return res.status(400).json({ error: error.details[0].message });
+    await client.query('BEGIN');
+    console.log('🔄 TRANSAÇÃO: Iniciada');
+
+    // Usar validação manual em vez do Joi para compatibilidade
+    const validation = validateRegistro(req.body);
+    if (validation.error) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).json({ error: validation.error });
     }
 
-    const { nome, email, senha, setor } = value;
+    const { nome, email, email_pessoal, senha, setor, tipo_colaborador } = validation.value;
+
+    // Determinar qual email usar para verificação de duplicata
+    const emailLogin = tipo_colaborador === 'estagiario' ? email_pessoal : email;
+
+    console.log(`🔍 REGISTRO: Tipo ${tipo_colaborador}, Email login: ${emailLogin}`);
 
     // Verificar se o usuário já existe
-    const userExists = await pool.query(
-      'SELECT id, email_verificado FROM usuarios WHERE email = $1',
-      [email]
+    const userExists = await client.query(
+      `SELECT id, email_verificado, tipo_colaborador 
+       FROM usuarios 
+       WHERE (tipo_colaborador = 'estagiario' AND email_pessoal = $1) 
+          OR (tipo_colaborador = 'clt_associado' AND email = $1)`,
+      [emailLogin]
     );
 
     if (userExists.rows.length > 0) {
       const existingUser = userExists.rows[0];
+      await client.query('ROLLBACK');
+      client.release();
+      
       if (existingUser.email_verificado) {
         return res.status(400).json({ error: 'Email já cadastrado e verificado' });
       } else {
@@ -408,75 +500,125 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     const saltRounds = 10;
     const senhaHash = await bcrypt.hash(senha, saltRounds);
 
-    // Inserir usuário SEM verificação
-    const result = await pool.query(
-      `INSERT INTO usuarios (nome, email, senha, setor, tipo_usuario, email_verificado) 
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, nome, email, setor, tipo_usuario`,
-      [nome, email, senhaHash, setor, 'usuario', false]
+    console.log(`🔐 REGISTRO: Inserindo usuário - Tipo: ${tipo_colaborador}`);
+
+    // Inserir usuário com os novos campos
+    const result = await client.query(
+      `INSERT INTO usuarios (nome, email, email_pessoal, senha, setor, tipo_usuario, tipo_colaborador, email_verificado, aprovado_admin) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
+       RETURNING id, nome, email, email_pessoal, setor, tipo_usuario, tipo_colaborador`,
+      [
+        nome, 
+        email || null, 
+        email_pessoal, 
+        senhaHash, 
+        setor, 
+        'usuario', 
+        tipo_colaborador, 
+        false,
+        tipo_colaborador === 'clt_associado' ? true : null // CLT aprovado automaticamente, estagiário aguarda
+      ]
     );
 
     const newUser = result.rows[0];
+    console.log(`✅ REGISTRO: Usuário criado com ID: ${newUser.id}`);
 
-    // Gerar código de verificação (6 dígitos)
-    const codigoVerificacao = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiraEm = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 horas
-
-    // Salvar token na tabela de verificações
-    await pool.query(
-      `INSERT INTO verificacoes_email (usuario_id, token, tipo_token, expira_em) 
-       VALUES ($1, $2, $3, $4)`,
-      [newUser.id, codigoVerificacao, 'verificacao_email', expiraEm]
-    );
-
-    console.log(`
-    🔐 ========== CÓDIGO DE VERIFICAÇÃO ==========
-    📧 Email: ${email}
-    🔢 Código: ${codigoVerificacao}
-    ⏰ Expira em: ${expiraEm}
-    =========================================
-    `);
-
-    try {
-      // CORREÇÃO: Aguardar a geração do template HTML
-      const htmlTemplate = await gerarTemplateVerificacao(nome, codigoVerificacao);
+    // LÓGICA DIFERENCIADA POR TIPO DE COLABORADOR
+    if (tipo_colaborador === 'clt_associado') {
+      // ========== CLT/ASSOCIADO: PROCESSO AUTOMÁTICO ==========
       
-      const emailResult = await resend.emails.send({
-        from: 'onboarding@resend.dev',
-        to: [email],
-        subject: '🔐 Confirme seu email - Dashboards RMH',
-        html: htmlTemplate
+      // Gerar código de verificação
+      const codigoVerificacao = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiraEm = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+      // Salvar token na tabela de verificações
+      await client.query(
+        `INSERT INTO verificacoes_email (usuario_id, token, tipo_token, expira_em) 
+         VALUES ($1, $2, $3, $4)`,
+        [newUser.id, codigoVerificacao, 'verificacao_email', expiraEm]
+      );
+
+      await client.query('COMMIT');
+      console.log('✅ TRANSAÇÃO: Commitada com sucesso (CLT)');
+
+      console.log(`
+      🔐 ========== CÓDIGO DE VERIFICAÇÃO (CLT) ==========
+      👤 Tipo: ${tipo_colaborador}
+      📧 Email: ${emailLogin}
+      🔢 Código: ${codigoVerificacao}
+      ⏰ Expira em: ${expiraEm}
+      =================================================
+      `);
+
+      // Enviar email automaticamente para CLT
+      try {
+        const emailResult = await resend.emails.send({
+          from: 'onboarding@resend.dev',
+          to: [emailLogin],
+          subject: '🔐 Confirme seu email - Dashboards RMH',
+          html: await gerarTemplateVerificacao(nome, codigoVerificacao, emailLogin, tipo_colaborador)
+        });
+
+        console.log(`✅ Email enviado automaticamente para CLT: ${emailLogin}`, emailResult);
+      } catch (emailError) {
+        console.error('❌ ERRO no email (não crítico):', emailError);
+      }
+
+      res.status(201).json({
+        message: 'Usuário cadastrado! Verifique seu email e digite o código de 6 dígitos.',
+        user_id: newUser.id,
+        verification_required: true,
+        email_enviado_para: emailLogin,
+        tipo_colaborador: tipo_colaborador,
+        aprovado_automaticamente: true
       });
 
-      console.log(`✅ Email enviado com sucesso!`, emailResult);
-      console.log(`📧 Para: ${email} - Código: ${codigoVerificacao}`);
-    } catch (emailError) {
-      console.error('❌ ERRO DETALHADO NO EMAIL:', emailError);
-      console.error('📧 Tentando enviar para:', email);
-      console.error('🔐 Código era:', codigoVerificacao);
-    }
+    } else {
+      // ========== ESTAGIÁRIO: AGUARDAR APROVAÇÃO DO ADMIN ==========
+      
+      await client.query('COMMIT');
+      console.log('✅ TRANSAÇÃO: Commitada com sucesso (Estagiário)');
 
-    res.status(201).json({
-      message: 'Usuário cadastrado! Verifique seu email e digite o código de 6 dígitos.',
-      user: {
-        id: newUser.id,
-        nome: newUser.nome,
-        email: newUser.email,
-        setor: newUser.setor,
-        email_verificado: false
-      },
-      verification_required: true
-    });
+      console.log(`
+      ⏳ ========== ESTAGIÁRIO AGUARDANDO APROVAÇÃO ==========
+      👤 Nome: ${nome}
+      📧 Email: ${emailLogin}
+      🏢 Setor: ${setor}
+      🆔 ID: ${newUser.id}
+      📝 Status: Aguardando aprovação do administrador
+      =====================================================
+      `);
+
+      res.status(201).json({
+        message: 'Cadastro realizado com sucesso! Seu acesso será liberado após aprovação do administrador.',
+        user_id: newUser.id,
+        verification_required: false,
+        awaiting_admin_approval: true,
+        tipo_colaborador: tipo_colaborador,
+        info: 'Você receberá um email quando seu cadastro for aprovado por um administrador.'
+      });
+    }
 
   } catch (error) {
-    console.error('Erro no registro:', error);
-    if (error.code === '23505') {
-      return res.status(400).json({ error: 'Email já cadastrado' });
+    console.error('❌ Erro no registro:', error);
+    
+    // Rollback em caso de erro
+    try {
+      await client.query('ROLLBACK');
+      console.log('🔄 TRANSAÇÃO: Rollback executado');
+    } catch (rollbackError) {
+      console.error('❌ Erro no rollback:', rollbackError);
     }
+    
     res.status(500).json({ error: 'Erro interno do servidor' });
+  } finally {
+    // Sempre liberar a conexão
+    client.release();
+    console.log('🔌 CONEXÃO: Liberada');
   }
 });
 
-// VERIFICAR CÓDIGO DE EMAIL
+// VERIFICAR CÓDIGO DE EMAIL ATUALIZADO (CORRIGIDO!)
 app.post('/api/auth/verify-email', async (req, res) => {
   try {
     const { email, codigo } = req.body;
@@ -485,9 +627,14 @@ app.post('/api/auth/verify-email', async (req, res) => {
       return res.status(400).json({ error: 'Email e código são obrigatórios' });
     }
 
-    // Buscar usuário
+    console.log(`🔍 VERIFICAÇÃO: Email: ${email}, Código: ${codigo}`);
+
+    // Buscar usuário (por email corporativo ou pessoal)
     const userResult = await pool.query(
-      'SELECT id, nome, email, email_verificado FROM usuarios WHERE email = $1',
+      `SELECT id, nome, email, email_pessoal, tipo_colaborador, email_verificado 
+       FROM usuarios 
+       WHERE (tipo_colaborador = 'estagiario' AND email_pessoal = $1) 
+          OR (tipo_colaborador = 'clt_associado' AND email = $1)`,
       [email]
     );
 
@@ -501,7 +648,7 @@ app.post('/api/auth/verify-email', async (req, res) => {
       return res.status(400).json({ error: 'Email já verificado' });
     }
 
-    // Buscar token válido
+    // BUSCAR TOKEN VÁLIDO (essa é a parte correta!)
     const tokenResult = await pool.query(
       `SELECT id, token, expira_em, usado_em 
        FROM verificacoes_email 
@@ -516,12 +663,14 @@ app.post('/api/auth/verify-email', async (req, res) => {
     );
 
     if (tokenResult.rows.length === 0) {
+      console.log(`❌ VERIFICAÇÃO: Código inválido ou expirado para usuário ${user.id}`);
       return res.status(400).json({ 
         error: 'Código inválido ou expirado. Solicite um novo código.' 
       });
     }
 
     const verification = tokenResult.rows[0];
+    console.log(`✅ VERIFICAÇÃO: Código válido encontrado!`);
 
     // Marcar usuário como verificado
     await pool.query(
@@ -539,12 +688,14 @@ app.post('/api/auth/verify-email', async (req, res) => {
     const token = jwt.sign(
       { 
         id: user.id, 
-        email: user.email, 
+        email: user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email,
         tipo_usuario: 'usuario'
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
+
+    console.log(`🎉 VERIFICAÇÃO: Usuário ${user.id} verificado com sucesso!`);
 
     res.json({
       message: 'Email verificado com sucesso! Você foi logado automaticamente.',
@@ -553,17 +704,19 @@ app.post('/api/auth/verify-email', async (req, res) => {
         id: user.id,
         nome: user.nome,
         email: user.email,
+        email_pessoal: user.email_pessoal,
+        tipo_colaborador: user.tipo_colaborador,
         email_verificado: true
       }
     });
 
   } catch (error) {
-    console.error('Erro na verificação:', error);
+    console.error('❌ Erro na verificação:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 
-// LOGIN COM VERIFICAÇÃO DE EMAIL
+// LOGIN ATUALIZADO
 app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const { error, value } = schemaLogin.validate(req.body);
@@ -573,30 +726,41 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 
     const { email, senha } = value;
 
-    // Buscar usuário
+    console.log(`🔑 LOGIN: Tentativa com email: ${email}`);
+
+    // Buscar usuário por email (corporativo ou pessoal dependendo do tipo)
     const result = await pool.query(
-      'SELECT id, nome, email, senha, setor, tipo_usuario, email_verificado FROM usuarios WHERE email = $1',
+      `SELECT id, nome, email, email_pessoal, senha, setor, tipo_usuario, tipo_colaborador, email_verificado 
+       FROM usuarios 
+       WHERE (tipo_colaborador = 'estagiario' AND email_pessoal = $1) 
+          OR (tipo_colaborador = 'clt_associado' AND email = $1)`,
       [email]
     );
 
     if (result.rows.length === 0) {
+      console.log(`❌ LOGIN: Usuário não encontrado para email: ${email}`);
       return res.status(401).json({ error: 'Email ou senha incorretos' });
     }
 
     const user = result.rows[0];
+    console.log(`🔍 LOGIN: Usuário encontrado - Tipo: ${user.tipo_colaborador}`);
 
     // Verificar senha
     const senhaValida = await bcrypt.compare(senha, user.senha);
     if (!senhaValida) {
+      console.log(`❌ LOGIN: Senha inválida para: ${email}`);
       return res.status(401).json({ error: 'Email ou senha incorretos' });
     }
 
     // Verificar se email foi verificado
     if (!user.email_verificado) {
+      const emailLogin = user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email;
+      console.log(`⚠️ LOGIN: Email não verificado: ${emailLogin}`);
       return res.status(401).json({ 
         error: 'Email não verificado. Verifique sua caixa de entrada.',
         verification_required: true,
-        user_email: email
+        user_email: emailLogin,
+        tipo_colaborador: user.tipo_colaborador
       });
     }
 
@@ -610,32 +774,36 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     const token = jwt.sign(
       { 
         id: user.id, 
-        email: user.email, 
+        email: user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email,
         tipo_usuario: user.tipo_usuario 
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 
-    res.json({
+    console.log(`✅ LOGIN: Sucesso para usuário ID: ${user.id}`);
+
+        res.json({
       message: 'Login realizado com sucesso',
       token,
       user: {
         id: user.id,
         nome: user.nome,
         email: user.email,
+        email_pessoal: user.email_pessoal,
         setor: user.setor,
-        tipo_usuario: user.tipo_usuario
+        tipo_usuario: user.tipo_usuario,
+        tipo_colaborador: user.tipo_colaborador
       }
     });
 
   } catch (error) {
-    console.error('Erro no login:', error);
+    console.error('❌ Erro no login:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 
-// ROTA PARA REENVIAR CÓDIGO DE VERIFICAÇÃO (VERSÃO CORRIGIDA)
+// ROTA PARA REENVIAR CÓDIGO DE VERIFICAÇÃO ATUALIZADA
 app.post('/api/auth/resend-verification', async (req, res) => {
   try {
     const { email } = req.body;
@@ -644,9 +812,12 @@ app.post('/api/auth/resend-verification', async (req, res) => {
       return res.status(400).json({ error: 'Email é obrigatório' });
     }
 
-    // Buscar usuário
+    // Buscar usuário (por email corporativo ou pessoal)
     const userResult = await pool.query(
-      'SELECT id, nome, email, email_verificado FROM usuarios WHERE email = $1',
+      `SELECT id, nome, email, email_pessoal, tipo_colaborador, email_verificado 
+       FROM usuarios 
+       WHERE (tipo_colaborador = 'estagiario' AND email_pessoal = $1) 
+          OR (tipo_colaborador = 'clt_associado' AND email = $1)`,
       [email]
     );
 
@@ -662,7 +833,7 @@ app.post('/api/auth/resend-verification', async (req, res) => {
 
     // Gerar novo código
     const codigoVerificacao = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiraEm = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 horas
+    const expiraEm = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     // Salvar novo token
     await pool.query(
@@ -671,99 +842,592 @@ app.post('/api/auth/resend-verification', async (req, res) => {
       [user.id, codigoVerificacao, 'verificacao_email', expiraEm]
     );
 
+    const emailLogin = user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email;
+
+    console.log(`🔄 REENVIO: Novo código para ${user.tipo_colaborador}: ${emailLogin}`);
+    console.log(`🔢 Novo código: ${codigoVerificacao}`);
+
     // Enviar email
     try {
-      // CORREÇÃO: Aguardar a geração do template HTML
-      const htmlTemplate = await gerarTemplateVerificacao(user.nome, codigoVerificacao);
-      
-      await resend.emails.send({
+      const emailResult = await resend.emails.send({
         from: 'onboarding@resend.dev',
-        to: [email],
+        to: [emailLogin],
         subject: '🔐 Novo código de verificação - Dashboards RMH',
-        html: htmlTemplate
+        html: await gerarTemplateVerificacao(user.nome, codigoVerificacao, emailLogin, user.tipo_colaborador)
       });
 
-      console.log(`✅ Novo código enviado para: ${email} - Código: ${codigoVerificacao}`);
+      console.log(`✅ Novo código enviado com sucesso!`, emailResult);
     } catch (emailError) {
       console.error('❌ Erro ao enviar email:', emailError);
     }
 
     res.json({
-      message: 'Novo código enviado para seu email'
+      message: 'Novo código enviado para seu email',
+      email_enviado_para: emailLogin,
+      tipo_colaborador: user.tipo_colaborador
     });
 
   } catch (error) {
-    console.error('Erro ao reenviar código:', error);
+    console.error('❌ Erro ao reenviar código:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 
-// PERFIL DO USUÁRIO
-app.get('/api/auth/profile', (req, res, next) => {
-  console.log('🔐 TENTATIVA DE ACESSO AO PROFILE');
-  console.log('   Token presente:', !!req.header('Authorization'));
-  console.log('   Authorization header:', req.header('Authorization')?.substring(0, 50) + '...');
-  next();
-}, authMiddleware, async (req, res) => {
-  try {
-    console.log('✅ PROFILE: Usuário autenticado:', req.user.email);
-    
-    const user = {
+// ===============================================
+// ROTAS PROTEGIDAS - PERFIL E DASHBOARDS
+// ===============================================
+
+// PERFIL DO USUÁRIO ATUALIZADO
+app.get('/api/auth/profile', authMiddleware, (req, res) => {
+  console.log('🔐 PERFIL: Acesso autorizado para usuário:', req.user.id);
+  
+  res.json({
+    user: {
       id: req.user.id,
       nome: req.user.nome,
       email: req.user.email,
+      email_pessoal: req.user.email_pessoal,
+      setor: req.user.setor,
       tipo_usuario: req.user.tipo_usuario,
+      tipo_colaborador: req.user.tipo_colaborador,
       email_verificado: req.user.email_verificado
-    };
-    
-    console.log('📤 PROFILE: Enviando dados:', user);
-    
-    res.json({ user });
-  } catch (error) {
-    console.error('❌ PROFILE: Erro ao buscar perfil:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
+    }
+  });
 });
 
-// LISTAR DASHBOARDS
-app.get('/api/dashboards', (req, res, next) => {
-  console.log('📊 TENTATIVA DE ACESSO AOS DASHBOARDS');
-  next();
-}, authMiddleware, async (req, res) => {
+// LOGOUT (opcional - apenas limpa token no frontend)
+app.post('/api/auth/logout', authMiddleware, async (req, res) => {
   try {
-    console.log('✅ DASHBOARDS: Usuário autenticado:', req.user.email);
-    console.log('🔍 DASHBOARDS: Buscando no banco...');
-    
-    const result = await pool.query(
-      'SELECT * FROM dashboards WHERE ativo = true ORDER BY titulo'
+    // Atualizar último logout no banco (opcional)
+    await pool.query(
+      'UPDATE usuarios SET ultimo_logout = NOW() WHERE id = $1',
+      [req.user.id]
     );
 
-    console.log(`📊 DASHBOARDS: Encontrados ${result.rows.length} dashboards`);
-    console.log('📤 DASHBOARDS: Dados encontrados:', result.rows);
-
-    res.json({
-      dashboards: result.rows || []
+    console.log(`👋 LOGOUT: Usuário ${req.user.id} saiu do sistema`);
+    
+    res.json({ 
+      message: 'Logout realizado com sucesso',
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
-    console.error('❌ DASHBOARDS: Erro ao buscar:', error);
+    console.error('❌ Erro no logout:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 
 // ===============================================
-// CATCH-ALL ROUTES
+// ROTAS DE DASHBOARDS (PROTEGIDAS)
 // ===============================================
 
-app.get('*', (req, res) => {
-  // Se não é uma rota de API, servir o index.html
-  if (!req.path.startsWith('/api') && 
-      !req.path.startsWith('/health') && 
-      !req.path.startsWith('/ping') && 
-      !req.path.startsWith('/send-test-email')) {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-  } else {
-    res.status(404).json({ error: 'Endpoint não encontrado' });
+// LISTAR DASHBOARDS DISPONÍVEIS
+app.get('/api/dashboards', authMiddleware, async (req, res) => {
+  try {
+    console.log(`📊 DASHBOARDS: Listando para usuário ${req.user.id} (${req.user.tipo_colaborador})`);
+
+    // Exemplo de dashboards baseados no tipo de colaborador
+    const dashboards = [];
+
+    // Dashboards para todos
+    dashboards.push(
+      {
+        id: 'geral',
+        titulo: 'Dashboard Geral',
+        descricao: 'Visão geral da empresa',
+        icon: '📊',
+        disponivel: true,
+        url: '/dashboard/geral'
+      },
+      {
+        id: 'meu-setor',
+        titulo: `Dashboard ${req.user.setor}`,
+        descricao: `Métricas específicas do setor ${req.user.setor}`,
+        icon: '🏢',
+        disponivel: true,
+        url: `/dashboard/setor/${req.user.setor.toLowerCase()}`
+      }
+    );
+
+    // Dashboards específicos para CLT/Associados
+    if (req.user.tipo_colaborador === 'clt_associado') {
+      dashboards.push(
+        {
+          id: 'financeiro',
+          titulo: 'Dashboard Financeiro',
+          descricao: 'Análises financeiras detalhadas',
+          icon: '💰',
+          disponivel: true,
+          url: '/dashboard/financeiro',
+          restricao: 'CLT/Associado'
+        },
+        {
+          id: 'rh',
+          titulo: 'Dashboard RH',
+          descricao: 'Gestão de recursos humanos',
+          icon: '👥',
+          disponivel: true,
+          url: '/dashboard/rh',
+          restricao: 'CLT/Associado'
+        }
+      );
+    }
+
+    // Dashboards para estagiários
+    if (req.user.tipo_colaborador === 'estagiario') {
+      dashboards.push({
+        id: 'aprendizado',
+        titulo: 'Dashboard de Aprendizado',
+        descricao: 'Acompanhe seu progresso e desenvolvimento',
+        icon: '📚',
+        disponivel: true,
+        url: '/dashboard/aprendizado',
+        restricao: 'Estagiário'
+      });
+    }
+
+    res.json({
+      dashboards,
+      user_info: {
+        tipo_colaborador: req.user.tipo_colaborador,
+        setor: req.user.setor,
+        total_dashboards: dashboards.length
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao listar dashboards:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
   }
+});
+
+// ACESSAR DASHBOARD ESPECÍFICO
+app.get('/api/dashboards/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log(`📈 DASHBOARD: Acessando ${id} para usuário ${req.user.id}`);
+
+    // Verificar permissões baseadas no tipo de colaborador
+    const permissoesEspeciais = ['financeiro', 'rh'];
+    
+    if (permissoesEspeciais.includes(id) && req.user.tipo_colaborador !== 'clt_associado') {
+      return res.status(403).json({ 
+        error: 'Acesso negado. Dashboard disponível apenas para CLT/Associados.',
+        required_type: 'clt_associado',
+        current_type: req.user.tipo_colaborador
+      });
+    }
+
+    // Simular dados do dashboard (aqui você conectaria com suas fontes de dados reais)
+    const dashboardData = {
+      id,
+      titulo: `Dashboard ${id.charAt(0).toUpperCase() + id.slice(1)}`,
+      usuario: req.user.nome,
+      tipo_acesso: req.user.tipo_colaborador,
+      setor: req.user.setor,
+      dados: {
+        // Dados fictícios - substitua pela sua lógica real
+        metricas: [
+          { nome: 'Total de Vendas', valor: 'R$ 125.450', variacao: '+12%' },
+          { nome: 'Clientes Ativos', valor: '1.234', variacao: '+5%' },
+          { nome: 'Satisfação', valor: '94%', variacao: '+2%' }
+        ],
+        graficos: [
+          { tipo: 'linha', titulo: 'Vendas por Mês', dados: [] },
+          { tipo: 'barra', titulo: 'Performance por Setor', dados: [] }
+        ]
+      },
+      ultima_atualizacao: new Date().toISOString(),
+      permissoes: {
+        pode_exportar: req.user.tipo_colaborador === 'clt_associado',
+        pode_compartilhar: true,
+        pode_editar: req.user.tipo_colaborador === 'clt_associado'
+      }
+    };
+
+    res.json(dashboardData);
+
+  } catch (error) {
+    console.error('❌ Erro ao acessar dashboard:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// ===============================================
+// ROTAS DE ADMINISTRAÇÃO (FUTURO)
+// ===============================================
+
+// Rota para listar usuários (apenas para admins futuros)
+// ===============================================
+// 1. ROTAS DO SERVIDOR (adicionar ao server.js)
+// ===============================================
+
+// MIDDLEWARE PARA VERIFICAR SE É ADMIN
+const adminMiddleware = async (req, res, next) => {
+  try {
+    // Primeiro verificar autenticação normal
+    await authMiddleware(req, res, () => {});
+    
+    // Verificar se é admin
+    if (req.user.tipo_usuario !== 'admin') {
+      return res.status(403).json({ 
+        error: 'Acesso negado. Apenas administradores podem acessar esta funcionalidade.' 
+      });
+    }
+    
+    console.log(`🔧 ADMIN: Acesso autorizado para ${req.user.nome}`);
+    next();
+  } catch (error) {
+    return res.status(401).json({ error: 'Token inválido ou usuário não é admin' });
+  }
+};
+
+// LISTAR USUÁRIOS PENDENTES DE APROVAÇÃO
+app.get('/api/admin/usuarios-pendentes', adminMiddleware, async (req, res) => {
+  try {
+    console.log('📋 ADMIN: Listando usuários pendentes de aprovação');
+
+    const result = await pool.query(`
+      SELECT 
+        u.id,
+        u.nome,
+        u.email,
+        u.email_pessoal,
+        u.setor,
+        u.tipo_colaborador,
+        u.email_verificado,
+        u.aprovado_admin,
+        u.criado_em,
+        v.token as codigo_verificacao,
+        v.expira_em as codigo_expira_em
+      FROM usuarios u
+      LEFT JOIN verificacoes_email v ON u.id = v.usuario_id 
+        AND v.tipo_token = 'verificacao_email' 
+        AND v.usado_em IS NULL
+      WHERE 
+        (u.tipo_colaborador = 'estagiario' AND u.aprovado_admin IS NULL)
+        OR (u.email_verificado = false)
+      ORDER BY u.criado_em DESC
+    `);
+
+    const usuarios = result.rows.map(user => ({
+      ...user,
+      email_login: user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email,
+      status: user.tipo_colaborador === 'estagiario' 
+        ? (user.aprovado_admin === null ? 'pendente_aprovacao' : 'aprovado')
+        : 'corporativo',
+      codigo_ativo: user.codigo_verificacao && user.codigo_expira_em > new Date()
+    }));
+
+    res.json({
+      usuarios,
+      total: usuarios.length,
+      pendentes_aprovacao: usuarios.filter(u => u.status === 'pendente_aprovacao').length,
+      nao_verificados: usuarios.filter(u => !u.email_verificado).length
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao listar usuários pendentes:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// APROVAR CADASTRO DE ESTAGIÁRIO
+app.post('/api/admin/aprovar-usuario/:userId', adminMiddleware, async (req, res) => {
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    const { userId } = req.params;
+    const { enviar_codigo = true } = req.body;
+
+    console.log(`✅ ADMIN: Aprovando usuário ${userId}, enviar código: ${enviar_codigo}`);
+
+    // Buscar usuário
+    const userResult = await client.query(
+      'SELECT * FROM usuarios WHERE id = $1 AND tipo_colaborador = $2',
+      [userId, 'estagiario']
+    );
+
+    if (userResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(404).json({ error: 'Usuário estagiário não encontrado' });
+    }
+
+    const user = userResult.rows[0];
+
+    if (user.email_verificado) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).json({ error: 'Usuário já verificado' });
+    }
+
+    // Marcar como aprovado pelo admin
+    await client.query(
+      'UPDATE usuarios SET aprovado_admin = true, aprovado_em = NOW(), aprovado_por = $1 WHERE id = $2',
+      [req.user.id, userId]
+    );
+
+    if (enviar_codigo) {
+      // Gerar novo código de verificação
+      const codigoVerificacao = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiraEm = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+      // Invalidar códigos anteriores
+      await client.query(
+        'UPDATE verificacoes_email SET usado_em = NOW() WHERE usuario_id = $1 AND usado_em IS NULL',
+        [userId]
+      );
+
+      // Criar novo código
+      await client.query(
+        `INSERT INTO verificacoes_email (usuario_id, token, tipo_token, expira_em) 
+         VALUES ($1, $2, $3, $4)`,
+        [userId, codigoVerificacao, 'verificacao_email', expiraEm]
+      );
+
+      await client.query('COMMIT');
+
+      // Enviar email
+      try {
+        const emailResult = await resend.emails.send({
+          from: 'onboarding@resend.dev',
+          to: [user.email_pessoal],
+          subject: '✅ Cadastro aprovado - Dashboards RMH',
+          html: await gerarTemplateVerificacao(user.nome, codigoVerificacao, user.email_pessoal, user.tipo_colaborador)
+        });
+
+        console.log(`✅ Email de aprovação enviado para ${user.email_pessoal}`);
+      } catch (emailError) {
+        console.error('❌ Erro ao enviar email de aprovação:', emailError);
+      }
+
+      res.json({
+        message: 'Usuário aprovado e código de verificação enviado',
+        codigo_enviado: true,
+        email_enviado_para: user.email_pessoal
+      });
+    } else {
+      await client.query('COMMIT');
+      
+      res.json({
+        message: 'Usuário aprovado. Código não foi enviado.',
+        codigo_enviado: false
+      });
+    }
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('❌ Erro ao aprovar usuário:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  } finally {
+    client.release();
+  }
+});
+
+// REJEITAR CADASTRO DE ESTAGIÁRIO
+app.delete('/api/admin/rejeitar-usuario/:userId', adminMiddleware, async (req, res) => {
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    const { userId } = req.params;
+
+    console.log(`❌ ADMIN: Rejeitando usuário ${userId}`);
+
+    // Verificar se é estagiário
+    const userResult = await client.query(
+      'SELECT nome, email_pessoal FROM usuarios WHERE id = $1 AND tipo_colaborador = $2',
+      [userId, 'estagiario']
+    );
+
+    if (userResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(404).json({ error: 'Usuário estagiário não encontrado' });
+    }
+
+    const user = userResult.rows[0];
+
+    // Deletar verificações de email
+    await client.query('DELETE FROM verificacoes_email WHERE usuario_id = $1', [userId]);
+    
+    // Deletar usuário
+    await client.query('DELETE FROM usuarios WHERE id = $1', [userId]);
+
+    await client.query('COMMIT');
+
+    console.log(`🗑️ ADMIN: Usuário ${user.nome} (${user.email_pessoal}) removido do sistema`);
+
+    res.json({
+      message: `Cadastro de ${user.nome} foi rejeitado e removido do sistema`,
+      usuario_removido: user.nome
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('❌ Erro ao rejeitar usuário:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  } finally {
+    client.release();
+  }
+});
+
+// LISTAR TODOS OS USUÁRIOS (PARA ADMINISTRAÇÃO GERAL)
+app.get('/api/admin/usuarios', adminMiddleware, async (req, res) => {
+  try {
+    const { status, tipo } = req.query;
+    
+    let whereConditions = [];
+    let params = [];
+    
+    if (status === 'verificados') {
+      whereConditions.push('email_verificado = true');
+    } else if (status === 'nao_verificados') {
+      whereConditions.push('email_verificado = false');
+    }
+    
+    if (tipo && ['estagiario', 'clt_associado'].includes(tipo)) {
+      whereConditions.push(`tipo_colaborador = $${params.length + 1}`);
+      params.push(tipo);
+    }
+    
+    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+    
+    const result = await pool.query(`
+      SELECT 
+        id, nome, email, email_pessoal, setor, 
+        tipo_colaborador, tipo_usuario, email_verificado,
+        aprovado_admin, criado_em, ultimo_login
+      FROM usuarios 
+      ${whereClause}
+      ORDER BY criado_em DESC
+    `, params);
+
+    const usuarios = result.rows.map(user => ({
+      ...user,
+      email_login: user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email
+    }));
+
+    res.json({
+      usuarios,
+      total: usuarios.length
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao listar usuários:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// REENVIAR CÓDIGO PARA QUALQUER USUÁRIO (ADMIN)
+app.post('/api/admin/reenviar-codigo/:userId', adminMiddleware, async (req, res) => {
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    const { userId } = req.params;
+
+    // Buscar usuário
+    const userResult = await client.query(
+      'SELECT * FROM usuarios WHERE id = $1 AND email_verificado = false',
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(404).json({ error: 'Usuário não encontrado ou já verificado' });
+    }
+
+    const user = userResult.rows[0];
+    const emailLogin = user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email;
+
+    // Gerar novo código
+    const codigoVerificacao = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiraEm = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    // Invalidar códigos anteriores
+    await client.query(
+      'UPDATE verificacoes_email SET usado_em = NOW() WHERE usuario_id = $1 AND usado_em IS NULL',
+      [userId]
+    );
+
+    // Criar novo código
+    await client.query(
+      `INSERT INTO verificacoes_email (usuario_id, token, tipo_token, expira_em) 
+       VALUES ($1, $2, $3, $4)`,
+      [userId, codigoVerificacao, 'verificacao_email', expiraEm]
+    );
+
+    await client.query('COMMIT');
+
+    // Enviar email
+    try {
+      await resend.emails.send({
+        from: 'onboarding@resend.dev',
+        to: [emailLogin],
+        subject: '🔐 Novo código de verificação - Dashboards RMH',
+        html: await gerarTemplateVerificacao(user.nome, codigoVerificacao, emailLogin, user.tipo_colaborador)
+      });
+
+      console.log(`📧 ADMIN: Código reenviado para ${emailLogin} pelo admin ${req.user.nome}`);
+    } catch (emailError) {
+      console.error('❌ Erro ao enviar email:', emailError);
+    }
+
+    res.json({
+      message: 'Novo código enviado com sucesso',
+      email_enviado_para: emailLogin,
+      tipo_colaborador: user.tipo_colaborador
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('❌ Erro ao reenviar código:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  } finally {
+    client.release();
+  }
+});
+
+// ===============================================
+// TRATAMENTO DE ERROS E ROTAS NÃO ENCONTRADAS
+// ===============================================
+
+// Middleware de tratamento de erros
+app.use((error, req, res, next) => {
+  console.error('❌ ERRO GLOBAL:', error);
+  
+  if (error.name === 'ValidationError') {
+    return res.status(400).json({ error: 'Dados inválidos', details: error.message });
+  }
+  
+  if (error.name === 'JsonWebTokenError') {
+    return res.status(401).json({ error: 'Token inválido' });
+  }
+  
+  if (error.name === 'TokenExpiredError') {
+    return res.status(401).json({ error: 'Token expirado' });
+  }
+
+  if (error.code === 'ECONNREFUSED') {
+    return res.status(503).json({ error: 'Erro de conexão com banco de dados' });
+  }
+
+  res.status(500).json({ 
+    error: 'Erro interno do servidor',
+    message: process.env.NODE_ENV === 'development' ? error.message : undefined
+  });
+});
+
+// Rota catch-all para SPAs - deve ser a ÚLTIMA rota
+app.get('*', (req, res) => {
+  console.log(`🎯 CATCH-ALL: Redirecionando ${req.path} para index.html`);
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 // ===============================================
@@ -772,76 +1436,59 @@ app.get('*', (req, res) => {
 
 async function iniciarServidor() {
   try {
-    // Testar conexão com banco COM RETRY
-    await testarConexao(3);
+    console.log('🚀 Iniciando servidor RMH Dashboards...');
+    console.log(`📍 Ambiente: ${process.env.NODE_ENV || 'development'}`);
     
+    // Testar conexão com banco
+    await testarConexao();
+    
+    // Iniciar servidor
     const server = app.listen(PORT, '0.0.0.0', () => {
-      console.log(`🚀 Servidor rodando em ${process.env.API_BASE_URL || 'http://localhost:3001'} na porta ${PORT}`);
-      console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`📧 Resend configurado`);
-      console.log(`🗄️ PostgreSQL conectado`);
-      console.log(`🔐 Sistema de verificação de email ativo`);
+      console.log(`✅ Servidor rodando na porta ${PORT}`);
+      console.log(`🌐 URL: http://localhost:${PORT}`);
+      console.log(`📊 API Base: http://localhost:${PORT}/api`);
+      console.log(`🔐 Health Check: http://localhost:${PORT}/health`);
+      console.log(`📝 Logs: Ativados para todas as rotas`);
+      
       if (process.env.NODE_ENV === 'production') {
-        console.log(`🎨 Frontend sendo servido da pasta dist/`);
+        console.log(`🎯 Frontend: Servido estaticamente da pasta dist/`);
       }
     });
 
-    // Keep-alive apenas em produção
-    if (process.env.NODE_ENV === 'production') {
-      setInterval(() => {
-        console.log('🏓 Keep-alive ping:', new Date().toISOString());
-      }, 60000);
-    }
-
-    // Graceful shutdown melhorado
-    const gracefulShutdown = (signal) => {
-      console.log(`📴 Recebido ${signal}, encerrando graciosamente...`);
-      server.close((err) => {
-        if (err) {
-          console.error('❌ Erro ao fechar servidor:', err);
-          process.exit(1);
-        }
-        console.log('🔴 Servidor encerrado');
-        pool.end((poolErr) => {
-          if (poolErr) {
-            console.error('❌ Erro ao fechar pool de conexões:', poolErr);
-            process.exit(1);
-          }
-          console.log('🔴 Conexão com PostgreSQL encerrada');
+    // Graceful shutdown
+    process.on('SIGTERM', () => {
+      console.log('🔄 Recebido SIGTERM. Fechando servidor graciosamente...');
+      server.close(() => {
+        console.log('✅ Servidor fechado com sucesso');
+        pool.end(() => {
+          console.log('🔌 Pool de conexões PostgreSQL fechado');
           process.exit(0);
         });
       });
-    };
-
-    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-
-    // Tratar erros não capturados
-    process.on('uncaughtException', (err) => {
-      console.error('❌ Erro não capturado:', err);
-      gracefulShutdown('UNCAUGHT_EXCEPTION');
     });
 
-    process.on('unhandledRejection', (reason, promise) => {
-      console.error('❌ Promise rejeitada não tratada:', reason, 'em', promise);
-      gracefulShutdown('UNHANDLED_REJECTION');
+    process.on('SIGINT', () => {
+      console.log('🔄 Recebido SIGINT. Fechando servidor graciosamente...');
+      server.close(() => {
+        console.log('✅ Servidor fechado com sucesso');
+        pool.end(() => {
+          console.log('🔌 Pool de conexões PostgreSQL fechado');
+          process.exit(0);
+        });
+      });
     });
 
   } catch (error) {
-    console.error('❌ Erro ao iniciar servidor:', error);
+    console.error('❌ Falha ao iniciar servidor:', error);
     process.exit(1);
   }
 }
 
-// Iniciar o servidor
+// Iniciar servidor
 iniciarServidor();
 
-// Error handler global
-app.use((error, req, res, next) => {
-  console.error('❌ Erro global:', error);
-  res.status(500).json({ 
-    error: process.env.NODE_ENV === 'production' 
-      ? 'Erro interno do servidor' 
-      : error.message 
-  });
-});
+// ===============================================
+// EXPORTS PARA TESTES (OPCIONAL)
+// ===============================================
+
+module.exports = app;

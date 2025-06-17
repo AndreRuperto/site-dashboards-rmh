@@ -6,8 +6,14 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:backend": "vite build --outDir=./backend/dist --emptyOutDir",
+    "build:deploy": "vite build --emptyOutDir && xcopy /E /I /Y dist\\* backend\\dist\\",
+    "build:full": "npm run build:backend && echo Frontend built and copied to backend/dist",
     "preview": "vite preview",
-    "start": "serve -s dist -l $PORT"
+    "start": "serve -s dist -l $PORT",
+    "deploy:local": "npm run build:backend && cd backend && npm start",
+    "backend:start": "cd backend && npm start",
+    "backend:dev": "cd backend && npm run dev"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

@@ -3,13 +3,14 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth, ProtectedRoute } from "@/contexts/AuthContext";
 import { DashboardProvider } from "@/contexts/DashboardContext";
 import { setupAPIInterceptor } from "@/utils/apiInterceptor";
-import LoginForm from "@/components/LoginForm";
+import AuthSystem from "@/components/AuthSystem";
 import DashboardsPage from "@/pages/Dashboards";
 import NotFound from "./pages/NotFound";
+import AdminUserControl from '@/pages/AdminUserControl';
 
 const queryClient = new QueryClient();
 
@@ -28,7 +29,7 @@ const AppContent = () => {
   }
 
   if (!user) {
-    return <LoginForm />;
+    return <AuthSystem />;
   }
 
   return (
@@ -50,6 +51,34 @@ const AppContent = () => {
             </ProtectedRoute>
           } 
         />
+        
+        {/* ROTAS ADMINISTRATIVAS - Só acessíveis para admins */}
+        <Route 
+          path="/admin/usuarios" 
+          element={
+            <ProtectedRoute requireAdmin={true}>
+              <AdminUserControl />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/admin/settings" 
+          element={
+            <ProtectedRoute requireAdmin={true}>
+              <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                <div className="text-center p-8">
+                  <h1 className="text-2xl font-bold text-gray-800 mb-4">🚧 Em Desenvolvimento</h1>
+                  <p className="text-gray-600">Configurações do Sistema em breve...</p>
+                </div>
+              </div>
+            </ProtectedRoute>
+          } 
+        />
+
+        {/* REDIRECIONAMENTOS */}
+        <Route path="/admin" element={<Navigate to="/admin/usuarios" replace />} />
+        
+        {/* 404 - NOT FOUND */}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </DashboardProvider>

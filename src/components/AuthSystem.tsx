@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Mail, ArrowLeft } from 'lucide-react';
-import EmailVerificationForm from './EmailVerificationForm';
-import Login from './LoginForm';
+import EmailVerificationForm from '@/components/EmailVerificationForm';
+
+// IMPORTANTE: Descomente estas linhas se ainda estão comentadas
+import Login from './Login';
 import Register from './Register';
 
 // Types definition
@@ -15,27 +17,47 @@ interface User {
 }
 
 type AuthView = 'login' | 'register' | 'forgot-password' | 'email-sent' | 'verification';
+type TipoColaborador = 'estagiario' | 'clt_associado';
 
 const AuthSystem = () => {
   const [currentView, setCurrentView] = useState<AuthView>('login');
   const [userEmail, setUserEmail] = useState('');
+  const [tipoColaboradorPreSelecionado, setTipoColaboradorPreSelecionado] = useState<TipoColaborador>('clt_associado');
 
-  const switchView = (view: AuthView, email?: string) => {
+  // DEBUG: Log inicial
+  console.log('🚀 AuthSystem: Componente renderizado, currentView:', currentView);
+
+  const switchView = (view: AuthView, email?: string, tipo?: TipoColaborador) => {
+    console.log('🔄 AuthSystem: Mudando para view:', view, 'Email:', email, 'Tipo:', tipo);
     setCurrentView(view);
     if (email) setUserEmail(email);
+    if (tipo) setTipoColaboradorPreSelecionado(tipo);
   };
+
+  const handleSwitchToRegister = (tipoPreSelecionado?: TipoColaborador) => {
+    console.log('📝 AuthSystem: handleSwitchToRegister chamado com:', tipoPreSelecionado);
+    console.log('📝 AuthSystem: Tipo da função:', typeof handleSwitchToRegister);
+    switchView('register', undefined, tipoPreSelecionado || 'clt_associado');
+  };
+
+  // DEBUG: Log da função antes de passar para o Login
+  console.log('🔧 AuthSystem: handleSwitchToRegister criado, tipo:', typeof handleSwitchToRegister);
 
   return (
     <>
       {currentView === 'login' && (
-        <Login 
-          onSwitchToRegister={() => switchView('register')}
-          onSwitchToForgotPassword={() => switchView('forgot-password')}
-          onSwitchToVerification={(email) => switchView('verification', email)}
-        />
+        <>
+          {console.log('🔍 AuthSystem: Renderizando Login component')}
+          <Login 
+            onSwitchToRegister={handleSwitchToRegister}
+            onSwitchToForgotPassword={() => switchView('forgot-password')}
+            onSwitchToVerification={(email) => switchView('verification', email)}
+          />
+        </>
       )}
       {currentView === 'register' && (
         <Register 
+          tipoPreSelecionado={tipoColaboradorPreSelecionado}
           onBackToLogin={() => switchView('login')}
           onEmailSent={(email) => switchView('email-sent', email)}
           onSwitchToVerification={(email) => switchView('verification', email)}
