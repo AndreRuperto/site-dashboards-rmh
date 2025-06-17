@@ -8,7 +8,7 @@ export interface User {
   id: string;
   nome: string;
   email: string;
-  setor: string;
+  departamento: string;
   tipo_usuario: UserRole;
   email_verificado: boolean;
   criado_em: string;

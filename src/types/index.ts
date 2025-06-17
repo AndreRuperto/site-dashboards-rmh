@@ -1,13 +1,16 @@
-// src/types/index.ts - Tipos centralizados baseados no schema do banco
+// src/types/index.ts - Tipos atualizados para incluir tipos de colaborador
 
 export type UserRole = 'usuario' | 'admin';
+export type TipoColaborador = 'estagiario' | 'clt_associado';
 
 export interface User {
   id: string;
   nome: string;
-  email: string;
-  setor: string;
+  email?: string; // Email corporativo - opcional para estagiários
+  email_pessoal?: string; // Email pessoal - obrigatório para estagiários
+  departamento: string;
   tipo_usuario: UserRole;
+  tipo_colaborador: TipoColaborador;
   email_verificado: boolean;
   criado_em: string;
   atualizado_em: string;
@@ -57,9 +60,11 @@ export interface LoginRequest {
 
 export interface RegisterRequest {
   nome: string;
-  email: string;
+  email?: string; // Opcional para estagiários
+  email_pessoal?: string; // Obrigatório para estagiários
   senha: string;
-  setor: string;
+  departamento: string;
+  tipo_colaborador: TipoColaborador;
 }
 
 export interface CreateDashboardRequest {
@@ -90,3 +95,23 @@ export interface ApiError {
   error: string;
   details?: string;
 }
+
+// Utilitários para validação
+export const getLoginEmail = (user: User): string => {
+  if (user.tipo_colaborador === 'estagiario') {
+    return user.email_pessoal || '';
+  }
+  return user.email || '';
+};
+
+export const getDisplayEmail = (user: User): string => {
+  return getLoginEmail(user);
+};
+
+export const isEstagiario = (user: User): boolean => {
+  return user.tipo_colaborador === 'estagiario';
+};
+
+export const isCltAssociado = (user: User): boolean => {
+  return user.tipo_colaborador === 'clt_associado';
+};
