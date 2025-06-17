@@ -71,7 +71,7 @@ const Header = () => {
                       {user?.email}
                     </p>
                     <p className="text-xs leading-none text-muted-foreground">
-                      {user?.departamento} • {user?.tipo_usuario === 'admin' ? 'Administrador' : 'Usuário'}
+                      {user?.setor} • {user?.tipo_usuario === 'admin' ? 'Administrador' : 'Usuário'}
                     </p>
                   </div>
                 </DropdownMenuLabel>

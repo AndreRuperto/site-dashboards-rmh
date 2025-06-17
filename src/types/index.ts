@@ -6,7 +6,7 @@ export interface User {
   id: string;
   nome: string;
   email: string;
-  departamento: string;
+  setor: string;
   tipo_usuario: UserRole;
   email_verificado: boolean;
   criado_em: string;
@@ -59,7 +59,7 @@ export interface RegisterRequest {
   nome: string;
   email: string;
   senha: string;
-  departamento: string;
+  setor: string;
 }
 
 export interface CreateDashboardRequest {

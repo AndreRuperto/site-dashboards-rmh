@@ -66,13 +66,13 @@ const DashboardFilters: React.FC<DashboardFiltersProps> = ({
 
         <div className="space-y-2">
           {/* 🔧 NOTA: Este campo pode ser removido já que temos apenas "setor" na interface */}
-          <label className="text-sm font-medium text-corporate-gray">Departamento</label>
+          <label className="text-sm font-medium text-corporate-gray">setor</label>
           <Select value={selectedDepartment} onValueChange={onDepartmentChange}>
             <SelectTrigger>
-              <SelectValue placeholder="Todos os departamentos" />
+              <SelectValue placeholder="Todos os setors" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos os departamentos</SelectItem>
+              <SelectItem value="all">Todos os setors</SelectItem>
               {/* 🔧 CORREÇÃO: Usar setores também aqui ou remover este campo */}
               {setores.map(setor => (
                 <SelectItem key={setor} value={setor}>

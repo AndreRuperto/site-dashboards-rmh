@@ -163,7 +163,7 @@ const schemaRegistro = Joi.object({
   nome: Joi.string().min(2).max(100).required(),
   email: Joi.string().email().pattern(/@resendemh\.com\.br$/).required(),
   senha: Joi.string().min(6).required(),
-  departamento: Joi.string().required()
+  setor: Joi.string().required()
 });
 
 const schemaLogin = Joi.object({
@@ -264,7 +264,7 @@ async function gerarTemplateVerificacao(nome, codigo) {
         margin-bottom: 8px;
       }
       .content p {
-        font-size: 15px;
+        font-size: 17px;
         color: #555;
         margin-top: 0;
       }
@@ -316,7 +316,7 @@ async function gerarTemplateVerificacao(nome, codigo) {
       </div>
       <div class="content">
         <h2>Olá, ${nome}!</h2>
-        <p>Insira o código abaixo para confirmar seu email e ativar seu acesso aos dashboards da RMH:</p>
+        <p>Insira o código abaixo para confirmar seu email e ativar seu acesso ao site da RMH:</p>
         <div class="code-box">${codigo}</div>
         <p class="note">Este código expira em 24 horas. Se você não solicitou este cadastro, ignore este e-mail.</p>
       </div>
@@ -371,46 +371,6 @@ app.get('/ping', (req, res) => {
   res.status(200).send('pong');
 });
 
-app.post('/send-test-email', async (req, res) => {
-  try {
-    const { data, error } = await resend.emails.send({
-      from: 'onboarding@resend.dev',
-      to: ['andreruperto@gmail.com'],
-      subject: '🎉 Teste Backend Completo - RMH',
-      html: `
-        <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px;">
-          <h2 style="color: #1e40af;">🚀 Backend Completo Funcionando!</h2>
-          <p>Agora com sistema completo de verificação de email!</p>
-          <div style="background: #10b981; color: white; padding: 15px; border-radius: 8px; margin: 20px 0; text-align: center;">
-            <h3 style="margin: 0;">✅ SISTEMA COMPLETO!</h3>
-          </div>
-          <ul>
-            <li>✅ PostgreSQL conectado</li>
-            <li>✅ JWT funcionando</li>
-            <li>✅ Resend integrado</li>
-            <li>✅ Verificação de email</li>
-            <li>✅ Schema em português</li>
-          </ul>
-          <p><strong>Data/Hora:</strong> ${new Date().toLocaleString('pt-BR')}</p>
-        </div>
-      `
-    });
-
-    if (error) {
-      return res.status(400).json({ success: false, error: error.message });
-    }
-
-    res.json({ 
-      success: true, 
-      data: { id: data.id, message: 'Email enviado com sucesso!' }
-    });
-
-  } catch (error) {
-    console.error('Erro no teste de email:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 // ===============================================
 // ROTAS DE AUTENTICAÇÃO
 // ===============================================
@@ -423,7 +383,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
       return res.status(400).json({ error: error.details[0].message });
     }
 
-    const { nome, email, senha, departamento } = value;
+    const { nome, email, senha, setor } = value;
 
     // Verificar se o usuário já existe
     const userExists = await pool.query(
@@ -450,9 +410,9 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
 
     // Inserir usuário SEM verificação
     const result = await pool.query(
-      `INSERT INTO usuarios (nome, email, senha, departamento, tipo_usuario, email_verificado) 
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, nome, email, departamento, tipo_usuario`,
-      [nome, email, senhaHash, departamento, 'usuario', false]
+      `INSERT INTO usuarios (nome, email, senha, setor, tipo_usuario, email_verificado) 
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, nome, email, setor, tipo_usuario`,
+      [nome, email, senhaHash, setor, 'usuario', false]
     );
 
     const newUser = result.rows[0];
@@ -501,7 +461,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
         id: newUser.id,
         nome: newUser.nome,
         email: newUser.email,
-        departamento: newUser.departamento,
+        setor: newUser.setor,
         email_verificado: false
       },
       verification_required: true
@@ -615,7 +575,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 
     // Buscar usuário
     const result = await pool.query(
-      'SELECT id, nome, email, senha, departamento, tipo_usuario, email_verificado FROM usuarios WHERE email = $1',
+      'SELECT id, nome, email, senha, setor, tipo_usuario, email_verificado FROM usuarios WHERE email = $1',
       [email]
     );
 
@@ -664,7 +624,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
         id: user.id,
         nome: user.nome,
         email: user.email,
-        departamento: user.departamento,
+        setor: user.setor,
         tipo_usuario: user.tipo_usuario
       }
     });

@@ -181,30 +181,6 @@ const LoginView: React.FC<LoginViewProps> = ({
           </CardTitle>
         </CardHeader>
         <CardContent className="-mt-3">
-          {/* Bloco de teste (REMOVER EM PRODUÇÃO) */}
-          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm text-blue-700 mb-2">🧪 <strong>Teste Backend:</strong></p>
-            <Button
-              onClick={testResendEmail}
-              disabled={isTestingEmail}
-              variant="outline"
-              size="sm"
-              className="w-full"
-            >
-              {isTestingEmail ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Testando...
-                </>
-              ) : (
-                <>
-                  <Mail className="mr-2 h-4 w-4" />
-                  Testar Email
-                </>
-              )}
-            </Button>
-          </div>
-
           <form onSubmit={handleSubmit} className="space-y-3">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
@@ -281,10 +257,6 @@ const LoginView: React.FC<LoginViewProps> = ({
                 Não tem uma conta? Cadastre-se
               </Button>
             </div>
-            
-            <div className="text-center text-sm text-corporate-gray border-t pt-4">
-              <p><strong>Acesso admin:</strong> admin@resendemh.com.br | Senha: 123456</p>
-            </div>
           </div>
         </CardContent>
       </Card>
@@ -309,14 +281,14 @@ const RegisterView: React.FC<RegisterViewProps> = ({
     email: '',
     senha: '',
     confirmSenha: '',
-    departamento: ''
+    setor: ''
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  const departamentos = [
+  const setors = [
     'Vendas', 'Financeiro', 'Marketing', 'Operações', 'RH', 'TI', 'Diretoria', 'Jurídico', 'Compras'
   ];
 
@@ -344,7 +316,7 @@ const RegisterView: React.FC<RegisterViewProps> = ({
           nome: formData.nome,
           email: formData.email,
           senha: formData.senha,
-          departamento: formData.departamento
+          setor: formData.setor
         })
       });
 
@@ -423,16 +395,16 @@ const RegisterView: React.FC<RegisterViewProps> = ({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="departamento">Departamento</Label>
+              <Label htmlFor="setor">setor</Label>
               <select
-                id="departamento"
-                value={formData.departamento}
-                onChange={(e) => setFormData(prev => ({ ...prev, departamento: e.target.value }))}
+                id="setor"
+                value={formData.setor}
+                onChange={(e) => setFormData(prev => ({ ...prev, setor: e.target.value }))}
                 required
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               >
-                <option value="">Selecione o departamento</option>
-                {departamentos.map(dept => (
+                <option value="">Selecione o setor</option>
+                {setors.map(dept => (
                   <option key={dept} value={dept}>{dept}</option>
                 ))}
               </select>
