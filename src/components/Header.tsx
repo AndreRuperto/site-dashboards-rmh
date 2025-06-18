@@ -55,7 +55,7 @@ const Header = () => {
                 onClick={goToDashboards}
                 className="text-rmh-white hover:text-white hover:bg-rmh-lightGreen/20"
               >
-                📊 Dashboards
+                Dashboards
               </Button>
             </nav>
           </div>

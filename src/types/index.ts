@@ -1,6 +1,7 @@
 // src/types/index.ts - ATUALIZADO com base no backend real
-export type UserRole = 'usuario' | 'admin';
+export type UserRole = 'usuario' | 'coordenador' | 'admin';
 export type TipoColaborador = 'estagiario' | 'clt_associado';
+export type TipoVisibilidade = 'geral' | 'coordenadores' | 'admin';
 
 export interface User {
   id: string;
@@ -28,7 +29,8 @@ export interface Usuario {
   email_pessoal?: string;
   setor: string;
   tipo_colaborador: TipoColaborador;
-  tipo_usuario?: UserRole;
+  tipo_usuario: UserRole;
+  is_coordenador: boolean;
   email_verificado: boolean;
   aprovado_admin?: boolean;
   criado_em: string;
@@ -50,6 +52,7 @@ export interface Dashboard {
   criado_por_nome?: string; // Nome do criador (JOIN com usuarios)
   criado_em: string;
   atualizado_em: string;
+  tipo_visibilidade: TipoVisibilidade;
 }
 
 export interface VerificacaoEmail {
@@ -61,6 +64,25 @@ export interface VerificacaoEmail {
   usado_em?: string;
   criado_em: string;
 }
+
+export const podeVisualizarDashboard = (
+  usuario: Usuario,
+  dashboard: Dashboard
+): boolean => {
+  if (!usuario.tipo_usuario) return false;
+  if (usuario.setor !== dashboard.setor) return false;
+
+  switch (dashboard.tipo_visibilidade) {
+    case 'geral':
+      return true;
+    case 'coordenadores':
+      return usuario.is_coordenador;
+    case 'admin':
+      return usuario.tipo_usuario === 'admin';
+    default:
+      return false;
+  }
+};
 
 export interface LogEmail {
   id: string;

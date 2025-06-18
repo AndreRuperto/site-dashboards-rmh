@@ -573,7 +573,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
       // Enviar email automaticamente para CLT
       try {
         const emailResult = await resend.emails.send({
-          from: 'onboarding@resend.dev',
+          from: 'andre.macedo@resendemh.com.br',
           to: [emailLogin],
           subject: '🔐 Confirme seu email - Dashboards RMH',
           html: await gerarTemplateVerificacao(nome, codigoVerificacao, emailLogin, tipo_colaborador)
@@ -870,7 +870,7 @@ app.post('/api/auth/resend-verification', async (req, res) => {
     // Enviar email
     try {
       const emailResult = await resend.emails.send({
-        from: 'onboarding@resend.dev',
+        from: 'andre.macedo@resendemh.com.br',
         to: [emailLogin],
         subject: '🔐 Novo código de verificação - Dashboards RMH',
         html: await gerarTemplateVerificacao(user.nome, codigoVerificacao, emailLogin, user.tipo_colaborador)
@@ -1370,7 +1370,7 @@ app.post('/api/admin/aprovar-usuario/:userId', adminMiddleware, async (req, res)
       // Enviar email
       try {
         const emailResult = await resend.emails.send({
-          from: 'onboarding@resend.dev',
+          from: 'andre.macedo@resendemh.com.br',
           to: [user.email_pessoal],
           subject: '✅ Cadastro aprovado - Dashboards RMH',
           html: await gerarTemplateVerificacao(user.nome, codigoVerificacao, user.email_pessoal, user.tipo_colaborador)
@@ -1476,9 +1476,22 @@ app.get('/api/admin/usuarios', adminMiddleware, async (req, res) => {
     
     const result = await pool.query(`
       SELECT 
-        id, nome, email, email_pessoal, setor, 
-        tipo_colaborador, tipo_usuario, email_verificado,
-        aprovado_admin, criado_em, ultimo_login
+        id,
+        nome,
+        setor,
+        email,
+        email_pessoal,
+        tipo_colaborador,
+        tipo_usuario,
+        email_verificado,
+        criado_em,
+        verificado_em,
+        atualizado_em,
+        ultimo_login,
+        aprovado_admin,
+        aprovado_em,
+        aprovado_por,
+        is_coordenador
       FROM usuarios 
       ${whereClause}
       ORDER BY criado_em DESC
@@ -1546,7 +1559,7 @@ app.post('/api/admin/reenviar-codigo/:userId', adminMiddleware, async (req, res)
     // Enviar email
     try {
       await resend.emails.send({
-        from: 'onboarding@resend.dev',
+        from: 'andre.macedo@resendemh.com.br',
         to: [emailLogin],
         subject: '🔐 Novo código de verificação - Dashboards RMH',
         html: await gerarTemplateVerificacao(user.nome, codigoVerificacao, emailLogin, user.tipo_colaborador)
@@ -1571,6 +1584,57 @@ app.post('/api/admin/reenviar-codigo/:userId', adminMiddleware, async (req, res)
     client.release();
   }
 });
+
+// PROMOVER USUÁRIO A COORDENADOR
+app.patch('/api/admin/usuarios/:userId/promover', adminMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const result = await pool.query(
+      'UPDATE usuarios SET is_coordenador = TRUE WHERE id = $1 RETURNING id, nome, is_coordenador',
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    res.json({
+      message: 'Usuário promovido a coordenador com sucesso',
+      usuario: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao promover coordenador:', error);
+    res.status(500).json({ error: 'Erro ao promover coordenador' });
+  }
+});
+
+// REBAIXAR COORDENADOR
+app.patch('/api/admin/usuarios/:userId/rebaixar', adminMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const result = await pool.query(
+      'UPDATE usuarios SET is_coordenador = FALSE WHERE id = $1 RETURNING id, nome, is_coordenador',
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    res.json({
+      message: 'Usuário rebaixado com sucesso',
+      usuario: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao rebaixar coordenador:', error);
+    res.status(500).json({ error: 'Erro ao rebaixar coordenador' });
+  }
+});
+
 
 // ===============================================
 // TRATAMENTO DE ERROS E ROTAS NÃO ENCONTRADAS
