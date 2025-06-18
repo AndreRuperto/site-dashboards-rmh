@@ -128,7 +128,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     
     // Redirecionar para login
-    window.location.href = '/login';
+    window.location.href = '/';
   };
 
   const value: AuthContextType = {

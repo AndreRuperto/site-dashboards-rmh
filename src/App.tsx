@@ -78,6 +78,7 @@ const AppContent = () => {
         {/* REDIRECIONAMENTOS */}
         <Route path="/admin" element={<Navigate to="/admin/usuarios" replace />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
+        <Route path="/dashboard" element={<Navigate to="/" replace />} />
         
         {/* 404 - NOT FOUND */}
         <Route path="*" element={<NotFound />} />

@@ -49,36 +49,32 @@ const Login: React.FC<LoginProps> = ({
   };
 
   const performLogin = async (email: string, senha: string) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ email, senha })
+    const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ email, senha })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      localStorage.setItem('authToken', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      
+      toast({
+        title: "Login realizado!",
+        description: "Redirecionando para dashboard...",
       });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        localStorage.setItem('authToken', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        
-        toast({
-          title: "Login realizado!",
-          description: "Redirecionando para dashboard...",
-        });
-        
-        setTimeout(() => {
-          window.location.href = '/dashboard';
-        }, 1000);
-        
-        return true;
-      } else {
-        throw new Error(data.error || 'Erro no login');
-      }
-    } catch (error) {
-      throw error;
+      
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 1000);
+      
+      return true;
+    } else {
+      throw new Error(data.error || 'Erro no login');
     }
   };
 
