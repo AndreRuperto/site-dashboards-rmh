@@ -1,5 +1,4 @@
-// src/types/index.ts - Tipos atualizados para incluir tipos de colaborador
-
+// src/types/index.ts - CORRIGIDO com base no backend real
 export type UserRole = 'usuario' | 'admin';
 export type TipoColaborador = 'estagiario' | 'clt_associado';
 
@@ -8,7 +7,7 @@ export interface User {
   nome: string;
   email?: string; // Email corporativo - opcional para estagiários
   email_pessoal?: string; // Email pessoal - obrigatório para estagiários
-  departamento: string;
+  setor: string; // 🔧 CORRIGIDO: era 'departamento', agora é 'setor'
   tipo_usuario: UserRole;
   tipo_colaborador: TipoColaborador;
   email_verificado: boolean;
@@ -27,6 +26,7 @@ export interface Dashboard {
   largura?: number;
   altura?: number;
   criado_por: string;
+  criado_por_nome?: string; // Nome do criador (JOIN com usuarios)
   criado_em: string;
   atualizado_em: string;
 }
@@ -63,7 +63,7 @@ export interface RegisterRequest {
   email?: string; // Opcional para estagiários
   email_pessoal?: string; // Obrigatório para estagiários
   senha: string;
-  departamento: string;
+  setor: string; // 🔧 CORRIGIDO: era 'departamento', agora é 'setor'
   tipo_colaborador: TipoColaborador;
 }
 

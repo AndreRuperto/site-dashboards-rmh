@@ -6,14 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Mail, ArrowLeft, RefreshCw } from 'lucide-react';
-
-// Definir tipos para o usuário
-interface User {
-  id: string;
-  nome: string;
-  email: string;
-  email_verificado: boolean;
-}
+import { User } from '@/types';
 
 interface EmailVerificationFormProps {
   email: string;

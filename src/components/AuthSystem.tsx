@@ -1,175 +1,415 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Mail, ArrowLeft } from 'lucide-react';
-import EmailVerificationForm from '@/components/EmailVerificationForm';
-
-// IMPORTANTE: Descomente estas linhas se ainda estão comentadas
-import Login from './Login';
-import Register from './Register';
+import { useToast } from '@/hooks/use-toast';
+import { Eye, EyeOff, Users, Building, Mail, ArrowLeft, Loader2 } from 'lucide-react';
 
 // Types definition
-interface User {
-  id: string;
-  nome: string;
-  email: string;
-  email_verificado: boolean;
-}
-
-type AuthView = 'login' | 'register' | 'forgot-password' | 'email-sent' | 'verification';
 type TipoColaborador = 'estagiario' | 'clt_associado';
 
-const AuthSystem = () => {
-  const [currentView, setCurrentView] = useState<AuthView>('login');
-  const [userEmail, setUserEmail] = useState('');
-  const [tipoColaboradorPreSelecionado, setTipoColaboradorPreSelecionado] = useState<TipoColaborador>('clt_associado');
-
-  // DEBUG: Log inicial
-  console.log('🚀 AuthSystem: Componente renderizado, currentView:', currentView);
-
-  const switchView = (view: AuthView, email?: string, tipo?: TipoColaborador) => {
-    console.log('🔄 AuthSystem: Mudando para view:', view, 'Email:', email, 'Tipo:', tipo);
-    setCurrentView(view);
-    if (email) setUserEmail(email);
-    if (tipo) setTipoColaboradorPreSelecionado(tipo);
-  };
-
-  const handleSwitchToRegister = (tipoPreSelecionado?: TipoColaborador) => {
-    console.log('📝 AuthSystem: handleSwitchToRegister chamado com:', tipoPreSelecionado);
-    console.log('📝 AuthSystem: Tipo da função:', typeof handleSwitchToRegister);
-    switchView('register', undefined, tipoPreSelecionado || 'clt_associado');
-  };
-
-  // DEBUG: Log da função antes de passar para o Login
-  console.log('🔧 AuthSystem: handleSwitchToRegister criado, tipo:', typeof handleSwitchToRegister);
-
-  return (
-    <>
-      {currentView === 'login' && (
-        <>
-          {console.log('🔍 AuthSystem: Renderizando Login component')}
-          <Login 
-            onSwitchToRegister={handleSwitchToRegister}
-            onSwitchToForgotPassword={() => switchView('forgot-password')}
-            onSwitchToVerification={(email) => switchView('verification', email)}
-          />
-        </>
-      )}
-      {currentView === 'register' && (
-        <Register 
-          tipoPreSelecionado={tipoColaboradorPreSelecionado}
-          onBackToLogin={() => switchView('login')}
-          onEmailSent={(email) => switchView('email-sent', email)}
-          onSwitchToVerification={(email) => switchView('verification', email)}
-        />
-      )}
-      {currentView === 'email-sent' && (
-        <EmailSentView 
-          email={userEmail}
-          onBackToLogin={() => switchView('login')}
-        />
-      )}
-      {currentView === 'verification' && (
-        <EmailVerificationForm
-          email={userEmail}
-          onVerificationSuccess={(token: string, user: User) => {
-            localStorage.setItem('authToken', token);
-            localStorage.setItem('user', JSON.stringify(user));
-            window.location.reload();
-          }}
-          onBackToLogin={() => switchView('login')}
-        />
-      )}
-      {currentView === 'forgot-password' && (
-        <ForgotPasswordView 
-          onBackToLogin={() => switchView('login')}
-        />
-      )}
-    </>
-  );
-};
-
-// EmailSentView Component
-interface EmailSentViewProps {
-  email: string;
-  onBackToLogin: () => void;
+// Definindo o tipo RegistrationResult - UNIFICADO com AuthSystem
+interface RegistrationResult {
+  success?: boolean;
+  message?: string;
+  error?: string;
+  verification_required?: boolean;
+  awaiting_admin_approval?: boolean;
+  email_enviado_para?: string;
+  email_login?: string;
+  email?: string;
+  nome?: string;
+  tipo_colaborador?: TipoColaborador;
+  email_enviado?: boolean;
+  info?: string;
+  user_id?: string;
 }
 
-const EmailSentView: React.FC<EmailSentViewProps> = ({ email, onBackToLogin }) => {
+// API Configuration
+const API_BASE_URL = 'http://localhost:3001'; // Adjust for production
+
+interface RegisterProps {
+  tipoPreSelecionado?: TipoColaborador;
+  onBackToLogin: () => void;
+  onEmailSent: (data: RegistrationResult) => void;
+  onSwitchToVerification: (email: string) => void;
+}
+
+const Register: React.FC<RegisterProps> = ({ 
+  tipoPreSelecionado = 'clt_associado',
+  onBackToLogin, 
+  onEmailSent, 
+  onSwitchToVerification 
+}) => {
+  const [formData, setFormData] = useState({
+    nome: '',
+    email: '',
+    email_pessoal: '',
+    senha: '',
+    confirmarSenha: '',
+    setor: '',
+    tipo_colaborador: tipoPreSelecionado // ← Usar tipo pré-selecionado
+  });
+  
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
+
+  const setors = [
+    'Carteira',
+    'Atendimento',
+    'Prazos',
+    'Trabalhista',
+    'Projetos',
+    'Inicial',
+    'Criminal',
+    'Financeiro',
+    'Saúde',
+    'Comercial/Marketing',
+    'Administrativo',
+    'Família e Sucessões'
+  ];
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleTipoColaboradorChange = (value: TipoColaborador) => {
+    setFormData(prev => ({
+      ...prev,
+      tipo_colaborador: value,
+      // Limpar emails ao mudar tipo
+      email: value === 'estagiario' ? '' : prev.email,
+      email_pessoal: value === 'clt_associado' ? '' : prev.email_pessoal
+    }));
+  };
+
+  const validateForm = () => {
+    if (!formData.nome.trim()) {
+      return 'Nome é obrigatório';
+    }
+
+    if (formData.tipo_colaborador === 'estagiario') {
+      if (!formData.email_pessoal.trim()) {
+        return 'Email pessoal é obrigatório para estagiários';
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email_pessoal)) {
+        return 'Email pessoal deve ter formato válido';
+      }
+    } else {
+      if (!formData.email.trim()) {
+        return 'Email corporativo é obrigatório para CLT/Associado';
+      }
+      if (!formData.email.endsWith('@resendemh.com.br')) {
+        return 'Email corporativo deve terminar com @resendemh.com.br';
+      }
+      if (!formData.email_pessoal.trim()) {
+        return 'Email pessoal é obrigatório para envio do contracheque';
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email_pessoal)) {
+        return 'Email pessoal deve ter formato válido';
+      }
+    }
+
+    if (!formData.setor.trim()) {
+      return 'Setor é obrigatório';
+    }
+
+    if (formData.senha.length < 6) {
+      return 'Senha deve ter pelo menos 6 caracteres';
+    }
+
+    if (formData.senha !== formData.confirmarSenha) {
+      return 'Senhas não coincidem';
+    }
+
+    return null;
+  };
+
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    
+    const validationError = validateForm();
+    if (validationError) {
+      toast({
+        title: "Erro de validação",
+        description: validationError,
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const payload = {
+        nome: formData.nome.trim(),
+        setor: formData.setor.trim(),
+        tipo_colaborador: formData.tipo_colaborador,
+        senha: formData.senha,
+        ...(formData.tipo_colaborador === 'estagiario' 
+          ? { email_pessoal: formData.email_pessoal.trim() }
+          : { 
+              email: formData.email.trim(),
+              email_pessoal: formData.email_pessoal.trim()
+            }
+        )
+      };
+
+      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const data: RegistrationResult = await response.json();
+
+      if (response.ok) {
+        // Enriquecer os dados de resposta com informações do formulário
+        const enrichedData: RegistrationResult = {
+          ...data,
+          nome: formData.nome,
+          tipo_colaborador: formData.tipo_colaborador,
+          email: formData.tipo_colaborador === 'clt_associado' ? formData.email : undefined,
+          email_login: formData.tipo_colaborador === 'estagiario' ? formData.email_pessoal : formData.email,
+          email_enviado_para: formData.tipo_colaborador === 'estagiario' ? formData.email_pessoal : formData.email
+        };
+
+        // Redirecionar para verificação com email apropriado
+        const emailForVerification = formData.tipo_colaborador === 'estagiario' 
+          ? formData.email_pessoal 
+          : formData.email;
+        
+        if (data.verification_required) {
+          onSwitchToVerification(emailForVerification);
+          toast({
+            title: "📧 Cadastro realizado!",
+            description: "Verifique seu email e digite o código de verificação",
+            variant: "default",
+          });
+        } else {
+          // Usar dados enriquecidos
+          onEmailSent(enrichedData);
+          toast({
+            title: "📧 Cadastro realizado!",
+            description: "Verifique seu email para ativar a conta",
+          });
+        }
+      } else {
+        toast({
+          title: "❌ Erro no cadastro",
+          description: data.error || data.message || 'Erro no cadastro',
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Erro no cadastro:', error);
+      toast({
+        title: "❌ Erro de conexão",
+        description: "Erro de conexão. Tente novamente.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const isEstagiario = formData.tipo_colaborador === 'estagiario';
+
   return (
     <div className="min-h-screen bg-primary flex items-center justify-center p-4">
       <Card className="w-full max-w-md shadow-2xl">
         <CardHeader className="text-center space-y-4">
           <div className="flex items-center justify-center">
-            <Mail className="h-12 w-12 text-green-600" />
+            <Users className="h-12 w-12 text-primary-600" />
           </div>
           <CardTitle className="text-2xl font-heading font-bold text-corporate-blue">
-            Email Enviado!
+            Criar Conta
           </CardTitle>
-          <CardDescription className="text-corporate-gray">
-            Enviamos instruções para <strong>{email}</strong>
+          <CardDescription className="text-center">
+            Cadastre-se na plataforma de dashboards RMH
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="text-center text-sm text-corporate-gray space-y-2">
-            <p>📧 Um email de ativação foi enviado para sua caixa de entrada.</p>
-            <p>🔍 Não encontrou? Verifique sua caixa de spam.</p>
-            <p>⏰ O link expira em 24 horas.</p>
-          </div>
-          
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h4 className="font-semibold text-blue-800 mb-2">📋 Próximos passos:</h4>
-            <ol className="text-sm text-blue-700 space-y-1 list-decimal list-inside">
-              <li>Abra o email que enviamos</li>
-              <li>Digite o código de 6 dígitos</li>
-              <li>Faça login com suas credenciais</li>
-            </ol>
-          </div>
-          
-          <Button
-            onClick={onBackToLogin}
-            variant="ghost"
-            className="w-full"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Voltar ao Login
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
-  );
-};
-
-// ForgotPasswordView Component
-interface ForgotPasswordViewProps {
-  onBackToLogin: () => void;
-}
-
-const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({ onBackToLogin }) => {
-  return (
-    <div className="min-h-screen bg-primary flex items-center justify-center p-4">
-      <Card className="w-full max-w-md shadow-2xl">
-        <CardHeader className="text-center space-y-4">
-          <CardTitle className="text-2xl font-heading font-bold text-corporate-blue">
-            Em Breve
-          </CardTitle>
-          <CardDescription className="text-corporate-gray">
-            Função de recuperação de senha será implementada em breve
-          </CardDescription>
-        </CardHeader>
+        
         <CardContent>
-          <Button
-            onClick={onBackToLogin}
-            variant="ghost"
-            className="w-full"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Voltar ao Login
-          </Button>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="nome">Nome Completo</Label>
+              <Input
+                id="nome"
+                name="nome"
+                type="text"
+                placeholder="Seu nome completo"
+                value={formData.nome}
+                onChange={handleInputChange}
+                required
+              />
+            </div>
+
+            <div className="space-y-3">
+              <Label>Tipo de Colaborador</Label>
+              <RadioGroup
+                value={formData.tipo_colaborador}
+                onValueChange={handleTipoColaboradorChange}
+                className="flex flex-col space-y-2"
+              >
+                <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-gray-50">
+                  <RadioGroupItem value="clt_associado" id="clt_associado" />
+                  <Label htmlFor="clt_associado" className="flex items-center space-x-2 cursor-pointer flex-1">
+                    <div>
+                      <div className="font-medium">CLT/Associado</div>
+                      <div className="text-sm text-gray-500">Login com email corporativo</div>
+                    </div>
+                  </Label>
+                </div>
+                
+                <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-gray-50">
+                  <RadioGroupItem value="estagiario" id="estagiario" />
+                  <Label htmlFor="estagiario" className="flex items-center space-x-2 cursor-pointer flex-1">
+                    <div>
+                      <div className="font-medium">Estagiário</div>
+                      <div className="text-sm text-gray-500">Login com email pessoal</div>
+                    </div>
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            {!isEstagiario && (
+              <div className="space-y-2">
+                <Label htmlFor="email">Email Corporativo</Label>
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  placeholder="seu.nome@resendemh.com.br"
+                  value={formData.email}
+                  onChange={handleInputChange}
+                  required={!isEstagiario}
+                />
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="email_pessoal">
+                {isEstagiario ? 'Email Pessoal' : 'Email Pessoal'}
+              </Label>
+              <Input
+                id="email_pessoal"
+                name="email_pessoal"
+                type="email"
+                placeholder={isEstagiario ? 'seu.email@gmail.com' : 'email.pessoal@gmail.com'}
+                value={formData.email_pessoal}
+                onChange={handleInputChange}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="setor">Setor</Label>
+              <select
+                id="setor"
+                name="setor"
+                value={formData.setor}
+                onChange={handleInputChange}
+                required
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="">Selecione o setor</option>
+                {setors.map(setor => (
+                  <option key={setor} value={setor}>{setor}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="senha">Senha</Label>
+              <div className="relative">
+                <Input
+                  id="senha"
+                  name="senha"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Mínimo 6 caracteres"
+                  value={formData.senha}
+                  onChange={handleInputChange}
+                  required
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="confirmarSenha">Confirmar Senha</Label>
+              <div className="relative">
+                <Input
+                  id="confirmarSenha"
+                  name="confirmarSenha"
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  placeholder="Digite a senha novamente"
+                  value={formData.confirmarSenha}
+                  onChange={handleInputChange}
+                  required
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                >
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+
+            <Button 
+              type="button" 
+              className="w-full bg-rmh-lightGreen hover:bg-primary-800" 
+              disabled={isLoading}
+              onClick={handleSubmit}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Criando conta...
+                </>
+              ) : (
+                'Criar Conta'
+              )}
+            </Button>
+
+            <div className="text-center">
+              <Button
+                onClick={onBackToLogin}
+                variant="ghost"
+                className="text-corporate-blue hover:text-primary-800"
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Já tem uma conta? Faça login
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>
   );
 };
 
-export default AuthSystem;
+export default Register;

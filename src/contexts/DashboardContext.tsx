@@ -1,3 +1,4 @@
+// src/contexts/DashboardContext.tsx - VERSÃO MELHORADA
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
@@ -6,25 +7,34 @@ export interface Dashboard {
   id: string;
   titulo: string;
   descricao?: string;
-  setor: string;  // no banco é 'setor', não 'category'/'department'
+  setor: string;
   url_iframe: string;
   ativo: boolean;
   largura?: number;
   altura?: number;
   criado_por: string;
+  criado_por_nome?: string; // Nome do criador
   criado_em: string;
   atualizado_em: string;
 }
 
+// Interface para filtros avançados
+export interface DashboardFilters {
+  setor?: string;
+  periodo?: string;
+  criador?: string;
+  searchTerm?: string;
+}
+
 interface DashboardContextType {
   dashboards: Dashboard[];
-  setores: string[];  // mudei de 'categories' para 'setores'
+  setores: string[];
   isLoading: boolean;
   error: string | null;
   addDashboard: (dashboard: Omit<Dashboard, 'id' | 'criado_em' | 'atualizado_em'>) => Promise<void>;
   updateDashboard: (id: string, updates: Partial<Dashboard>) => Promise<void>;
   deleteDashboard: (id: string) => Promise<void>;
-  getFilteredDashboards: (setor?: string) => Dashboard[];
+  getFilteredDashboards: (filters: DashboardFilters) => Dashboard[];
   refreshDashboards: () => Promise<void>;
 }
 
@@ -67,7 +77,6 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } catch (err) {
       console.error('Erro ao buscar dashboards:', err);
       setError(err instanceof Error ? err.message : 'Erro desconhecido');
-      // Fallback para dados mock em caso de erro
       setDashboards([]);
     } finally {
       setIsLoading(false);
@@ -81,6 +90,60 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Extrair setores únicos dos dashboards
   const setores = Array.from(new Set(dashboards.map(d => d.setor)));
+
+  // Função de filtro avançada
+  const getFilteredDashboards = (filters: DashboardFilters): Dashboard[] => {
+    let filtered = [...dashboards];
+
+    // Filtro por setor
+    if (filters.setor && filters.setor !== 'all') {
+      filtered = filtered.filter(d => d.setor === filters.setor);
+    }
+
+    // Filtro por termo de busca
+    if (filters.searchTerm && filters.searchTerm.trim()) {
+      const term = filters.searchTerm.toLowerCase().trim();
+      filtered = filtered.filter(d => 
+        d.titulo.toLowerCase().includes(term) ||
+        (d.descricao && d.descricao.toLowerCase().includes(term)) ||
+        d.setor.toLowerCase().includes(term)
+      );
+    }
+
+    // Filtro por período de criação
+    if (filters.periodo && filters.periodo !== 'all') {
+      const now = new Date();
+      const filterDate = new Date();
+
+      switch (filters.periodo) {
+        case 'ultima_semana':
+          filterDate.setDate(now.getDate() - 7);
+          break;
+        case 'ultimo_mes':
+          filterDate.setMonth(now.getMonth() - 1);
+          break;
+        case 'ultimos_3_meses':
+          filterDate.setMonth(now.getMonth() - 3);
+          break;
+        case 'ultimo_ano':
+          filterDate.setFullYear(now.getFullYear() - 1);
+          break;
+        default:
+          break;
+      }
+
+      if (filters.periodo !== 'all') {
+        filtered = filtered.filter(d => new Date(d.criado_em) >= filterDate);
+      }
+    }
+
+    // Filtro por criador
+    if (filters.criador && filters.criador !== 'all') {
+      filtered = filtered.filter(d => d.criado_por_nome === filters.criador);
+    }
+
+    return filtered;
+  };
 
   const addDashboard = async (newDashboard: Omit<Dashboard, 'id' | 'criado_em' | 'atualizado_em'>) => {
     try {
@@ -101,7 +164,6 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         throw new Error(data.error || 'Erro ao criar dashboard');
       }
 
-      // Recarregar dashboards após criar
       await fetchDashboards();
     } catch (error) {
       console.error('Erro ao adicionar dashboard:', error);
@@ -128,7 +190,6 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         throw new Error(data.error || 'Erro ao atualizar dashboard');
       }
 
-      // Recarregar dashboards após atualizar
       await fetchDashboards();
     } catch (error) {
       console.error('Erro ao atualizar dashboard:', error);
@@ -154,7 +215,6 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         throw new Error(data.error || 'Erro ao deletar dashboard');
       }
 
-      // Recarregar dashboards após deletar
       await fetchDashboards();
     } catch (error) {
       console.error('Erro ao deletar dashboard:', error);
@@ -162,39 +222,29 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  const getFilteredDashboards = (setor?: string) => {
-    return dashboards.filter(dashboard => {
-      if (!dashboard.ativo) return false;
-      if (setor && dashboard.setor !== setor) return false;
-      return true;
-    });
-  };
-
-  const refreshDashboards = async () => {
-    await fetchDashboards();
+  const value: DashboardContextType = {
+    dashboards,
+    setores,
+    isLoading,
+    error,
+    addDashboard,
+    updateDashboard,
+    deleteDashboard,
+    getFilteredDashboards,
+    refreshDashboards: fetchDashboards
   };
 
   return (
-    <DashboardContext.Provider value={{
-      dashboards,
-      setores,
-      isLoading,
-      error,
-      addDashboard,
-      updateDashboard,
-      deleteDashboard,
-      getFilteredDashboards,
-      refreshDashboards
-    }}>
+    <DashboardContext.Provider value={value}>
       {children}
     </DashboardContext.Provider>
   );
 };
 
-export const useDashboard = () => {
+export const useDashboard = (): DashboardContextType => {
   const context = useContext(DashboardContext);
   if (context === undefined) {
-    throw new Error('useDashboards must be used within a DashboardProvider');
+    throw new Error('useDashboard deve ser usado dentro de um DashboardProvider');
   }
   return context;
 };

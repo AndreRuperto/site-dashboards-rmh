@@ -920,134 +920,205 @@ app.post('/api/auth/logout', authMiddleware, async (req, res) => {
 // ROTAS DE DASHBOARDS (PROTEGIDAS)
 // ===============================================
 
-// LISTAR DASHBOARDS DISPONÍVEIS
 app.get('/api/dashboards', authMiddleware, async (req, res) => {
   try {
-    console.log(`📊 DASHBOARDS: Listando para usuário ${req.user.id} (${req.user.tipo_colaborador})`);
+    console.log(`📊 DASHBOARDS: Listando para usuário ${req.user.id} (${req.user.tipo_colaborador}, ${req.user.tipo_usuario})`);
 
-    // Exemplo de dashboards baseados no tipo de colaborador
-    const dashboards = [];
+    let query;
+    let params = [];
 
-    // Dashboards para todos
-    dashboards.push(
-      {
-        id: 'geral',
-        titulo: 'Dashboard Geral',
-        descricao: 'Visão geral da empresa',
-        icon: '📊',
-        disponivel: true,
-        url: '/dashboard/geral'
-      },
-      {
-        id: 'meu-setor',
-        titulo: `Dashboard ${req.user.setor}`,
-        descricao: `Métricas específicas do setor ${req.user.setor}`,
-        icon: '🏢',
-        disponivel: true,
-        url: `/dashboard/setor/${req.user.setor.toLowerCase()}`
-      }
-    );
-
-    // Dashboards específicos para CLT/Associados
-    if (req.user.tipo_colaborador === 'clt_associado') {
-      dashboards.push(
-        {
-          id: 'financeiro',
-          titulo: 'Dashboard Financeiro',
-          descricao: 'Análises financeiras detalhadas',
-          icon: '💰',
-          disponivel: true,
-          url: '/dashboard/financeiro',
-          restricao: 'CLT/Associado'
-        },
-        {
-          id: 'rh',
-          titulo: 'Dashboard RH',
-          descricao: 'Gestão de recursos humanos',
-          icon: '👥',
-          disponivel: true,
-          url: '/dashboard/rh',
-          restricao: 'CLT/Associado'
-        }
-      );
+    // ADMINS veem TODOS os dashboards
+    if (req.user.tipo_usuario === 'admin') {
+      console.log('🔧 ADMIN: Buscando todos os dashboards');
+      query = `
+        SELECT 
+          d.id, d.titulo, d.descricao, d.setor, d.url_iframe, 
+          d.ativo, d.largura, d.altura, d.criado_por, 
+          d.criado_em, d.atualizado_em,
+          u.nome as criado_por_nome
+        FROM dashboards d
+        LEFT JOIN usuarios u ON d.criado_por = u.id
+        WHERE d.ativo = true
+        ORDER BY d.criado_em DESC
+      `;
+    } else {
+      // USUÁRIOS NORMAIS veem dashboards do seu setor ou públicos
+      console.log(`👤 USUÁRIO: Buscando dashboards para setor: ${req.user.setor}`);
+      query = `
+        SELECT 
+          d.id, d.titulo, d.descricao, d.setor, d.url_iframe, 
+          d.ativo, d.largura, d.altura, d.criado_por, 
+          d.criado_em, d.atualizado_em,
+          u.nome as criado_por_nome
+        FROM dashboards d
+        LEFT JOIN usuarios u ON d.criado_por = u.id
+        WHERE d.ativo = true 
+          AND (d.setor = $1 OR d.setor = 'Geral' OR d.setor = 'Público')
+        ORDER BY d.criado_em DESC
+      `;
+      params = [req.user.setor];
     }
 
-    // Dashboards para estagiários
-    if (req.user.tipo_colaborador === 'estagiario') {
-      dashboards.push({
-        id: 'aprendizado',
-        titulo: 'Dashboard de Aprendizado',
-        descricao: 'Acompanhe seu progresso e desenvolvimento',
-        icon: '📚',
-        disponivel: true,
-        url: '/dashboard/aprendizado',
-        restricao: 'Estagiário'
-      });
+    const result = await pool.query(query, params);
+    const dashboards = result.rows;
+
+    console.log(`📊 DASHBOARDS: Encontrados ${dashboards.length} dashboards`);
+    
+    // Log para debug
+    if (dashboards.length > 0) {
+      console.log('📋 Primeiros dashboards:', dashboards.slice(0, 2).map(d => ({
+        id: d.id,
+        titulo: d.titulo,
+        setor: d.setor
+      })));
     }
 
     res.json({
-      dashboards,
+      dashboards: dashboards || [],
       user_info: {
+        id: req.user.id,
+        nome: req.user.nome,
         tipo_colaborador: req.user.tipo_colaborador,
+        tipo_usuario: req.user.tipo_usuario,
         setor: req.user.setor,
-        total_dashboards: dashboards.length
+        total_dashboards: dashboards.length,
+        is_admin: req.user.tipo_usuario === 'admin'
       }
     });
 
   } catch (error) {
     console.error('❌ Erro ao listar dashboards:', error);
+    res.status(500).json({ 
+      error: 'Erro interno do servidor',
+      dashboards: [] // Fallback vazio
+    });
+  }
+});
+
+// CRIAR NOVO DASHBOARD (só para admins)
+app.post('/api/dashboards', authMiddleware, async (req, res) => {
+  try {
+    // Verificar se é admin
+    if (req.user.tipo_usuario !== 'admin') {
+      return res.status(403).json({ 
+        error: 'Apenas administradores podem criar dashboards' 
+      });
+    }
+
+    const { titulo, descricao, setor, url_iframe, largura, altura } = req.body;
+
+    // Validações
+    if (!titulo || !setor || !url_iframe) {
+      return res.status(400).json({
+        error: 'Título, setor e URL são obrigatórios'
+      });
+    }
+
+    const result = await pool.query(`
+      INSERT INTO dashboards (titulo, descricao, setor, url_iframe, largura, altura, criado_por, ativo)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING *
+    `, [titulo, descricao, setor, url_iframe, largura || 800, altura || 600, req.user.id, true]);
+
+    const newDashboard = result.rows[0];
+
+    console.log(`✅ DASHBOARD: ${titulo} criado por ${req.user.nome}`);
+
+    res.status(201).json({
+      message: 'Dashboard criado com sucesso',
+      dashboard: newDashboard
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao criar dashboard:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 
-// ACESSAR DASHBOARD ESPECÍFICO
-app.get('/api/dashboards/:id', authMiddleware, async (req, res) => {
+// ATUALIZAR DASHBOARD
+app.put('/api/dashboards/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    console.log(`📈 DASHBOARD: Acessando ${id} para usuário ${req.user.id}`);
+    const { titulo, descricao, setor, url_iframe, largura, altura } = req.body;
 
-    // Verificar permissões baseadas no tipo de colaborador
-    const permissoesEspeciais = ['financeiro', 'rh'];
-    
-    if (permissoesEspeciais.includes(id) && req.user.tipo_colaborador !== 'clt_associado') {
-      return res.status(403).json({ 
-        error: 'Acesso negado. Dashboard disponível apenas para CLT/Associados.',
-        required_type: 'clt_associado',
-        current_type: req.user.tipo_colaborador
+    // Verificar se o dashboard existe e se o usuário pode editá-lo
+    const checkResult = await pool.query(
+      'SELECT * FROM dashboards WHERE id = $1', 
+      [id]
+    );
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Dashboard não encontrado' });
+    }
+
+    const dashboard = checkResult.rows[0];
+
+    // Verificar permissões
+    if (req.user.tipo_usuario !== 'admin' && dashboard.criado_por !== req.user.id) {
+      return res.status(403).json({
+        error: 'Você não tem permissão para editar este dashboard'
       });
     }
 
-    // Simular dados do dashboard (aqui você conectaria com suas fontes de dados reais)
-    const dashboardData = {
-      id,
-      titulo: `Dashboard ${id.charAt(0).toUpperCase() + id.slice(1)}`,
-      usuario: req.user.nome,
-      tipo_acesso: req.user.tipo_colaborador,
-      setor: req.user.setor,
-      dados: {
-        // Dados fictícios - substitua pela sua lógica real
-        metricas: [
-          { nome: 'Total de Vendas', valor: 'R$ 125.450', variacao: '+12%' },
-          { nome: 'Clientes Ativos', valor: '1.234', variacao: '+5%' },
-          { nome: 'Satisfação', valor: '94%', variacao: '+2%' }
-        ],
-        graficos: [
-          { tipo: 'linha', titulo: 'Vendas por Mês', dados: [] },
-          { tipo: 'barra', titulo: 'Performance por Setor', dados: [] }
-        ]
-      },
-      ultima_atualizacao: new Date().toISOString(),
-      permissoes: {
-        pode_exportar: req.user.tipo_colaborador === 'clt_associado',
-        pode_compartilhar: true,
-        pode_editar: req.user.tipo_colaborador === 'clt_associado'
-      }
-    };
+    const result = await pool.query(`
+      UPDATE dashboards 
+      SET titulo = $1, descricao = $2, setor = $3, url_iframe = $4, 
+          largura = $5, altura = $6, atualizado_em = NOW()
+      WHERE id = $7
+      RETURNING *
+    `, [titulo, descricao, setor, url_iframe, largura, altura, id]);
 
-    res.json(dashboardData);
+    console.log(`📝 DASHBOARD: ${titulo} atualizado por ${req.user.nome}`);
+
+    res.json({
+      message: 'Dashboard atualizado com sucesso',
+      dashboard: result.rows[0]
+    });
 
   } catch (error) {
-    console.error('❌ Erro ao acessar dashboard:', error);
+    console.error('❌ Erro ao atualizar dashboard:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// DELETAR DASHBOARD
+app.delete('/api/dashboards/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verificar se o dashboard existe
+    const checkResult = await pool.query(
+      'SELECT * FROM dashboards WHERE id = $1', 
+      [id]
+    );
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Dashboard não encontrado' });
+    }
+
+    const dashboard = checkResult.rows[0];
+
+    // Verificar permissões
+    if (req.user.tipo_usuario !== 'admin' && dashboard.criado_por !== req.user.id) {
+      return res.status(403).json({
+        error: 'Você não tem permissão para deletar este dashboard'
+      });
+    }
+
+    // Soft delete (marcar como inativo)
+    await pool.query(
+      'UPDATE dashboards SET ativo = false, atualizado_em = NOW() WHERE id = $1',
+      [id]
+    );
+
+    console.log(`🗑️ DASHBOARD: ${dashboard.titulo} deletado por ${req.user.nome}`);
+
+    res.json({
+      message: 'Dashboard deletado com sucesso'
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao deletar dashboard:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
@@ -1062,25 +1133,112 @@ app.get('/api/dashboards/:id', authMiddleware, async (req, res) => {
 // ===============================================
 
 // MIDDLEWARE PARA VERIFICAR SE É ADMIN
+// ===============================================
+// MIDDLEWARE DE ADMIN CORRIGIDO
+// ===============================================
+
 const adminMiddleware = async (req, res, next) => {
   try {
-    // Primeiro verificar autenticação normal
-    await authMiddleware(req, res, () => {});
+    console.log('🔧 ADMIN MIDDLEWARE: Iniciando verificação');
     
+    // Debug completo dos headers
+    console.log('📡 ADMIN: Headers recebidos:', {
+      authorization: req.headers.authorization,
+      'content-type': req.headers['content-type'],
+      origin: req.headers.origin
+    });
+    
+    // Extrair token de várias formas para debug
+    const authHeader = req.header('Authorization');
+    const authHeaderLower = req.header('authorization');
+    const authFromHeaders = req.headers.authorization;
+    
+    console.log('🔍 ADMIN: Debug token extraction:', {
+      'req.header("Authorization")': authHeader,
+      'req.header("authorization")': authHeaderLower,
+      'req.headers.authorization': authFromHeaders
+    });
+    
+    const token = authHeader?.replace('Bearer ', '') || 
+                  authHeaderLower?.replace('Bearer ', '') || 
+                  authFromHeaders?.replace('Bearer ', '');
+    
+    console.log('🔑 ADMIN: Token extraído:', token ? `${token.substring(0, 20)}...` : 'NULO');
+    
+    if (!token) {
+      console.log('❌ ADMIN: Token não encontrado');
+      return res.status(401).json({ error: 'Token de acesso negado' });
+    }
+
+    console.log('🔑 ADMIN: Token presente, verificando JWT...');
+    
+    // Debug do JWT antes de verificar
+    console.log('🔍 ADMIN: Formato do token:', {
+      length: token.length,
+      startsWith: token.substring(0, 10),
+      dots: (token.match(/\./g) || []).length
+    });
+    
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log('✅ ADMIN: Token válido para usuário ID:', decoded.id);
+    
+    // Buscar usuário no banco
+    const result = await pool.query(
+      `SELECT id, nome, email, email_pessoal, setor, tipo_usuario, tipo_colaborador, email_verificado 
+       FROM usuarios WHERE id = $1`,
+      [decoded.id]
+    );
+
+    if (result.rows.length === 0) {
+      console.log('❌ ADMIN: Usuário não encontrado no banco');
+      return res.status(401).json({ error: 'Usuário não encontrado' });
+    }
+
+    if (!result.rows[0].email_verificado) {
+      console.log('❌ ADMIN: Email não verificado');
+      return res.status(401).json({ error: 'Email não verificado' });
+    }
+
     // Verificar se é admin
-    if (req.user.tipo_usuario !== 'admin') {
+    const user = result.rows[0];
+    console.log('👤 ADMIN: Dados do usuário:', {
+      id: user.id,
+      nome: user.nome,
+      tipo_usuario: user.tipo_usuario,
+      email: user.email
+    });
+    
+    if (user.tipo_usuario !== 'admin') {
+      console.log(`❌ ADMIN: Acesso negado para usuário ${user.id} (${user.tipo_usuario})`);
       return res.status(403).json({ 
         error: 'Acesso negado. Apenas administradores podem acessar esta funcionalidade.' 
       });
     }
     
-    console.log(`🔧 ADMIN: Acesso autorizado para ${req.user.nome}`);
+    // Usuário é admin, continuar
+    req.user = user;
+    console.log(`🔧 ADMIN: Acesso autorizado para ${user.nome}`);
     next();
+    
   } catch (error) {
-    return res.status(401).json({ error: 'Token inválido ou usuário não é admin' });
+    console.error('❌ ADMIN: Erro na verificação:', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack?.split('\n')[0]
+    });
+    
+    // Verificar se a resposta já foi enviada
+    if (res.headersSent) {
+      console.log('⚠️ ADMIN: Headers já enviados, não respondendo novamente');
+      return;
+    }
+    
+    return res.status(401).json({ 
+      error: 'Token inválido ou expirado',
+      debug: error.message
+    });
   }
 };
-
 // LISTAR USUÁRIOS PENDENTES DE APROVAÇÃO
 app.get('/api/admin/usuarios-pendentes', adminMiddleware, async (req, res) => {
   try {

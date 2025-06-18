@@ -10,13 +10,22 @@ import { Eye, EyeOff, Users, Building, Mail, ArrowLeft, Loader2 } from 'lucide-r
 // Types definition
 type TipoColaborador = 'estagiario' | 'clt_associado';
 
+// Definindo o tipo RegistrationResult
+interface RegistrationResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+  verification_required?: boolean;
+  email?: string;
+}
+
 // API Configuration
 const API_BASE_URL = 'http://localhost:3001'; // Adjust for production
 
 interface RegisterProps {
   tipoPreSelecionado?: TipoColaborador;
   onBackToLogin: () => void;
-  onEmailSent: (email: string) => void;
+  onEmailSent: (data: RegistrationResult) => void;
   onSwitchToVerification: (email: string) => void;
 }
 
@@ -54,8 +63,7 @@ const Register: React.FC<RegisterProps> = ({
     'Comercial/Marketing',
     'Administrativo',
     'Família e Sucessões'
-    ];
-
+  ];
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -155,7 +163,7 @@ const Register: React.FC<RegisterProps> = ({
         body: JSON.stringify(payload)
       });
 
-      const data = await response.json();
+      const data: RegistrationResult = await response.json();
 
       if (response.ok) {
         // Redirecionar para verificação com email apropriado
@@ -171,7 +179,7 @@ const Register: React.FC<RegisterProps> = ({
             variant: "default",
           });
         } else {
-          onEmailSent(emailForVerification);
+          onEmailSent(data);
           toast({
             title: "📧 Cadastro realizado!",
             description: "Verifique seu email para ativar a conta",
@@ -180,7 +188,7 @@ const Register: React.FC<RegisterProps> = ({
       } else {
         toast({
           title: "❌ Erro no cadastro",
-          description: data.error || 'Erro no cadastro',
+          description: data.error || data.message || 'Erro no cadastro',
           variant: "destructive"
         });
       }

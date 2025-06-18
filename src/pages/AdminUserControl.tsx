@@ -1,40 +1,43 @@
-// AdminUserControl.tsx
+// src/pages/AdminUserControl.tsx - CORRIGIDO
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { toast } from '@/hooks/use-toast';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   Users, 
-  UserCheck, 
-  UserX, 
-  Mail, 
+  Shield, 
   Clock, 
-  Shield,
-  AlertCircle,
-  CheckCircle,
-  XCircle,
-  RefreshCw
+  Mail, 
+  CheckCircle, 
+  RefreshCw,
+  UserCheck,
+  UserX,
+  Send
 } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useToast } from '@/hooks/use-toast';
+
+// Configuração da API
+const API_BASE_URL = process.env.NODE_ENV === 'production' 
+  ? 'https://rmh.up.railway.app'
+  : 'http://localhost:3001';
 
 interface Usuario {
   id: string;
   nome: string;
-  email: string;
-  email_pessoal: string;
+  email?: string;
+  email_pessoal?: string;
   setor: string;
   tipo_colaborador: 'estagiario' | 'clt_associado';
   email_verificado: boolean;
-  aprovado_admin: boolean | null;
+  aprovado_admin?: boolean;
   criado_em: string;
   email_login: string;
-  status: 'pendente_aprovacao' | 'aprovado' | 'corporativo';
-  codigo_ativo: boolean;
+  status: string;
+  codigo_ativo?: boolean;
 }
 
-interface UsuariosPendentes {
-  usuarios: Usuario[];
+interface UsuariosStats {
   total: number;
   pendentes_aprovacao: number;
   nao_verificados: number;
@@ -43,32 +46,67 @@ interface UsuariosPendentes {
 const AdminUserControl: React.FC = () => {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState<UsuariosStats>({
     total: 0,
     pendentes_aprovacao: 0,
     nao_verificados: 0
   });
   const [filter, setFilter] = useState<'todos' | 'pendentes' | 'corporativos' | 'estagiarios'>('pendentes');
+  const { toast } = useToast();
 
-  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+  // Função para obter token corretamente
+  const getAuthToken = (): string | null => {
+    const token = localStorage.getItem('authToken');
+    console.log('🔑 ADMIN: Token obtido do localStorage:', token ? `${token.substring(0, 20)}...` : 'NULO');
+    return token;
+  };
+
+  // Função para fazer requisições com token
+  const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Response> => {
+    const token = getAuthToken();
+    
+    if (!token) {
+      throw new Error('Token não encontrado no localStorage');
+    }
+
+    console.log('🌐 ADMIN: Fazendo requisição para:', url);
+    console.log('🔑 ADMIN: Usando token:', `${token.substring(0, 20)}...`);
+
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        ...options.headers
+      }
+    });
+
+    console.log('📡 ADMIN: Response status:', response.status);
+    
+    if (response.status === 401) {
+      // Token inválido, limpar e redirecionar
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+      throw new Error('Token inválido ou expirado');
+    }
+
+    return response;
+  };
 
   const fetchUsuarios = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
       
-      const response = await fetch(`${API_BASE_URL}/api/admin/usuarios-pendentes`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/admin/usuarios-pendentes`);
 
       if (!response.ok) {
         throw new Error('Erro ao carregar usuários');
       }
 
-      const data: UsuariosPendentes = await response.json();
+      const data = await response.json();
+      console.log('✅ ADMIN: Dados recebidos:', data);
+      
       setUsuarios(data.usuarios);
       setStats({
         total: data.total,
@@ -77,7 +115,7 @@ const AdminUserControl: React.FC = () => {
       });
 
     } catch (error) {
-      console.error('Erro ao carregar usuários:', error);
+      console.error('❌ Erro ao carregar usuários:', error);
       toast({
         title: "Erro",
         description: "Não foi possível carregar a lista de usuários",
@@ -90,14 +128,8 @@ const AdminUserControl: React.FC = () => {
 
   const aprovarUsuario = async (userId: string, enviarCodigo: boolean = true) => {
     try {
-      const token = localStorage.getItem('token');
-      
-      const response = await fetch(`${API_BASE_URL}/api/admin/aprovar-usuario/${userId}`, {
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/admin/aprovar-usuario/${userId}`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
         body: JSON.stringify({ enviar_codigo: enviarCodigo })
       });
 
@@ -116,7 +148,7 @@ const AdminUserControl: React.FC = () => {
       fetchUsuarios(); // Recarregar lista
 
     } catch (error) {
-      console.error('Erro ao aprovar usuário:', error);
+      console.error('❌ Erro ao aprovar usuário:', error);
       toast({
         title: "Erro",
         description: "Não foi possível aprovar o usuário",
@@ -131,14 +163,8 @@ const AdminUserControl: React.FC = () => {
     }
 
     try {
-      const token = localStorage.getItem('token');
-      
-      const response = await fetch(`${API_BASE_URL}/api/admin/rejeitar-usuario/${userId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/admin/rejeitar-usuario/${userId}`, {
+        method: 'DELETE'
       });
 
       if (!response.ok) {
@@ -156,7 +182,7 @@ const AdminUserControl: React.FC = () => {
       fetchUsuarios(); // Recarregar lista
 
     } catch (error) {
-      console.error('Erro ao rejeitar usuário:', error);
+      console.error('❌ Erro ao rejeitar usuário:', error);
       toast({
         title: "Erro",
         description: "Não foi possível rejeitar o usuário",
@@ -167,14 +193,8 @@ const AdminUserControl: React.FC = () => {
 
   const reenviarCodigo = async (userId: string) => {
     try {
-      const token = localStorage.getItem('token');
-      
-      const response = await fetch(`${API_BASE_URL}/api/admin/reenviar-codigo/${userId}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/admin/reenviar-codigo/${userId}`, {
+        method: 'POST'
       });
 
       if (!response.ok) {
@@ -190,7 +210,7 @@ const AdminUserControl: React.FC = () => {
       });
 
     } catch (error) {
-      console.error('Erro ao reenviar código:', error);
+      console.error('❌ Erro ao reenviar código:', error);
       toast({
         title: "Erro",
         description: "Não foi possível reenviar o código",
@@ -304,7 +324,7 @@ const AdminUserControl: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
-              <AlertCircle className="h-5 w-5 text-red-600" />
+              <Mail className="h-5 w-5 text-red-600" />
               <div>
                 <p className="text-sm font-medium text-gray-600">Não Verificados</p>
                 <p className="text-2xl font-bold text-red-600">{stats.nao_verificados}</p>
@@ -316,25 +336,25 @@ const AdminUserControl: React.FC = () => {
 
       {/* Filtros */}
       <div className="flex space-x-2">
-        <Button 
+        <Button
           variant={filter === 'pendentes' ? 'default' : 'outline'}
           onClick={() => setFilter('pendentes')}
         >
           Pendentes ({stats.pendentes_aprovacao})
         </Button>
-        <Button 
+        <Button
           variant={filter === 'corporativos' ? 'default' : 'outline'}
           onClick={() => setFilter('corporativos')}
         >
-          Corporativos
+          CLT/Associados
         </Button>
-        <Button 
+        <Button
           variant={filter === 'estagiarios' ? 'default' : 'outline'}
           onClick={() => setFilter('estagiarios')}
         >
           Estagiários
         </Button>
-        <Button 
+        <Button
           variant={filter === 'todos' ? 'default' : 'outline'}
           onClick={() => setFilter('todos')}
         >
@@ -342,120 +362,78 @@ const AdminUserControl: React.FC = () => {
         </Button>
       </div>
 
-      {/* Alerta de segurança */}
-      {stats.pendentes_aprovacao > 0 && (
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            <strong>Atenção:</strong> Existem {stats.pendentes_aprovacao} estagiário(s) aguardando aprovação. 
-            Verifique se são pessoas autorizadas antes de aprovar.
-          </AlertDescription>
-        </Alert>
-      )}
-
       {/* Lista de Usuários */}
       <div className="space-y-4">
         {usuariosFiltrados.length === 0 ? (
           <Card>
             <CardContent className="p-8 text-center">
               <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">Nenhum usuário encontrado para este filtro.</p>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                Nenhum usuário encontrado
+              </h3>
+              <p className="text-gray-500">
+                Não há usuários que correspondam ao filtro selecionado.
+              </p>
             </CardContent>
           </Card>
         ) : (
-          usuariosFiltrados.map((usuario) => (
-            <Card key={usuario.id}>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3 mb-2">
-                      <h3 className="text-lg font-semibold">{usuario.nome}</h3>
-                      {getStatusBadge(usuario)}
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600">
-                      <p><strong>Email Login:</strong> {usuario.email_login}</p>
-                      <p><strong>Setor:</strong> {usuario.setor}</p>
-                      {usuario.email_pessoal && usuario.email_pessoal !== usuario.email && (
-                        <p><strong>Email Pessoal:</strong> {usuario.email_pessoal}</p>
-                      )}
-                      <p><strong>Cadastrado em:</strong> {new Date(usuario.criado_em).toLocaleString('pt-BR')}</p>
-                    </div>
+          usuariosFiltrados.map(usuario => (
+            <Card key={usuario.id} className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center space-x-3 mb-2">
+                    <h3 className="text-lg font-medium">{usuario.nome}</h3>
+                    {getStatusBadge(usuario)}
                   </div>
-
-                  {/* Ações */}
-                  <div className="flex space-x-2 ml-4">
-                    {usuario.status === 'pendente_aprovacao' && (
-                      <>
-                        <Button
-                          size="sm"
-                          onClick={() => aprovarUsuario(usuario.id, true)}
-                          className="bg-green-600 hover:bg-green-700"
-                        >
-                          <UserCheck className="h-4 w-4 mr-1" />
-                          Aprovar & Enviar Código
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => aprovarUsuario(usuario.id, false)}
-                        >
-                          <CheckCircle className="h-4 w-4 mr-1" />
-                          Aprovar Sem Código
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => rejeitarUsuario(usuario.id, usuario.nome)}
-                        >
-                          <UserX className="h-4 w-4 mr-1" />
-                          Rejeitar
-                        </Button>
-                      </>
-                    )}
-
-                    {usuario.aprovado_admin && !usuario.email_verificado && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => reenviarCodigo(usuario.id)}
-                      >
-                        <Mail className="h-4 w-4 mr-1" />
-                        Reenviar Código
-                      </Button>
-                    )}
-
-                    {usuario.email_verificado && (
-                      <Badge variant="default" className="bg-green-100 text-green-800">
-                        <CheckCircle className="h-3 w-3 mr-1" />
-                        Ativo
-                      </Badge>
-                    )}
+                  
+                  <div className="text-sm text-gray-600 space-y-1">
+                    <p><strong>Setor:</strong> {usuario.setor}</p>
+                    <p><strong>Email usado:</strong> {usuario.email_login}</p>
+                    <p><strong>Cadastrado:</strong> {new Date(usuario.criado_em).toLocaleDateString('pt-BR')}</p>
                   </div>
                 </div>
 
-                {/* Informações adicionais para pendentes */}
-                {usuario.status === 'pendente_aprovacao' && (
-                  <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-                    <div className="flex items-start space-x-2">
-                      <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5" />
-                      <div className="text-sm">
-                        <p className="font-medium text-yellow-800">Estagiário aguardando aprovação</p>
-                        <p className="text-yellow-700">
-                          Verifique se <strong>{usuario.nome}</strong> é realmente um estagiário autorizado 
-                          da empresa antes de aprovar. Email usado: <strong>{usuario.email_login}</strong>
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
+                {/* Ações */}
+                <div className="flex space-x-2">
+                  {usuario.status === 'pendente_aprovacao' && (
+                    <>
+                      <Button
+                        onClick={() => aprovarUsuario(usuario.id)}
+                        className="bg-green-600 hover:bg-green-700"
+                        size="sm"
+                      >
+                        <UserCheck className="h-4 w-4 mr-1" />
+                        Aprovar
+                      </Button>
+                      <Button
+                        onClick={() => rejeitarUsuario(usuario.id, usuario.nome)}
+                        variant="destructive"
+                        size="sm"
+                      >
+                        <UserX className="h-4 w-4 mr-1" />
+                        Rejeitar
+                      </Button>
+                    </>
+                  )}
+                  
+                  {!usuario.email_verificado && usuario.codigo_ativo && (
+                    <Button
+                      onClick={() => reenviarCodigo(usuario.id)}
+                      variant="outline"
+                      size="sm"
+                    >
+                      <Send className="h-4 w-4 mr-1" />
+                      Reenviar Código
+                    </Button>
+                  )}
+                </div>
+              </div>
             </Card>
           ))
         )}
       </div>
 
-      {/* Rodapé com informações */}
+      {/* Informações */}
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">📋 Como funciona o controle</CardTitle>
@@ -479,7 +457,6 @@ const AdminUserControl: React.FC = () => {
               </ul>
             </div>
           </div>
-          
           <Alert>
             <Shield className="h-4 w-4" />
             <AlertDescription>

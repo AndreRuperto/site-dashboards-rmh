@@ -99,7 +99,19 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
   };
 
   // 🔧 CORREÇÃO: Usar setores predefinidos
-  const setoresPredefinidos = ['Vendas', 'Financeiro', 'Marketing', 'Operações', 'RH', 'TI', 'Diretoria'];
+  const setoresPredefinidos = [
+    'Carteira',
+    'Atendimento',
+    'Prazos',
+    'Trabalhista',
+    'Projetos',
+    'Inicial',
+    'Criminal',
+    'Financeiro',
+    'Saúde',
+    'Comercial/Marketing',
+    'Administrativo',
+    'Família e Sucessões'];
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -201,7 +213,7 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
             </Button>
-            <Button type="submit" className="bg-corporate-blue hover:bg-primary-800">
+            <Button type="submit" className="bg-corporate-blue bg-primary hover:bg-primary-800">
               {dashboard ? 'Atualizar' : 'Criar Dashboard'}
             </Button>
           </div>

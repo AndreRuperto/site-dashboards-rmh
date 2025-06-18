@@ -1,20 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-
-export type UserRole = 'usuario' | 'admin';
-
-export interface User {
-  id: string;
-  nome: string;
-  email: string;
-  departamento: string;
-  tipo_usuario: UserRole;
-  email_verificado: boolean;
-  criado_em: string;
-  atualizado_em: string;
-  ultimo_login?: string;
-}
+import { Navigate, useLocation } from 'react-router-dom';
+import { User } from '@/types';
 
 interface AuthContextType {
   user: User | null;
@@ -52,15 +39,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (response.ok) {
             const data = await response.json();
+            console.log('✅ AUTH: Dados do usuário carregados:', data.user);
             setUser(data.user);
           } else {
             // Token inválido, limpar storage
+            console.log('❌ AUTH: Token inválido, limpando storage');
             localStorage.removeItem('authToken');
             localStorage.removeItem('user');
           }
         }
       } catch (error) {
-        console.error('Erro ao verificar autenticação:', error);
+        console.error('❌ Erro ao verificar autenticação:', error);
         // Limpar dados em caso de erro
         localStorage.removeItem('authToken');
         localStorage.removeItem('user');
@@ -76,6 +65,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     
     try {
+      console.log('🔑 AUTH: Tentativa de login para:', email);
+      
       const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: {
@@ -104,6 +95,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Login bem-sucedido
       const { token, user: userData } = data;
       
+      console.log('✅ AUTH: Login bem-sucedido, dados do usuário:', userData);
+      
       // Salvar token e dados do usuário
       localStorage.setItem('authToken', token);
       localStorage.setItem('user', JSON.stringify(userData));
@@ -114,7 +107,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return true;
 
     } catch (error) {
-      console.error('Erro no login:', error);
+      console.error('❌ Erro no login:', error);
       throw error; // Re-throw para o componente tratar
     } finally {
       setIsLoading(false);
@@ -122,6 +115,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
+    console.log('👋 AUTH: Fazendo logout');
+    
     // Limpar tokens e dados
     localStorage.removeItem('authToken');
     localStorage.removeItem('user');

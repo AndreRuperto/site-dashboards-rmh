@@ -1,18 +1,23 @@
-
+// src/pages/Dashboards.tsx - VERSÃO MELHORADA
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Plus, LayoutDashboard } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
-import { useDashboard, Dashboard } from '@/contexts/DashboardContext';
-import { useToast } from '@/hooks/use-toast';
 import Header from '@/components/Header';
-import DashboardFilters from '@/components/DashboardFilters';
 import DashboardCard from '@/components/DashboardCard';
+import DashboardFilters from '@/components/DashboardFilters';
 import DashboardForm from '@/components/DashboardForm';
+import { useDashboard, type Dashboard, type DashboardFilters as FilterType } from '@/contexts/DashboardContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
 
-const DashboardsPage = () => {
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedDepartment, setSelectedDepartment] = useState('all');
+const Dashboards: React.FC = () => {
+  // Estados para filtros
+  const [selectedSetor, setSelectedSetor] = useState('all');
+  const [selectedPeriodo, setSelectedPeriodo] = useState('all');
+  const [selectedCriador, setSelectedCriador] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // Estados para modal
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingDashboard, setEditingDashboard] = useState<Dashboard | null>(null);
 
@@ -20,13 +25,19 @@ const DashboardsPage = () => {
   const { getFilteredDashboards, deleteDashboard } = useDashboard();
   const { toast } = useToast();
 
-  const filteredDashboards = getFilteredDashboards(
-    selectedCategory === 'all' ? undefined : selectedCategory
-  );
+  // Aplicar filtros
+  const filteredDashboards = getFilteredDashboards({
+    setor: selectedSetor === 'all' ? undefined : selectedSetor,
+    periodo: selectedPeriodo === 'all' ? undefined : selectedPeriodo,
+    criador: selectedCriador === 'all' ? undefined : selectedCriador,
+    searchTerm: searchTerm
+  });
 
   const handleClearFilters = () => {
-    setSelectedCategory('all');
-    setSelectedDepartment('all');
+    setSelectedSetor('all');
+    setSelectedPeriodo('all');
+    setSelectedCriador('all');
+    setSearchTerm('');
   };
 
   const handleEditDashboard = (dashboard: Dashboard) => {
@@ -69,7 +80,7 @@ const DashboardsPage = () => {
             {user?.tipo_usuario === 'admin' && (
               <Button
                 onClick={() => setIsFormOpen(true)}
-                className="bg-rmh-primary hover:bg-primary-800"
+                className="bg-[#165A5D] hover:bg-[#0d3638] text-white"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Novo Dashboard
@@ -77,12 +88,16 @@ const DashboardsPage = () => {
             )}
           </div>
 
-          {/* Filters */}
+          {/* Filtros Melhorados */}
           <DashboardFilters
-            selectedCategory={selectedCategory}
-            selectedDepartment={selectedDepartment}
-            onCategoryChange={setSelectedCategory}
-            onDepartmentChange={setSelectedDepartment}
+            selectedSetor={selectedSetor}
+            selectedPeriodo={selectedPeriodo}
+            selectedCriador={selectedCriador}
+            searchTerm={searchTerm}
+            onSetorChange={setSelectedSetor}
+            onPeriodoChange={setSelectedPeriodo}
+            onCriadorChange={setSelectedCriador}
+            onSearchChange={setSearchTerm}
             onClearFilters={handleClearFilters}
           />
 
@@ -90,14 +105,24 @@ const DashboardsPage = () => {
           <div className="space-y-4">
             {filteredDashboards.length > 0 ? (
               <>
-                <div className="flex items-center space-x-2 text-sm text-corporate-gray">
-                  <LayoutDashboard className="h-4 w-4" />
-                  <span>
-                    {filteredDashboards.length} dashboard{filteredDashboards.length !== 1 ? 's' : ''} encontrado{filteredDashboards.length !== 1 ? 's' : ''}
-                  </span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2 text-sm text-corporate-gray">
+                    <LayoutDashboard className="h-4 w-4" />
+                    <span>
+                      {filteredDashboards.length} dashboard{filteredDashboards.length !== 1 ? 's' : ''} encontrado{filteredDashboards.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  
+                  {/* Mostrar total quando há filtros ativos */}
+                  {(selectedSetor !== 'all' || selectedPeriodo !== 'all' || selectedCriador !== 'all' || searchTerm) && (
+                    <div className="text-xs text-corporate-gray">
+                      Mostrando resultados filtrados
+                    </div>
+                  )}
                 </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {filteredDashboards.map((dashboard) => (
+                  {filteredDashboards.map(dashboard => (
                     <DashboardCard
                       key={dashboard.id}
                       dashboard={dashboard}
@@ -113,15 +138,40 @@ const DashboardsPage = () => {
                 <h3 className="text-lg font-medium text-corporate-blue mb-2">
                   Nenhum dashboard encontrado
                 </h3>
-                <p className="text-corporate-gray mb-6">
-                  {selectedCategory !== 'all' || selectedDepartment !== 'all'
-                    ? 'Tente ajustar os filtros para encontrar dashboards.'
-                    : 'Não há dashboards criados ainda.'}
-                </p>
-                {(selectedCategory !== 'all' || selectedDepartment !== 'all') && (
-                  <Button variant="outline" onClick={handleClearFilters}>
-                    Limpar Filtros
-                  </Button>
+                
+                {/* Mensagens diferentes baseadas nos filtros */}
+                {selectedSetor !== 'all' || selectedPeriodo !== 'all' || selectedCriador !== 'all' || searchTerm ? (
+                  <div className="space-y-3">
+                    <p className="text-corporate-gray">
+                      Não encontramos dashboards que correspondam aos filtros aplicados.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-2 justify-center">
+                      <Button variant="outline" onClick={handleClearFilters}>
+                        Limpar Filtros
+                      </Button>
+                      {user?.tipo_usuario === 'admin' && (
+                        <Button onClick={() => setIsFormOpen(true)} className="bg-primary hover:bg-primary-800">
+                          <Plus className="h-4 w-4 mr-2" />
+                          Criar Dashboard
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-corporate-gray">
+                      Não há dashboards criados ainda.
+                    </p>
+                    {user?.tipo_usuario === 'admin' && (
+                      <Button 
+                        onClick={() => setIsFormOpen(true)} 
+                        className="bg-[#165A5D] hover:bg-[#0d3638] text-white"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Criar Primeiro Dashboard
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
             )}
@@ -129,7 +179,7 @@ const DashboardsPage = () => {
         </div>
       </main>
 
-      {/* Dashboard Form Modal */}
+      {/* Modal do Formulário */}
       <DashboardForm
         isOpen={isFormOpen}
         onClose={handleCloseForm}
@@ -139,4 +189,4 @@ const DashboardsPage = () => {
   );
 };
 
-export default DashboardsPage;
+export default Dashboards;
