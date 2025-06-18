@@ -5,22 +5,30 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Eye, EyeOff, Users, Building, Mail, ArrowLeft, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Users, ArrowLeft, Loader2 } from 'lucide-react';
 
-// Types definition
+// Types definition - alinhado com o projeto
 type TipoColaborador = 'estagiario' | 'clt_associado';
 
-// Definindo o tipo RegistrationResult
+// Interface compatível com o AuthSystem do projeto
 interface RegistrationResult {
-  success: boolean;
+  success?: boolean;
   message?: string;
   error?: string;
   verification_required?: boolean;
+  awaiting_admin_approval?: boolean;
+  email_enviado_para?: string;
+  email_login?: string;
   email?: string;
+  nome?: string;
+  tipo_colaborador?: TipoColaborador;
+  email_enviado?: boolean;
+  info?: string;
+  user_id?: string;
 }
 
-// API Configuration
-const API_BASE_URL = 'http://localhost:3001'; // Adjust for production
+// API Configuration - usar variável de ambiente se disponível
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
 
 interface RegisterProps {
   tipoPreSelecionado?: TipoColaborador;
@@ -42,7 +50,7 @@ const Register: React.FC<RegisterProps> = ({
     senha: '',
     confirmarSenha: '',
     setor: '',
-    tipo_colaborador: tipoPreSelecionado // ← Usar tipo pré-selecionado
+    tipo_colaborador: tipoPreSelecionado
   });
   
   const [showPassword, setShowPassword] = useState(false);
@@ -50,7 +58,8 @@ const Register: React.FC<RegisterProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  const setors = [
+  // Setores específicos da RMH - mantidos conforme o contexto
+  const setores = [
     'Carteira',
     'Atendimento',
     'Prazos',
@@ -77,7 +86,7 @@ const Register: React.FC<RegisterProps> = ({
     setFormData(prev => ({
       ...prev,
       tipo_colaborador: value,
-      // Limpar emails ao mudar tipo
+      // Limpar emails ao mudar tipo para evitar confusão
       email: value === 'estagiario' ? '' : prev.email,
       email_pessoal: value === 'clt_associado' ? '' : prev.email_pessoal
     }));
@@ -125,6 +134,34 @@ const Register: React.FC<RegisterProps> = ({
     return null;
   };
 
+  // Função para capitalizar nomes corretamente (padrão português)
+  const capitalizeText = (text: string): string => {
+    // Preposições e artigos que devem ficar em minúsculo
+    const exceptions = ['da', 'de', 'do', 'das', 'dos', 'e', 'di', 'del', 'della', 'von', 'van', 'du'];
+    
+    return text
+      .trim()
+      .split(' ')
+      .filter(word => word.length > 0) // Remove espaços extras
+      .map((word, index) => {
+        const lowerWord = word.toLowerCase();
+        
+        // Primeira palavra sempre maiúscula, mesmo que seja preposição
+        if (index === 0) {
+          return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+        }
+        
+        // Preposições e artigos ficam em minúsculo
+        if (exceptions.includes(lowerWord)) {
+          return lowerWord;
+        }
+        
+        // Demais palavras com primeira letra maiúscula
+        return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+      })
+      .join(' ');
+  };
+
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     
@@ -142,18 +179,20 @@ const Register: React.FC<RegisterProps> = ({
 
     try {
       const payload = {
-        nome: formData.nome.trim(),
-        setor: formData.setor.trim(),
+        nome: capitalizeText(formData.nome.trim()), // 🔧 Aplicar capitalize no nome
+        setor: formData.setor.trim(), // Setor mantém como está (já vem do select)
         tipo_colaborador: formData.tipo_colaborador,
         senha: formData.senha,
         ...(formData.tipo_colaborador === 'estagiario' 
-          ? { email_pessoal: formData.email_pessoal.trim() }
+          ? { email_pessoal: formData.email_pessoal.trim().toLowerCase() } // 🔧 Email sempre minúsculo
           : { 
-              email: formData.email.trim(),
-              email_pessoal: formData.email_pessoal.trim()
+              email: formData.email.trim().toLowerCase(), // 🔧 Email sempre minúsculo
+              email_pessoal: formData.email_pessoal.trim().toLowerCase() // 🔧 Email sempre minúsculo
             }
         )
       };
+
+      console.log('📝 Register: Enviando payload:', { ...payload, senha: '[REDACTED]' });
 
       const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
@@ -164,14 +203,25 @@ const Register: React.FC<RegisterProps> = ({
       });
 
       const data: RegistrationResult = await response.json();
+      console.log('📧 Register: Resposta da API:', data);
 
       if (response.ok) {
-        // Redirecionar para verificação com email apropriado
+        // Enriquecer dados para compatibilidade com AuthSystem
+        const enrichedData: RegistrationResult = {
+          ...data,
+          nome: formData.nome,
+          tipo_colaborador: formData.tipo_colaborador,
+          email: formData.tipo_colaborador === 'clt_associado' ? formData.email : undefined,
+          email_login: formData.tipo_colaborador === 'estagiario' ? formData.email_pessoal : formData.email,
+          email_enviado_para: formData.tipo_colaborador === 'estagiario' ? formData.email_pessoal : formData.email
+        };
+
         const emailForVerification = formData.tipo_colaborador === 'estagiario' 
           ? formData.email_pessoal 
           : formData.email;
         
         if (data.verification_required) {
+          console.log('🔢 Register: Redirecionando para verificação');
           onSwitchToVerification(emailForVerification);
           toast({
             title: "📧 Cadastro realizado!",
@@ -179,13 +229,15 @@ const Register: React.FC<RegisterProps> = ({
             variant: "default",
           });
         } else {
-          onEmailSent(data);
+          console.log('📋 Register: Enviando para próxima etapa');
+          onEmailSent(enrichedData);
           toast({
             title: "📧 Cadastro realizado!",
             description: "Verifique seu email para ativar a conta",
           });
         }
       } else {
+        console.error('❌ Register: Erro na resposta:', data);
         toast({
           title: "❌ Erro no cadastro",
           description: data.error || data.message || 'Erro no cadastro',
@@ -193,7 +245,7 @@ const Register: React.FC<RegisterProps> = ({
         });
       }
     } catch (error) {
-      console.error('Erro no cadastro:', error);
+      console.error('❌ Register: Erro de conexão:', error);
       toast({
         title: "❌ Erro de conexão",
         description: "Erro de conexão. Tente novamente.",
@@ -222,7 +274,7 @@ const Register: React.FC<RegisterProps> = ({
         </CardHeader>
         
         <CardContent>
-          <div className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="nome">Nome Completo</Label>
               <Input
@@ -233,6 +285,7 @@ const Register: React.FC<RegisterProps> = ({
                 value={formData.nome}
                 onChange={handleInputChange}
                 required
+                autoComplete="name"
               />
             </div>
 
@@ -243,7 +296,7 @@ const Register: React.FC<RegisterProps> = ({
                 onValueChange={handleTipoColaboradorChange}
                 className="flex flex-col space-y-2"
               >
-                <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-gray-50">
+                <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-gray-50 transition-colors">
                   <RadioGroupItem value="clt_associado" id="clt_associado" />
                   <Label htmlFor="clt_associado" className="flex items-center space-x-2 cursor-pointer flex-1">
                     <div>
@@ -253,7 +306,7 @@ const Register: React.FC<RegisterProps> = ({
                   </Label>
                 </div>
                 
-                <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-gray-50">
+                <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-gray-50 transition-colors">
                   <RadioGroupItem value="estagiario" id="estagiario" />
                   <Label htmlFor="estagiario" className="flex items-center space-x-2 cursor-pointer flex-1">
                     <div>
@@ -276,13 +329,15 @@ const Register: React.FC<RegisterProps> = ({
                   value={formData.email}
                   onChange={handleInputChange}
                   required={!isEstagiario}
+                  autoComplete="email"
                 />
               </div>
             )}
 
             <div className="space-y-2">
               <Label htmlFor="email_pessoal">
-                {isEstagiario ? 'Email Pessoal' : 'Email Pessoal'}
+                Email Pessoal
+                {!isEstagiario && <span className="text-sm text-gray-500 ml-1">(para contracheque)</span>}
               </Label>
               <Input
                 id="email_pessoal"
@@ -292,6 +347,7 @@ const Register: React.FC<RegisterProps> = ({
                 value={formData.email_pessoal}
                 onChange={handleInputChange}
                 required
+                autoComplete="email"
               />
             </div>
 
@@ -306,7 +362,7 @@ const Register: React.FC<RegisterProps> = ({
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <option value="">Selecione o setor</option>
-                {setors.map(setor => (
+                {setores.map(setor => (
                   <option key={setor} value={setor}>{setor}</option>
                 ))}
               </select>
@@ -323,6 +379,7 @@ const Register: React.FC<RegisterProps> = ({
                   value={formData.senha}
                   onChange={handleInputChange}
                   required
+                  autoComplete="new-password"
                 />
                 <Button
                   type="button"
@@ -330,6 +387,7 @@ const Register: React.FC<RegisterProps> = ({
                   size="sm"
                   className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                   onClick={() => setShowPassword(!showPassword)}
+                  tabIndex={-1}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </Button>
@@ -347,6 +405,7 @@ const Register: React.FC<RegisterProps> = ({
                   value={formData.confirmarSenha}
                   onChange={handleInputChange}
                   required
+                  autoComplete="new-password"
                 />
                 <Button
                   type="button"
@@ -354,6 +413,7 @@ const Register: React.FC<RegisterProps> = ({
                   size="sm"
                   className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  tabIndex={-1}
                 >
                   {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </Button>
@@ -361,10 +421,9 @@ const Register: React.FC<RegisterProps> = ({
             </div>
 
             <Button 
-              type="button" 
-              className="w-full bg-rmh-lightGreen hover:bg-primary-800" 
+              type="submit" 
+              className="w-full bg-rmh-lightGreen hover:bg-primary-800 transition-colors" 
               disabled={isLoading}
-              onClick={handleSubmit}
             >
               {isLoading ? (
                 <>
@@ -378,15 +437,16 @@ const Register: React.FC<RegisterProps> = ({
 
             <div className="text-center">
               <Button
+                type="button"
                 onClick={onBackToLogin}
                 variant="ghost"
-                className="text-corporate-blue hover:text-primary-800"
+                className="text-corporate-blue hover:text-primary-800 transition-colors"
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Já tem uma conta? Faça login
               </Button>
             </div>
-          </div>
+          </form>
         </CardContent>
       </Card>
     </div>

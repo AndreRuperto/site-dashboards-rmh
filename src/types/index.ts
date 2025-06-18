@@ -1,4 +1,4 @@
-// src/types/index.ts - CORRIGIDO com base no backend real
+// src/types/index.ts - ATUALIZADO com base no backend real
 export type UserRole = 'usuario' | 'admin';
 export type TipoColaborador = 'estagiario' | 'clt_associado';
 
@@ -7,13 +7,34 @@ export interface User {
   nome: string;
   email?: string; // Email corporativo - opcional para estagiários
   email_pessoal?: string; // Email pessoal - obrigatório para estagiários
-  setor: string; // 🔧 CORRIGIDO: era 'departamento', agora é 'setor'
+  setor: string;
   tipo_usuario: UserRole;
   tipo_colaborador: TipoColaborador;
   email_verificado: boolean;
+  aprovado_admin?: boolean; // 🆕 ADICIONADO: Para controle de aprovação de estagiários
   criado_em: string;
   atualizado_em: string;
   ultimo_login?: string;
+  email_login: string; // 🆕 ADICIONADO: Email usado para login (calculado)
+  status: string; // 🆕 ADICIONADO: Status do usuário (pendente_aprovacao, ativo, etc)
+  codigo_ativo?: boolean; // 🆕 ADICIONADO: Se há código de verificação ativo
+}
+
+// 🆕 INTERFACE ESPECÍFICA PARA ADMIN
+export interface Usuario {
+  id: string;
+  nome: string;
+  email?: string;
+  email_pessoal?: string;
+  setor: string;
+  tipo_colaborador: TipoColaborador;
+  tipo_usuario?: UserRole;
+  email_verificado: boolean;
+  aprovado_admin?: boolean;
+  criado_em: string;
+  email_login: string;
+  status: string;
+  codigo_ativo?: boolean;
 }
 
 export interface Dashboard {
@@ -52,6 +73,30 @@ export interface LogEmail {
   enviado_em: string;
 }
 
+// 🆕 INTERFACES PARA ADMIN
+export interface UsuariosStats {
+  total: number;
+  pendentes_aprovacao: number;
+  nao_verificados: number;
+  admins: number;
+}
+
+export interface RegistrationResult {
+  success?: boolean;
+  message?: string;
+  error?: string;
+  verification_required?: boolean;
+  awaiting_admin_approval?: boolean;
+  email_enviado_para?: string;
+  email_login?: string;
+  email?: string;
+  nome?: string;
+  tipo_colaborador?: TipoColaborador;
+  email_enviado?: boolean;
+  info?: string;
+  user_id?: string;
+}
+
 // Tipos para requisições da API
 export interface LoginRequest {
   email: string;
@@ -63,7 +108,7 @@ export interface RegisterRequest {
   email?: string; // Opcional para estagiários
   email_pessoal?: string; // Obrigatório para estagiários
   senha: string;
-  setor: string; // 🔧 CORRIGIDO: era 'departamento', agora é 'setor'
+  setor: string;
   tipo_colaborador: TipoColaborador;
 }
 
@@ -96,6 +141,25 @@ export interface ApiError {
   details?: string;
 }
 
+// 🆕 TIPOS PARA ADMIN
+export interface UsuariosResponse {
+  usuarios: Usuario[];
+  total?: number;
+  pendentes_aprovacao?: number;
+  nao_verificados?: number;
+  admins?: number;
+}
+
+export interface AprovarUsuarioRequest {
+  enviar_codigo?: boolean;
+}
+
+export interface AprovarUsuarioResponse {
+  message: string;
+  success: boolean;
+  usuarios?: never; // Para evitar confusão - esta interface NÃO tem usuarios
+}
+
 // Utilitários para validação
 export const getLoginEmail = (user: User): string => {
   if (user.tipo_colaborador === 'estagiario') {
@@ -115,3 +179,63 @@ export const isEstagiario = (user: User): boolean => {
 export const isCltAssociado = (user: User): boolean => {
   return user.tipo_colaborador === 'clt_associado';
 };
+
+export const isAdmin = (user: User): boolean => {
+  return user.tipo_usuario === 'admin';
+};
+
+// 🆕 UTILITÁRIOS PARA STATUS
+export const getUserStatus = (usuario: Usuario): string => {
+  if (usuario.tipo_usuario === 'admin') return 'admin';
+  
+  if (usuario.tipo_colaborador === 'estagiario') {
+    if (usuario.status === 'pendente_aprovacao' || !usuario.aprovado_admin) {
+      return 'pendente_aprovacao';
+    }
+    if (usuario.aprovado_admin && !usuario.email_verificado) {
+      return 'aguardando_verificacao';
+    }
+    if (usuario.aprovado_admin && usuario.email_verificado) {
+      return 'ativo';
+    }
+  }
+  
+  if (usuario.tipo_colaborador === 'clt_associado') {
+    if (usuario.email_verificado) {
+      return 'ativo';
+    } else {
+      return 'aguardando_verificacao';
+    }
+  }
+  
+  return 'indefinido';
+};
+
+export const isPendenteAprovacao = (usuario: Usuario): boolean => {
+  return usuario.tipo_colaborador === 'estagiario' && 
+         (usuario.status === 'pendente_aprovacao' || !usuario.aprovado_admin);
+};
+
+export const isAguardandoVerificacao = (usuario: Usuario): boolean => {
+  return !usuario.email_verificado && 
+         (usuario.tipo_colaborador === 'clt_associado' || 
+          (usuario.tipo_colaborador === 'estagiario' && usuario.aprovado_admin));
+};
+
+// 🆕 SETORES DISPONÍVEIS
+export const SETORES = [
+  'Carteira',
+  'Atendimento',
+  'Prazos',
+  'Trabalhista',
+  'Projetos',
+  'Inicial',
+  'Criminal',
+  'Financeiro',
+  'Saúde',
+  'Comercial/Marketing',
+  'Administrativo',
+  'Família e Sucessões'
+] as const;
+
+export type Setor = typeof SETORES[number];

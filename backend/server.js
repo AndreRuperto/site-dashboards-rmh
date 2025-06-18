@@ -63,20 +63,40 @@ async function testarConexao(tentativas = 3) {
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Middleware de segurança
-app.use(helmet({
-  crossOriginResourcePolicy: false,
-  crossOriginEmbedderPolicy: false,
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      connectSrc: ["'self'", "https://*.railway.app", "https://api.resend.com"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      imgSrc: ["'self'", "data:", "https:"],
-      fontSrc: ["'self'", "https:", "data:"]
-    },
-  },
-}));
+app.use(
+  helmet({
+    crossOriginResourcePolicy: false,
+    crossOriginEmbedderPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        connectSrc: [
+          "'self'",
+          "https://*.railway.app",
+          "https://api.resend.com",
+          "https://app.fabric.microsoft.com"
+        ],
+        frameSrc: [
+          "'self'",
+          "https://app.fabric.microsoft.com"
+        ],
+        scriptSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          "'unsafe-eval'",
+          "https://app.fabric.microsoft.com"
+        ],
+        styleSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          "https://fonts.googleapis.com"
+        ],
+        imgSrc: ["'self'", "data:", "https:"],
+        fontSrc: ["'self'", "https:", "data:"]
+      }
+    }
+  })
+);
 
 // CORS configurado corretamente
 app.use(cors({

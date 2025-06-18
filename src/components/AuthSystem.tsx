@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { useToast } from '@/hooks/use-toast';
-import { Eye, EyeOff, Users, Building, Mail, ArrowLeft, Loader2 } from 'lucide-react';
+import { Mail, ArrowLeft, Clock, CheckCircle } from 'lucide-react';
+import EmailVerificationForm from '@/components/EmailVerificationForm';
 
-// Types definition
-type TipoColaborador = 'estagiario' | 'clt_associado';
+// IMPORTANTE: Importar tipos centralizados
+import { User, TipoColaborador } from '@/types';
 
-// Definindo o tipo RegistrationResult - UNIFICADO com AuthSystem
+// IMPORTANTE: Descomente estas linhas se ainda estão comentadas
+import Login from './Login';
+import Register from './Register';
+
+// Tipos específicos para o AuthSystem - UNIFICADOS
 interface RegistrationResult {
   success?: boolean;
   message?: string;
@@ -27,384 +28,230 @@ interface RegistrationResult {
   user_id?: string;
 }
 
-// API Configuration
-const API_BASE_URL = 'http://localhost:3001'; // Adjust for production
+type AuthView = 'login' | 'register' | 'forgot-password' | 'email-sent' | 'verification' | 'awaiting-approval';
 
-interface RegisterProps {
-  tipoPreSelecionado?: TipoColaborador;
+const AuthSystem = () => {
+  // 🔧 CORREÇÃO: Estado inicial sempre deve ser 'login'
+  const [currentView, setCurrentView] = useState<AuthView>('login');
+  const [userEmail, setUserEmail] = useState('');
+  const [userName, setUserName] = useState('');
+  const [tipoColaboradorPreSelecionado, setTipoColaboradorPreSelecionado] = useState<TipoColaborador>('clt_associado');
+
+  // DEBUG: Log inicial para verificar estado
+  console.log('🚀 AuthSystem: Componente renderizado, currentView inicial:', currentView);
+
+  const switchView = (view: AuthView, email?: string, nome?: string, tipo?: TipoColaborador) => {
+    console.log('🔄 AuthSystem: Mudando de', currentView, 'para:', view, 'Email:', email, 'Nome:', nome, 'Tipo:', tipo);
+    setCurrentView(view);
+    if (email) setUserEmail(email);
+    if (nome) setUserName(nome);
+    if (tipo) setTipoColaboradorPreSelecionado(tipo);
+  };
+
+  const handleSwitchToRegister = (tipoPreSelecionado?: TipoColaborador) => {
+    console.log('📝 AuthSystem: handleSwitchToRegister chamado com:', tipoPreSelecionado);
+    switchView('register', undefined, undefined, tipoPreSelecionado || 'clt_associado');
+  };
+
+  // 🔧 NOVA FUNÇÃO: Lidar com diferentes resultados de registro
+  const handleRegistrationResult = (data: RegistrationResult) => {
+    console.log('📝 AuthSystem: Resultado do registro:', data);
+    
+    if (data.awaiting_admin_approval) {
+      // Estagiário - aguardando aprovação
+      switchView('awaiting-approval', data.email_login || data.email || userEmail, data.nome || userName, data.tipo_colaborador);
+    } else if (data.verification_required) {
+      // CLT - email enviado, precisa verificar
+      switchView('email-sent', data.email_enviado_para || data.email || userEmail, data.nome || userName, data.tipo_colaborador);
+    } else {
+      // Fallback - voltar ao login
+      switchView('login');
+    }
+  };
+
+  // 🔧 DEBUG: Log toda vez que o currentView mudar
+  React.useEffect(() => {
+    console.log('🔄 AuthSystem: currentView mudou para:', currentView);
+  }, [currentView]);
+
+  return (
+    <>
+      {currentView === 'login' && (
+        <>
+          {console.log('🔑 AuthSystem: Renderizando componente Login')}
+          <Login 
+            onSwitchToRegister={handleSwitchToRegister}
+            onSwitchToForgotPassword={() => switchView('forgot-password')}
+            onSwitchToVerification={(email) => switchView('verification', email)}
+          />
+        </>
+      )}
+      
+      {currentView === 'register' && (
+        <>
+          {console.log('📝 AuthSystem: Renderizando componente Register')}
+          <Register 
+            tipoPreSelecionado={tipoColaboradorPreSelecionado}
+            onBackToLogin={() => switchView('login')}
+            onEmailSent={handleRegistrationResult}
+            onSwitchToVerification={(email) => switchView('verification', email)}
+          />
+        </>
+      )}
+      
+      {currentView === 'email-sent' && (
+        <>
+          {console.log('📧 AuthSystem: Renderizando EmailSentView')}
+          <EmailSentView 
+            email={userEmail}
+            userName={userName}
+            tipoColaborador={tipoColaboradorPreSelecionado}
+            onBackToLogin={() => switchView('login')}
+            onSwitchToVerification={() => switchView('verification', userEmail)}
+          />
+        </>
+      )}
+      
+      {currentView === 'awaiting-approval' && (
+        <>
+          {console.log('⏳ AuthSystem: Renderizando AwaitingApprovalView')}
+          <AwaitingApprovalView 
+            email={userEmail}
+            userName={userName}
+            onBackToLogin={() => switchView('login')}
+          />
+        </>
+      )}
+      
+      {currentView === 'verification' && (
+        <>
+          {console.log('🔢 AuthSystem: Renderizando EmailVerificationForm')}
+          <EmailVerificationForm
+            email={userEmail}
+            onVerificationSuccess={(token: string, userData: User) => {
+              console.log('✅ AuthSystem: Verificação bem-sucedida:', userData);
+              localStorage.setItem('authToken', token);
+              localStorage.setItem('user', JSON.stringify(userData));
+              window.location.reload();
+            }}
+            onBackToLogin={() => switchView('login')}
+          />
+        </>
+      )}
+      
+      {currentView === 'forgot-password' && (
+        <>
+          {console.log('🔐 AuthSystem: Renderizando ForgotPasswordView')}
+          <ForgotPasswordView 
+            onBackToLogin={() => switchView('login')}
+          />
+        </>
+      )}
+    </>
+  );
+};
+
+// EmailSentView Component - Atualizado
+interface EmailSentViewProps {
+  email: string;
+  userName?: string;
+  tipoColaborador?: TipoColaborador;
   onBackToLogin: () => void;
-  onEmailSent: (data: RegistrationResult) => void;
-  onSwitchToVerification: (email: string) => void;
+  onSwitchToVerification: () => void;
 }
 
-const Register: React.FC<RegisterProps> = ({ 
-  tipoPreSelecionado = 'clt_associado',
-  onBackToLogin, 
-  onEmailSent, 
+const EmailSentView: React.FC<EmailSentViewProps> = ({ 
+  email, 
+  userName, 
+  tipoColaborador,
+  onBackToLogin,
   onSwitchToVerification 
 }) => {
-  const [formData, setFormData] = useState({
-    nome: '',
-    email: '',
-    email_pessoal: '',
-    senha: '',
-    confirmarSenha: '',
-    setor: '',
-    tipo_colaborador: tipoPreSelecionado // ← Usar tipo pré-selecionado
-  });
-  
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const { toast } = useToast();
-
-  const setors = [
-    'Carteira',
-    'Atendimento',
-    'Prazos',
-    'Trabalhista',
-    'Projetos',
-    'Inicial',
-    'Criminal',
-    'Financeiro',
-    'Saúde',
-    'Comercial/Marketing',
-    'Administrativo',
-    'Família e Sucessões'
-  ];
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
-  const handleTipoColaboradorChange = (value: TipoColaborador) => {
-    setFormData(prev => ({
-      ...prev,
-      tipo_colaborador: value,
-      // Limpar emails ao mudar tipo
-      email: value === 'estagiario' ? '' : prev.email,
-      email_pessoal: value === 'clt_associado' ? '' : prev.email_pessoal
-    }));
-  };
-
-  const validateForm = () => {
-    if (!formData.nome.trim()) {
-      return 'Nome é obrigatório';
-    }
-
-    if (formData.tipo_colaborador === 'estagiario') {
-      if (!formData.email_pessoal.trim()) {
-        return 'Email pessoal é obrigatório para estagiários';
-      }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email_pessoal)) {
-        return 'Email pessoal deve ter formato válido';
-      }
-    } else {
-      if (!formData.email.trim()) {
-        return 'Email corporativo é obrigatório para CLT/Associado';
-      }
-      if (!formData.email.endsWith('@resendemh.com.br')) {
-        return 'Email corporativo deve terminar com @resendemh.com.br';
-      }
-      if (!formData.email_pessoal.trim()) {
-        return 'Email pessoal é obrigatório para envio do contracheque';
-      }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email_pessoal)) {
-        return 'Email pessoal deve ter formato válido';
-      }
-    }
-
-    if (!formData.setor.trim()) {
-      return 'Setor é obrigatório';
-    }
-
-    if (formData.senha.length < 6) {
-      return 'Senha deve ter pelo menos 6 caracteres';
-    }
-
-    if (formData.senha !== formData.confirmarSenha) {
-      return 'Senhas não coincidem';
-    }
-
-    return null;
-  };
-
-  const handleSubmit = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+  // Função para capitalizar nomes corretamente (padrão português)
+  const capitalizeText = (text: string): string => {
+    if (!text) return '';
     
-    const validationError = validateForm();
-    if (validationError) {
-      toast({
-        title: "Erro de validação",
-        description: validationError,
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setIsLoading(true);
-
-    try {
-      const payload = {
-        nome: formData.nome.trim(),
-        setor: formData.setor.trim(),
-        tipo_colaborador: formData.tipo_colaborador,
-        senha: formData.senha,
-        ...(formData.tipo_colaborador === 'estagiario' 
-          ? { email_pessoal: formData.email_pessoal.trim() }
-          : { 
-              email: formData.email.trim(),
-              email_pessoal: formData.email_pessoal.trim()
-            }
-        )
-      };
-
-      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const data: RegistrationResult = await response.json();
-
-      if (response.ok) {
-        // Enriquecer os dados de resposta com informações do formulário
-        const enrichedData: RegistrationResult = {
-          ...data,
-          nome: formData.nome,
-          tipo_colaborador: formData.tipo_colaborador,
-          email: formData.tipo_colaborador === 'clt_associado' ? formData.email : undefined,
-          email_login: formData.tipo_colaborador === 'estagiario' ? formData.email_pessoal : formData.email,
-          email_enviado_para: formData.tipo_colaborador === 'estagiario' ? formData.email_pessoal : formData.email
-        };
-
-        // Redirecionar para verificação com email apropriado
-        const emailForVerification = formData.tipo_colaborador === 'estagiario' 
-          ? formData.email_pessoal 
-          : formData.email;
+    // Preposições e artigos que devem ficar em minúsculo
+    const exceptions = ['da', 'de', 'do', 'das', 'dos', 'e', 'di', 'del', 'della', 'von', 'van', 'du'];
+    
+    return text
+      .trim()
+      .split(' ')
+      .filter(word => word.length > 0) // Remove espaços extras
+      .map((word, index) => {
+        const lowerWord = word.toLowerCase();
         
-        if (data.verification_required) {
-          onSwitchToVerification(emailForVerification);
-          toast({
-            title: "📧 Cadastro realizado!",
-            description: "Verifique seu email e digite o código de verificação",
-            variant: "default",
-          });
-        } else {
-          // Usar dados enriquecidos
-          onEmailSent(enrichedData);
-          toast({
-            title: "📧 Cadastro realizado!",
-            description: "Verifique seu email para ativar a conta",
-          });
+        // Primeira palavra sempre maiúscula, mesmo que seja preposição
+        if (index === 0) {
+          return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
         }
-      } else {
-        toast({
-          title: "❌ Erro no cadastro",
-          description: data.error || data.message || 'Erro no cadastro',
-          variant: "destructive"
-        });
-      }
-    } catch (error) {
-      console.error('Erro no cadastro:', error);
-      toast({
-        title: "❌ Erro de conexão",
-        description: "Erro de conexão. Tente novamente.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsLoading(false);
-    }
+        
+        // Preposições e artigos ficam em minúsculo
+        if (exceptions.includes(lowerWord)) {
+          return lowerWord;
+        }
+        
+        // Demais palavras com primeira letra maiúscula
+        return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+      })
+      .join(' ');
   };
-
-  const isEstagiario = formData.tipo_colaborador === 'estagiario';
 
   return (
     <div className="min-h-screen bg-primary flex items-center justify-center p-4">
       <Card className="w-full max-w-md shadow-2xl">
         <CardHeader className="text-center space-y-4">
           <div className="flex items-center justify-center">
-            <Users className="h-12 w-12 text-primary-600" />
+            <Mail className="h-12 w-12 text-green-600" />
           </div>
           <CardTitle className="text-2xl font-heading font-bold text-corporate-blue">
-            Criar Conta
+            Email Enviado!
           </CardTitle>
-          <CardDescription className="text-center">
-            Cadastre-se na plataforma de dashboards RMH
+          <CardDescription className="text-corporate-gray">
+            {userName && <p className="mb-2">Olá, <strong>{capitalizeText(userName)}</strong>!</p>}
+            Enviamos instruções para <strong>{email}</strong>
           </CardDescription>
         </CardHeader>
-        
-        <CardContent>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="nome">Nome Completo</Label>
-              <Input
-                id="nome"
-                name="nome"
-                type="text"
-                placeholder="Seu nome completo"
-                value={formData.nome}
-                onChange={handleInputChange}
-                required
-              />
-            </div>
-
-            <div className="space-y-3">
-              <Label>Tipo de Colaborador</Label>
-              <RadioGroup
-                value={formData.tipo_colaborador}
-                onValueChange={handleTipoColaboradorChange}
-                className="flex flex-col space-y-2"
-              >
-                <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-gray-50">
-                  <RadioGroupItem value="clt_associado" id="clt_associado" />
-                  <Label htmlFor="clt_associado" className="flex items-center space-x-2 cursor-pointer flex-1">
-                    <div>
-                      <div className="font-medium">CLT/Associado</div>
-                      <div className="text-sm text-gray-500">Login com email corporativo</div>
-                    </div>
-                  </Label>
-                </div>
-                
-                <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-gray-50">
-                  <RadioGroupItem value="estagiario" id="estagiario" />
-                  <Label htmlFor="estagiario" className="flex items-center space-x-2 cursor-pointer flex-1">
-                    <div>
-                      <div className="font-medium">Estagiário</div>
-                      <div className="text-sm text-gray-500">Login com email pessoal</div>
-                    </div>
-                  </Label>
-                </div>
-              </RadioGroup>
-            </div>
-
-            {!isEstagiario && (
-              <div className="space-y-2">
-                <Label htmlFor="email">Email Corporativo</Label>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  placeholder="seu.nome@resendemh.com.br"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  required={!isEstagiario}
-                />
+        <CardContent className="space-y-4">
+          <div className="text-center text-sm text-corporate-gray space-y-2">
+            <p>📧 Um email de ativação foi enviado para sua caixa de entrada.</p>
+            <p>🔍 Não encontrou? Verifique sua caixa de spam.</p>
+            <p>⏰ O código expira em 24 horas.</p>
+          </div>
+          
+          {tipoColaborador && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center mb-2">
+                <CheckCircle className="h-4 w-4 text-blue-600 mr-2" />
+                <span className="text-sm font-medium text-blue-800">
+                  {tipoColaborador === 'clt_associado' ? 'CLT/Associado' : 'Estagiário'}
+                </span>
               </div>
-            )}
-
-            <div className="space-y-2">
-              <Label htmlFor="email_pessoal">
-                {isEstagiario ? 'Email Pessoal' : 'Email Pessoal'}
-              </Label>
-              <Input
-                id="email_pessoal"
-                name="email_pessoal"
-                type="email"
-                placeholder={isEstagiario ? 'seu.email@gmail.com' : 'email.pessoal@gmail.com'}
-                value={formData.email_pessoal}
-                onChange={handleInputChange}
-                required
-              />
+              <h4 className="font-semibold text-blue-800 mb-2">📋 Próximos passos:</h4>
+              <ol className="text-sm text-blue-700 space-y-1 list-decimal list-inside">
+                <li>Abra o email que enviamos</li>
+                <li>Digite o código de 6 dígitos</li>
+                <li>Faça login com suas credenciais</li>
+              </ol>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="setor">Setor</Label>
-              <select
-                id="setor"
-                name="setor"
-                value={formData.setor}
-                onChange={handleInputChange}
-                required
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <option value="">Selecione o setor</option>
-                {setors.map(setor => (
-                  <option key={setor} value={setor}>{setor}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="senha">Senha</Label>
-              <div className="relative">
-                <Input
-                  id="senha"
-                  name="senha"
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="Mínimo 6 caracteres"
-                  value={formData.senha}
-                  onChange={handleInputChange}
-                  required
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="confirmarSenha">Confirmar Senha</Label>
-              <div className="relative">
-                <Input
-                  id="confirmarSenha"
-                  name="confirmarSenha"
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  placeholder="Digite a senha novamente"
-                  value={formData.confirmarSenha}
-                  onChange={handleInputChange}
-                  required
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                >
-                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </Button>
-              </div>
-            </div>
-
-            <Button 
-              type="button" 
-              className="w-full bg-rmh-lightGreen hover:bg-primary-800" 
-              disabled={isLoading}
-              onClick={handleSubmit}
+          )}
+          
+          <div className="flex flex-col space-y-2">
+            <Button
+              onClick={onSwitchToVerification}
+              className="w-full"
             >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Criando conta...
-                </>
-              ) : (
-                'Criar Conta'
-              )}
+              Já tenho o código
             </Button>
-
-            <div className="text-center">
-              <Button
-                onClick={onBackToLogin}
-                variant="ghost"
-                className="text-corporate-blue hover:text-primary-800"
-              >
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Já tem uma conta? Faça login
-              </Button>
-            </div>
+            
+            <Button
+              onClick={onBackToLogin}
+              variant="ghost"
+              className="w-full"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Voltar ao Login
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -412,4 +259,123 @@ const Register: React.FC<RegisterProps> = ({
   );
 };
 
-export default Register;
+// 🆕 NOVO COMPONENTE: AwaitingApprovalView
+interface AwaitingApprovalViewProps {
+  email: string;
+  userName?: string;
+  onBackToLogin: () => void;
+}
+
+const AwaitingApprovalView: React.FC<AwaitingApprovalViewProps> = ({ 
+  email, 
+  userName, 
+  onBackToLogin 
+}) => {
+  // Função para capitalizar nomes corretamente (padrão português)
+  const capitalizeText = (text: string): string => {
+    if (!text) return '';
+    
+    // Preposições e artigos que devem ficar em minúsculo
+    const exceptions = ['da', 'de', 'do', 'das', 'dos', 'e', 'di', 'del', 'della', 'von', 'van', 'du'];
+    
+    return text
+      .trim()
+      .split(' ')
+      .filter(word => word.length > 0) // Remove espaços extras
+      .map((word, index) => {
+        const lowerWord = word.toLowerCase();
+        
+        // Primeira palavra sempre maiúscula, mesmo que seja preposição
+        if (index === 0) {
+          return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+        }
+        
+        // Preposições e artigos ficam em minúsculo
+        if (exceptions.includes(lowerWord)) {
+          return lowerWord;
+        }
+        
+        // Demais palavras com primeira letra maiúscula
+        return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+      })
+      .join(' ');
+  };
+
+  return (
+    <div className="min-h-screen bg-primary flex items-center justify-center p-4">
+      <Card className="w-full max-w-md shadow-2xl">
+        <CardHeader className="text-center space-y-4">
+          <div className="flex items-center justify-center">
+            <Clock className="h-12 w-12 text-yellow-600" />
+          </div>
+          <CardTitle className="text-2xl font-heading font-bold text-corporate-blue">
+            Aguardando Aprovação
+          </CardTitle>
+          <CardDescription className="text-corporate-gray">
+            {userName && <p className="mb-2">Olá, <strong>{capitalizeText(userName)}</strong>!</p>}
+            Seu cadastro foi realizado com <strong>{email}</strong>
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <div className="flex items-center mb-3">
+              <Clock className="h-4 w-4 text-yellow-600 mr-2" />
+              <span className="text-sm font-medium text-yellow-800">
+                Estagiário
+              </span>
+            </div>
+            <h4 className="font-semibold text-yellow-800 mb-2">📋 O que acontece agora:</h4>
+            <ol className="text-sm text-yellow-700 space-y-1 list-decimal list-inside">
+              <li>Um administrador irá revisar seu cadastro</li>
+              <li>Você receberá um email quando for aprovado</li>
+              <li>Então poderá fazer login normalmente</li>
+            </ol>
+          </div>
+          
+          <Button
+            onClick={onBackToLogin}
+            variant="ghost"
+            className="w-full"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Voltar ao Login
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+// ForgotPasswordView Component
+interface ForgotPasswordViewProps {
+  onBackToLogin: () => void;
+}
+
+const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({ onBackToLogin }) => {
+  return (
+    <div className="min-h-screen bg-primary flex items-center justify-center p-4">
+      <Card className="w-full max-w-md shadow-2xl">
+        <CardHeader className="text-center space-y-4">
+          <CardTitle className="text-2xl font-heading font-bold text-corporate-blue">
+            Em Breve
+          </CardTitle>
+          <CardDescription className="text-corporate-gray">
+            Função de recuperação de senha será implementada em breve
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button
+            onClick={onBackToLogin}
+            variant="ghost"
+            className="w-full"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Voltar ao Login
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+export default AuthSystem;

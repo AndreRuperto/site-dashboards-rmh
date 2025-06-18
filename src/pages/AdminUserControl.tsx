@@ -1,11 +1,23 @@
-// src/pages/AdminUserControl.tsx - CORRIGIDO
+// src/pages/AdminUserControl.tsx - COM MODAIS PERSONALIZADOS E BOTÃO VOLTAR
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom'; // IMPORTAÇÃO ADICIONADA
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { 
-  Users, 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  User, 
+  Users,
+  UserLock, 
   Shield, 
   Clock, 
   Mail, 
@@ -13,51 +25,48 @@ import {
   RefreshCw,
   UserCheck,
   UserX,
-  Send
+  Send,
+  Crown,
+  ArrowLeft // ÍCONE ADICIONADO
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
+// 🔧 IMPORTANDO TIPOS CENTRALIZADOS
+import { 
+  Usuario, 
+  UsuariosStats, 
+  isPendenteAprovacao,
+  getUserStatus,
+  UsuariosResponse 
+} from '@/types';
+
 // Configuração da API
-const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://rmh.up.railway.app'
-  : 'http://localhost:3001';
-
-interface Usuario {
-  id: string;
-  nome: string;
-  email?: string;
-  email_pessoal?: string;
-  setor: string;
-  tipo_colaborador: 'estagiario' | 'clt_associado';
-  email_verificado: boolean;
-  aprovado_admin?: boolean;
-  criado_em: string;
-  email_login: string;
-  status: string;
-  codigo_ativo?: boolean;
-}
-
-interface UsuariosStats {
-  total: number;
-  pendentes_aprovacao: number;
-  nao_verificados: number;
-}
+const API_BASE_URL = process.env.REACT_APP_API_URL || 
+  (process.env.NODE_ENV === 'production' 
+    ? 'https://rmh.up.railway.app'
+    : 'http://localhost:3001');
 
 const AdminUserControl: React.FC = () => {
+  const navigate = useNavigate(); // HOOK ADICIONADO
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<UsuariosStats>({
     total: 0,
     pendentes_aprovacao: 0,
-    nao_verificados: 0
+    nao_verificados: 0,
+    admins: 0
   });
-  const [filter, setFilter] = useState<'todos' | 'pendentes' | 'corporativos' | 'estagiarios'>('pendentes');
+  const [filter, setFilter] = useState<'todos' | 'pendentes' | 'corporativos' | 'estagiarios' | 'admins'>('pendentes');
+  
+  // 🆕 ESTADOS PARA MODAIS
+  const [usuarioParaRejeitar, setUsuarioParaRejeitar] = useState<{id: string, nome: string} | null>(null);
+  const [usuarioParaAprovar, setUsuarioParaAprovar] = useState<{id: string, nome: string} | null>(null);
+  
   const { toast } = useToast();
 
   // Função para obter token corretamente
   const getAuthToken = (): string | null => {
     const token = localStorage.getItem('authToken');
-    console.log('🔑 ADMIN: Token obtido do localStorage:', token ? `${token.substring(0, 20)}...` : 'NULO');
     return token;
   };
 
@@ -69,9 +78,6 @@ const AdminUserControl: React.FC = () => {
       throw new Error('Token não encontrado no localStorage');
     }
 
-    console.log('🌐 ADMIN: Fazendo requisição para:', url);
-    console.log('🔑 ADMIN: Usando token:', `${token.substring(0, 20)}...`);
-
     const response = await fetch(url, {
       ...options,
       headers: {
@@ -80,14 +86,11 @@ const AdminUserControl: React.FC = () => {
         ...options.headers
       }
     });
-
-    console.log('📡 ADMIN: Response status:', response.status);
     
     if (response.status === 401) {
-      // Token inválido, limpar e redirecionar
       localStorage.removeItem('authToken');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      window.location.href = '/';
       throw new Error('Token inválido ou expirado');
     }
 
@@ -98,20 +101,27 @@ const AdminUserControl: React.FC = () => {
     try {
       setLoading(true);
       
-      const response = await fetchWithAuth(`${API_BASE_URL}/api/admin/usuarios-pendentes`);
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/admin/usuarios`);
 
       if (!response.ok) {
         throw new Error('Erro ao carregar usuários');
       }
 
-      const data = await response.json();
+      const data: UsuariosResponse = await response.json();
       console.log('✅ ADMIN: Dados recebidos:', data);
       
-      setUsuarios(data.usuarios);
+      setUsuarios(data.usuarios || []);
+      
+      const usuarios = data.usuarios || [];
+      const pendentes = usuarios.filter((u: Usuario) => isPendenteAprovacao(u)).length;
+      const naoVerificados = usuarios.filter((u: Usuario) => !u.email_verificado).length;
+      const admins = usuarios.filter((u: Usuario) => u.tipo_usuario === 'admin').length;
+      
       setStats({
-        total: data.total,
-        pendentes_aprovacao: data.pendentes_aprovacao,
-        nao_verificados: data.nao_verificados
+        total: usuarios.length,
+        pendentes_aprovacao: pendentes,
+        nao_verificados: naoVerificados,
+        admins: admins
       });
 
     } catch (error) {
@@ -126,11 +136,23 @@ const AdminUserControl: React.FC = () => {
     }
   };
 
-  const aprovarUsuario = async (userId: string, enviarCodigo: boolean = true) => {
+  // 🆕 FUNÇÕES PARA ABRIR MODAIS
+  const abrirModalAprovacao = (userId: string, nomeUsuario: string) => {
+    setUsuarioParaAprovar({ id: userId, nome: nomeUsuario });
+  };
+
+  const abrirModalRejeicao = (userId: string, nomeUsuario: string) => {
+    setUsuarioParaRejeitar({ id: userId, nome: nomeUsuario });
+  };
+
+  // 🆕 FUNÇÃO DE APROVAÇÃO COM MODAL
+  const aprovarUsuario = async () => {
+    if (!usuarioParaAprovar) return;
+
     try {
-      const response = await fetchWithAuth(`${API_BASE_URL}/api/admin/aprovar-usuario/${userId}`, {
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/admin/aprovar-usuario/${usuarioParaAprovar.id}`, {
         method: 'POST',
-        body: JSON.stringify({ enviar_codigo: enviarCodigo })
+        body: JSON.stringify({ enviar_codigo: true })
       });
 
       if (!response.ok) {
@@ -145,7 +167,8 @@ const AdminUserControl: React.FC = () => {
         variant: "default"
       });
 
-      fetchUsuarios(); // Recarregar lista
+      fetchUsuarios();
+      setUsuarioParaAprovar(null);
 
     } catch (error) {
       console.error('❌ Erro ao aprovar usuário:', error);
@@ -157,13 +180,12 @@ const AdminUserControl: React.FC = () => {
     }
   };
 
-  const rejeitarUsuario = async (userId: string, nomeUsuario: string) => {
-    if (!confirm(`Tem certeza que deseja REJEITAR o cadastro de ${nomeUsuario}? Esta ação não pode ser desfeita.`)) {
-      return;
-    }
+  // 🆕 FUNÇÃO DE REJEIÇÃO COM MODAL
+  const rejeitarUsuario = async () => {
+    if (!usuarioParaRejeitar) return;
 
     try {
-      const response = await fetchWithAuth(`${API_BASE_URL}/api/admin/rejeitar-usuario/${userId}`, {
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/admin/rejeitar-usuario/${usuarioParaRejeitar.id}`, {
         method: 'DELETE'
       });
 
@@ -179,7 +201,8 @@ const AdminUserControl: React.FC = () => {
         variant: "destructive"
       });
 
-      fetchUsuarios(); // Recarregar lista
+      fetchUsuarios();
+      setUsuarioParaRejeitar(null);
 
     } catch (error) {
       console.error('❌ Erro ao rejeitar usuário:', error);
@@ -219,38 +242,92 @@ const AdminUserControl: React.FC = () => {
     }
   };
 
+  const capitalizeText = (text: string): string => {
+    if (!text) return '';
+    
+    const exceptions = ['da', 'de', 'do', 'das', 'dos', 'e', 'di', 'del', 'della', 'von', 'van', 'du'];
+    
+    return text
+      .trim()
+      .split(' ')
+      .filter(word => word.length > 0)
+      .map((word, index) => {
+        const lowerWord = word.toLowerCase();
+        
+        if (index === 0) {
+          return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+        }
+        
+        if (exceptions.includes(lowerWord)) {
+          return lowerWord;
+        }
+        
+        return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+      })
+      .join(' ');
+  };
+
   const getStatusBadge = (usuario: Usuario) => {
+    if (usuario.tipo_usuario === 'admin') {
+      return (
+        <Badge variant="default" className="bg-purple-600">
+          <Crown className="h-3 w-3 mr-1" />
+          Administrador
+        </Badge>
+      );
+    }
+
     if (usuario.tipo_colaborador === 'clt_associado') {
-      return (
-        <Badge variant="default" className="bg-blue-600">
-          <Shield className="h-3 w-3 mr-1" />
-          CLT/Associado
-        </Badge>
-      );
+      if (usuario.email_verificado) {
+        return (
+          <Badge variant="default" className="bg-green-600">
+            <CheckCircle className="h-3 w-3 mr-1" />
+            CLT Verificado
+          </Badge>
+        );
+      } else {
+        return (
+          <Badge variant="secondary" className="bg-rmh-primary text-white">
+            <UserLock className="h-3 w-3 mr-1" />
+            CLT Pendente
+          </Badge>
+        );
+      }
     }
 
-    if (usuario.status === 'pendente_aprovacao') {
-      return (
-        <Badge variant="destructive">
-          <Clock className="h-3 w-3 mr-1" />
-          Pendente Aprovação
-        </Badge>
-      );
-    }
-
-    if (usuario.aprovado_admin && !usuario.email_verificado) {
-      return (
-        <Badge variant="secondary" className="bg-yellow-500 text-white">
-          <Mail className="h-3 w-3 mr-1" />
-          Aguardando Verificação
-        </Badge>
-      );
+    if (usuario.tipo_colaborador === 'estagiario') {
+      if (usuario.status === 'pendente_aprovacao' || !usuario.aprovado_admin) {
+        return (
+          <Badge className="bg-rmh-yellow text-white hover:bg-rmh-yellow">
+            <Clock className="h-3 w-3 mr-1" />
+            Aguardando Aprovação
+          </Badge>
+        );
+      }
+      
+      if (usuario.aprovado_admin && !usuario.email_verificado) {
+        return (
+          <Badge variant="secondary" className="bg-yellow-500 text-white">
+            <Mail className="h-3 w-3 mr-1" />
+            Aguardando Verificação
+          </Badge>
+        );
+      }
+      
+      if (usuario.aprovado_admin && usuario.email_verificado) {
+        return (
+          <Badge variant="default" className="bg-green-600">
+            <CheckCircle className="h-3 w-3 mr-1" />
+            Estagiário Verificado
+          </Badge>
+        );
+      }
     }
 
     return (
-      <Badge variant="default" className="bg-green-600">
-        <CheckCircle className="h-3 w-3 mr-1" />
-        Verificado
+      <Badge variant="secondary" className="bg-gray-500 text-white">
+        <Clock className="h-3 w-3 mr-1" />
+        Status Indefinido
       </Badge>
     );
   };
@@ -258,11 +335,13 @@ const AdminUserControl: React.FC = () => {
   const usuariosFiltrados = usuarios.filter(usuario => {
     switch (filter) {
       case 'pendentes':
-        return usuario.status === 'pendente_aprovacao';
+        return isPendenteAprovacao(usuario);
       case 'corporativos':
         return usuario.tipo_colaborador === 'clt_associado';
       case 'estagiarios':
         return usuario.tipo_colaborador === 'estagiario';
+      case 'admins':
+        return usuario.tipo_usuario === 'admin';
       default:
         return true;
     }
@@ -282,21 +361,33 @@ const AdminUserControl: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-primary">Controle de Usuários</h1>
-          <p className="text-gray-600">Gerencie cadastros e aprovações de usuários</p>
-        </div>
-        <Button onClick={fetchUsuarios} variant="outline">
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Atualizar
+    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+      {/* Header COM BOTÃO VOLTAR */}
+      <div className="space-y-4">
+        {/* BOTÃO VOLTAR ADICIONADO */}
+        <Button
+          onClick={() => navigate('/')}
+          variant="ghost"
+          className="mb-2"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Voltar ao Início
         </Button>
+        
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-primary">Controle de Usuários</h1>
+            <p className="text-gray-600">Gerencie cadastros e aprovações de usuários</p>
+          </div>
+          <Button onClick={fetchUsuarios} variant="outline">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Atualizar
+          </Button>
+        </div>
       </div>
 
       {/* Estatísticas */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
@@ -332,31 +423,55 @@ const AdminUserControl: React.FC = () => {
             </div>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <Crown className="h-5 w-5 text-purple-600" />
+              <div>
+                <p className="text-sm font-medium text-gray-600">Administradores</p>
+                <p className="text-2xl font-bold text-purple-600">{stats.admins}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Filtros */}
-      <div className="flex space-x-2">
+      <div className="flex flex-wrap gap-2">
         <Button
           variant={filter === 'pendentes' ? 'default' : 'outline'}
           onClick={() => setFilter('pendentes')}
+          size="sm"
         >
           Pendentes ({stats.pendentes_aprovacao})
         </Button>
         <Button
+          variant={filter === 'admins' ? 'default' : 'outline'}
+          onClick={() => setFilter('admins')}
+          size="sm"
+        >
+          <Crown className="h-4 w-4 mr-1" />
+          Admins ({stats.admins})
+        </Button>
+        <Button
           variant={filter === 'corporativos' ? 'default' : 'outline'}
           onClick={() => setFilter('corporativos')}
+          size="sm"
         >
           CLT/Associados
         </Button>
         <Button
           variant={filter === 'estagiarios' ? 'default' : 'outline'}
           onClick={() => setFilter('estagiarios')}
+          size="sm"
         >
           Estagiários
         </Button>
         <Button
           variant={filter === 'todos' ? 'default' : 'outline'}
           onClick={() => setFilter('todos')}
+          size="sm"
         >
           Todos
         </Button>
@@ -382,23 +497,23 @@ const AdminUserControl: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div className="flex-1">
                   <div className="flex items-center space-x-3 mb-2">
-                    <h3 className="text-lg font-medium">{usuario.nome}</h3>
+                    <h3 className="text-lg font-medium">{capitalizeText(usuario.nome)}</h3>
                     {getStatusBadge(usuario)}
                   </div>
                   
                   <div className="text-sm text-gray-600 space-y-1">
                     <p><strong>Setor:</strong> {usuario.setor}</p>
-                    <p><strong>Email usado:</strong> {usuario.email_login}</p>
+                    <p><strong>Email:</strong> {usuario.email_login}</p>
                     <p><strong>Cadastrado:</strong> {new Date(usuario.criado_em).toLocaleDateString('pt-BR')}</p>
                   </div>
                 </div>
 
-                {/* Ações */}
+                {/* 🆕 AÇÕES COM MODAIS */}
                 <div className="flex space-x-2">
-                  {usuario.status === 'pendente_aprovacao' && (
+                  {isPendenteAprovacao(usuario) && (
                     <>
                       <Button
-                        onClick={() => aprovarUsuario(usuario.id)}
+                        onClick={() => abrirModalAprovacao(usuario.id, usuario.nome)}
                         className="bg-green-600 hover:bg-green-700"
                         size="sm"
                       >
@@ -406,7 +521,7 @@ const AdminUserControl: React.FC = () => {
                         Aprovar
                       </Button>
                       <Button
-                        onClick={() => rejeitarUsuario(usuario.id, usuario.nome)}
+                        onClick={() => abrirModalRejeicao(usuario.id, usuario.nome)}
                         variant="destructive"
                         size="sm"
                       >
@@ -433,39 +548,79 @@ const AdminUserControl: React.FC = () => {
         )}
       </div>
 
-      {/* Informações */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">📋 Como funciona o controle</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div>
-              <h4 className="font-semibold text-blue-600 mb-2">👔 Colaboradores CLT/Associados</h4>
-              <ul className="space-y-1 text-gray-600">
-                <li>• Email @resendemh.com.br obrigatório</li>
-                <li>• Código enviado automaticamente</li>
-                <li>• Aprovação automática</li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold text-green-600 mb-2">🎓 Estagiários</h4>
-              <ul className="space-y-1 text-gray-600">
-                <li>• Qualquer email pessoal</li>
-                <li>• Precisam de aprovação manual</li>
-                <li>• Código enviado após aprovação</li>
-              </ul>
-            </div>
-          </div>
-          <Alert>
-            <Shield className="h-4 w-4" />
-            <AlertDescription>
-              <strong>Segurança:</strong> Sempre verifique a identidade dos estagiários antes de aprovar. 
-              Pessoas não autorizadas podem tentar se cadastrar com emails externos.
-            </AlertDescription>
-          </Alert>
-        </CardContent>
-      </Card>
+      {/* 🆕 MODAL DE CONFIRMAÇÃO DE APROVAÇÃO */}
+      <AlertDialog open={!!usuarioParaAprovar} onOpenChange={() => setUsuarioParaAprovar(null)}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-green-600">
+              <UserCheck className="h-5 w-5" />
+              Confirmar Aprovação
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-600">
+              Confirma a <strong>APROVAÇÃO</strong> do cadastro de{' '}
+              <span className="font-semibold text-gray-900">
+                {usuarioParaAprovar?.nome}
+              </span>?
+              <br /><br />
+              <span className="text-green-600 font-medium">
+                📧 Um código de verificação será enviado por email para o usuário.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel 
+              onClick={() => setUsuarioParaAprovar(null)}
+              className="bg-gray-100 hover:bg-gray-200"
+            >
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={aprovarUsuario}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              <UserCheck className="h-4 w-4 mr-2" />
+              Sim, Aprovar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 🆕 MODAL DE CONFIRMAÇÃO DE REJEIÇÃO */}
+      <AlertDialog open={!!usuarioParaRejeitar} onOpenChange={() => setUsuarioParaRejeitar(null)}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+              <UserX className="h-5 w-5" />
+              Confirmar Rejeição
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-600">
+              Tem certeza que deseja <strong>REJEITAR</strong> o cadastro de{' '}
+              <span className="font-semibold text-gray-900">
+                {usuarioParaRejeitar?.nome}
+              </span>?
+              <br /><br />
+              <span className="text-red-600 font-medium">
+                ⚠️ Esta ação não pode ser desfeita e o usuário será removido permanentemente do sistema.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel 
+              onClick={() => setUsuarioParaRejeitar(null)}
+              className="bg-gray-100 hover:bg-gray-200"
+            >
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={rejeitarUsuario}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              <UserX className="h-4 w-4 mr-2" />
+              Sim, Rejeitar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

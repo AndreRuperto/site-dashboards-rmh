@@ -80,7 +80,8 @@ export default {
                                         lightGray: '#9ca2a3',
                                         white: '#FFFFFF',
                                         black: '#000000',
-										lightGreen: '#165A5D'
+										lightGreen: '#165A5D',
+										yellow: '#CA8A04FF'
                                 }
 			},
 			fontFamily: {

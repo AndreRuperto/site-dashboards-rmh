@@ -158,44 +158,44 @@ const DashboardFilters: React.FC<DashboardFiltersProps> = ({
         <div className="mt-4 pt-4 border-t border-gray-200">
           <div className="flex flex-wrap gap-2">
             {selectedSetor !== 'all' && (
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rmh-lightGreen text-white">
                 Setor: {selectedSetor}
                 <button
                   onClick={() => onSetorChange('all')}
-                  className="ml-1 text-blue-600 hover:text-blue-800"
+                  className="ml-1 text-white hover:text-gray-200"
                 >
                   <X className="h-3 w-3" />
                 </button>
               </span>
             )}
             {selectedPeriodo !== 'all' && (
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rmh-lightGreen text-white">
                 Período: {selectedPeriodo.replace('_', ' ')}
                 <button
                   onClick={() => onPeriodoChange('all')}
-                  className="ml-1 text-green-600 hover:text-green-800"
+                  className="ml-1 text-white hover:text-gray-200"
                 >
                   <X className="h-3 w-3" />
                 </button>
               </span>
             )}
             {selectedCriador !== 'all' && (
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rmh-lightGreen text-white">
                 Criador: {selectedCriador}
                 <button
                   onClick={() => onCriadorChange('all')}
-                  className="ml-1 text-purple-600 hover:text-purple-800"
+                  className="ml-1 text-white hover:text-gray-200"
                 >
                   <X className="h-3 w-3" />
                 </button>
               </span>
             )}
             {searchTerm && (
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rmh-lightGreen text-white">
                 Busca: "{searchTerm}"
                 <button
                   onClick={() => onSearchChange('')}
-                  className="ml-1 text-yellow-600 hover:text-yellow-800"
+                  className="ml-1 text-white hover:text-gray-200"
                 >
                   <X className="h-3 w-3" />
                 </button>

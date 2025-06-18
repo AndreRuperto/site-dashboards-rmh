@@ -46,10 +46,9 @@ const Header = () => {
       <div className="px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            {/* Logo mantido */}
             <RMHLogo />
-            
-            {/* Menu de navegação para desktop */}
+
+            {/* Navegação padrão */}
             <nav className="hidden lg:flex items-center space-x-2">
               <Button
                 variant="ghost"
@@ -58,45 +57,10 @@ const Header = () => {
               >
                 📊 Dashboards
               </Button>
-
-              {/* Menu Admin (só para admins) */}
-              {user?.tipo_usuario === 'admin' && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button 
-                      variant="ghost" 
-                      className="text-rmh-white hover:text-white hover:bg-rmh-lightGreen/20"
-                    >
-                      <Shield className="h-4 w-4 mr-1" />
-                      Admin
-                      <ChevronDown className="h-3 w-3 ml-1" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-48">
-                    <DropdownMenuLabel>Administração</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem 
-                      onClick={goToAdminUsers}
-                      className="cursor-pointer"
-                    >
-                      <Users className="h-4 w-4 mr-2" />
-                      Controle de Usuários
-                    </DropdownMenuItem>
-                    <DropdownMenuItem 
-                      onClick={() => navigate('/admin/settings')}
-                      className="cursor-pointer"
-                    >
-                      <Settings className="h-4 w-4 mr-2" />
-                      Configurações
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
             </nav>
           </div>
 
           <div className="flex items-center space-x-4">
-            {/* Informações do usuário na barra superior */}
             <div className="hidden md:flex items-center space-x-2 text-sm text-rmh-white">
               <span>Bem-vindo,</span>
               <span className="font-medium text-white">{user?.nome}</span>
@@ -105,7 +69,7 @@ const Header = () => {
               )}
             </div>
 
-            {/* Menu do usuário */}
+            {/* Menu do usuário com Admin incluso */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-10 w-10 rounded-full">
@@ -116,6 +80,7 @@ const Header = () => {
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
+
               <DropdownMenuContent className="w-64" align="end" forceMount>
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
@@ -136,38 +101,24 @@ const Header = () => {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                
-                {/* Links rápidos para admins em mobile */}
+
+                {/* Itens de administração visíveis apenas para admin */}
                 {user?.tipo_usuario === 'admin' && (
                   <>
-                    <DropdownMenuItem 
-                      onClick={goToDashboards}
-                      className="cursor-pointer lg:hidden"
-                    >
-                      📊 Dashboards
-                    </DropdownMenuItem>
-                    <DropdownMenuItem 
-                      onClick={goToAdminUsers}
-                      className="cursor-pointer lg:hidden"
-                    >
+                    <DropdownMenuLabel>Administração</DropdownMenuLabel>
+                    <DropdownMenuItem onClick={goToAdminUsers} className="cursor-pointer">
                       <Users className="h-4 w-4 mr-2" />
                       Controle de Usuários
                     </DropdownMenuItem>
-                    <DropdownMenuItem 
-                      onClick={() => navigate('/admin/settings')}
-                      className="cursor-pointer lg:hidden"
-                    >
+                    <DropdownMenuItem onClick={() => navigate('/admin/settings')} className="cursor-pointer">
                       <Settings className="h-4 w-4 mr-2" />
                       Configurações
                     </DropdownMenuItem>
-                    <DropdownMenuSeparator className="lg:hidden" />
+                    <DropdownMenuSeparator />
                   </>
                 )}
-                
-                <DropdownMenuItem 
-                  onClick={logout} 
-                  className="cursor-pointer text-red-600 focus:text-red-600 focus:bg-red-50"
-                >
+
+                <DropdownMenuItem onClick={logout} className="cursor-pointer text-red-600 focus:text-red-600 focus:bg-red-50">
                   <LogOut className="mr-2 h-4 w-4" />
                   <span>Sair</span>
                 </DropdownMenuItem>
@@ -175,31 +126,6 @@ const Header = () => {
             </DropdownMenu>
           </div>
         </div>
-
-        {/* Menu mobile para admins - versão compacta */}
-        {user?.tipo_usuario === 'admin' && (
-          <div className="lg:hidden mt-3 pt-3 border-t border-rmh-lightGray/20">
-            <div className="flex space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={goToDashboards}
-                className="flex-1 bg-transparent border-rmh-lightGreen/30 text-rmh-white hover:bg-rmh-lightGreen/20"
-              >
-                📊 Dashboards
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={goToAdminUsers}
-                className="flex-1 bg-transparent border-rmh-lightGreen/30 text-rmh-white hover:bg-rmh-lightGreen/20"
-              >
-                <Users className="h-4 w-4 mr-1" />
-                Usuários
-              </Button>
-            </div>
-          </div>
-        )}
       </div>
     </header>
   );
