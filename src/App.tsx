@@ -11,6 +11,7 @@ import AuthSystem from "@/components/AuthSystem";
 import DashboardsPage from "@/pages/Dashboards";
 import NotFound from "./pages/NotFound";
 import AdminUserControl from '@/pages/AdminUserControl';
+import ConfigurarConta from '@/pages/ConfigurarConta';
 
 const queryClient = new QueryClient();
 
@@ -87,6 +88,22 @@ const AppContent = () => {
   );
 };
 
+const PublicRoutes = () => {
+  return (
+    <Routes>
+      {/* ROTA PÚBLICA - Configurar Conta */}
+      <Route path="/configurar-conta/:token" element={<ConfigurarConta />} />
+      
+      {/* ROTA DE LOGIN */}
+      <Route path="/" element={<AuthSystem />} />
+      <Route path="/login" element={<AuthSystem />} />
+      
+      {/* REDIRECIONAMENTOS */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+};
+
 const App = () => {
   // Configurar interceptor de API ao inicializar
   React.useEffect(() => {
@@ -100,7 +117,13 @@ const App = () => {
         <Sonner />
         <BrowserRouter>
           <AuthProvider>
-            <AppContent />
+            <Routes>
+              {/* ROTA PÚBLICA - Configurar Conta (não precisa de autenticação) */}
+              <Route path="/configurar-conta/:token" element={<ConfigurarConta />} />
+              
+              {/* TODAS AS OUTRAS ROTAS (autenticadas) */}
+              <Route path="/*" element={<AppContent />} />
+            </Routes>
           </AuthProvider>
         </BrowserRouter>
       </TooltipProvider>

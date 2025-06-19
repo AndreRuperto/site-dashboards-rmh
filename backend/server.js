@@ -1338,6 +1338,42 @@ app.post('/api/auth/configurar-conta/:token', async (req, res) => {
   }
 });
 
+app.get('/api/auth/validar-token-configuracao/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    // Buscar token válido
+    const tokenResult = await pool.query(
+      `SELECT v.*, u.nome, u.email, u.email_pessoal, u.tipo_colaborador 
+       FROM verificacoes_email v
+       JOIN usuarios u ON v.usuario_id = u.id
+       WHERE v.token = $1 
+         AND v.tipo_token = 'ativacao_admin' 
+         AND v.usado_em IS NULL 
+         AND v.expira_em > NOW()`,
+      [token]
+    );
+
+    if (tokenResult.rows.length === 0) {
+      return res.status(400).json({ error: 'Token inválido ou expirado' });
+    }
+
+    const verification = tokenResult.rows[0];
+
+    res.json({
+      valido: true,
+      usuario: {
+        nome: verification.nome,
+        email_login: verification.tipo_colaborador === 'estagiario' ? verification.email_pessoal : verification.email
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao validar token:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 // ===============================================
 // ROTAS PROTEGIDAS - PERFIL E DASHBOARDS
 // ===============================================
@@ -2412,7 +2448,10 @@ app.get('/api/admin/historico-acoes', adminMiddleware, async (req, res) => {
       SELECT 
         'aprovacao' as tipo_acao,
         u.nome as usuario_afetado,
-        u.email_login,
+        CASE 
+          WHEN u.tipo_colaborador = 'estagiario' THEN u.email_pessoal 
+          ELSE u.email 
+        END as email_login,
         admin.nome as admin_responsavel,
         u.aprovado_em as data_acao,
         'Usuário aprovado' as descricao
@@ -2425,13 +2464,32 @@ app.get('/api/admin/historico-acoes', adminMiddleware, async (req, res) => {
       SELECT 
         'revogacao' as tipo_acao,
         u.nome as usuario_afetado,
-        u.email_login,
+        CASE 
+          WHEN u.tipo_colaborador = 'estagiario' THEN u.email_pessoal 
+          ELSE u.email 
+        END as email_login,
         admin.nome as admin_responsavel,
         u.revogado_em as data_acao,
         'Acesso revogado' as descricao
       FROM usuarios u
       JOIN usuarios admin ON u.revogado_por = admin.id
       WHERE u.revogado_em IS NOT NULL
+      
+      UNION ALL
+      
+      SELECT 
+        'criacao' as tipo_acao,
+        u.nome as usuario_afetado,
+        CASE 
+          WHEN u.tipo_colaborador = 'estagiario' THEN u.email_pessoal 
+          ELSE u.email 
+        END as email_login,
+        admin.nome as admin_responsavel,
+        u.criado_em as data_acao,
+        'Usuário adicionado pelo admin' as descricao
+      FROM usuarios u
+      JOIN usuarios admin ON u.criado_por_admin = admin.id
+      WHERE u.criado_por_admin IS NOT NULL
       
       ORDER BY data_acao DESC
       LIMIT $1
