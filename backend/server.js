@@ -258,7 +258,7 @@ const authMiddleware = async (req, res, next) => {
     console.log('✅ AUTH: Token válido para usuário ID:', decoded.id);
     
     const result = await pool.query(
-      `SELECT id, nome, email, email_pessoal, setor, tipo_usuario, tipo_colaborador, email_verificado 
+      `SELECT id, nome, email, email_pessoal, setor, tipo_usuario, tipo_colaborador, email_verificado, COALESCE(ativo, true) as ativo
        FROM usuarios WHERE id = $1`,
       [decoded.id]
     );
@@ -268,12 +268,19 @@ const authMiddleware = async (req, res, next) => {
       return res.status(401).json({ error: 'Usuário não encontrado' });
     }
 
-    if (!result.rows[0].email_verificado) {
+    const user = result.rows[0];
+
+    if (!user.email_verificado) {
       console.log('❌ AUTH: Email não verificado');
       return res.status(401).json({ error: 'Email não verificado' });
     }
 
-    req.user = result.rows[0];
+    if (!user.ativo) {
+      console.log('❌ AUTH: Usuário com acesso revogado');
+      return res.status(401).json({ error: 'Acesso revogado. Entre em contato com o administrador.' });
+    }
+
+    req.user = user;
     console.log('✅ AUTH: Usuário autenticado:', 
       req.user.tipo_colaborador === 'estagiario' ? req.user.email_pessoal : req.user.email
     );
@@ -415,6 +422,298 @@ async function gerarTemplateVerificacao(nome, codigo, email, tipo_colaborador) {
     </div>
   </body>
   </html>
+  `;
+}
+
+// TEMPLATE DE EMAIL PARA VALIDAÇÃO DE ESTAGIÁRIO - PADRÃO RMH
+async function gerarTemplateValidacaoEstagiario(nome, linkValidacao, email) {
+  return `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+      <title>Cadastro Aprovado - RMH</title>
+      <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;600&family=Ruda:wght@900&display=swap" rel="stylesheet">
+      <style>
+        body {
+          margin: 0;
+          font-family: 'Raleway', sans-serif;
+          background-color: #DADADA;
+          color: #0d3638;
+          padding: 20px;
+        }
+        .container {
+          max-width: 600px;
+          margin: auto;
+          background-color: #f9f9f9;
+          border-radius: 16px;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+          overflow: hidden;
+        }
+        .header {
+          background-color: #165A5D;
+          padding: 20px 0px;
+          text-align: center;
+        }
+        .header img {
+          height: 60px;
+        }
+        .header h1 {
+          font-family: 'Ruda', sans-serif;
+          font-size: 22px;
+          color: #ffffff;
+          margin: 0;
+          letter-spacing: 0.5px;
+        }
+        .content {
+          padding: 20px 30px 30px 30px;
+          text-align: center;
+          font-family: 'Cooper Hewitt', sans-serif;
+        }
+        .content h2 {
+          font-size: 20px;
+          color: #0d3638;
+          margin-bottom: 8px;
+        }
+        .content p {
+          font-size: 17px;
+          color: #555;
+          margin-top: 0;
+        }
+        .tipo-badge {
+          display: inline-block;
+          padding: 6px 12px;
+          background-color: #165A5D;
+          color: white;
+          border-radius: 20px;
+          font-size: 14px;
+          font-weight: 600;
+          margin: 10px 0;
+        }
+        .link-box {
+          margin: 30px auto;
+          background-color: #f8f8f8;
+          border: 2px dashed #165A5D;
+          border-radius: 12px;
+          padding: 30px 20px;
+          max-width: 400px;
+        }
+        .action-button {
+          background: #165A5D;
+          color: white;
+          padding: 15px 30px;
+          text-decoration: none;
+          border-radius: 8px;
+          display: inline-block;
+          font-weight: bold;
+          font-size: 16px;
+          margin: 10px 0;
+          transition: background-color 0.3s;
+        }
+        .action-button:hover {
+          background: #0d3638;
+        }
+        .note {
+          font-size: 13px;
+          color: #8b848b;
+          background-color: #EFEFEF;
+          padding: 15px;
+          border-radius: 10px;
+          margin-top: 20px;
+        }
+        .footer {
+          font-size: 12px;
+          color: #9ca2a3;
+          text-align: center;
+          padding: 18px;
+          border-top: 1px solid #eee;
+          background-color: #f9f9f9;
+        }
+        @media (max-width: 600px) {
+          .content {
+            padding: 30px 20px;
+          }
+          .link-box {
+            padding: 20px 15px;
+          }
+          .action-button {
+            padding: 12px 24px;
+            font-size: 14px;
+          }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <img src="https://rmh.up.railway.app/logo-rmh.ico" alt="Logo RMH" style="height: 50px; margin-bottom: 20px;" />
+          <h1>Cadastro Aprovado</h1>
+        </div>
+        <div class="content">
+          <h2>Olá, ${nome}!</h2>
+          <div class="tipo-badge">Estagiário</div>
+          <p>Seu cadastro foi aprovado pelo administrador! Clique no botão abaixo para ativar automaticamente seu acesso:</p>
+          
+          <div class="link-box">
+            <a href="${linkValidacao}" class="action-button" style="color: #ffffff;">
+              Ativar Conta Automaticamente
+            </a>
+          </div>
+          <p class="note">Este link expira em 24 horas. Após ativar, você poderá fazer login na plataforma com seu email pessoal e senha. Se você não solicitou este cadastro, ignore este e-mail.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+// TEMPLATE: Email de configuração de conta
+async function gerarTemplateConfiguracaoConta(nome, linkAtivacao, emailLogin, tipoColaborador) {
+  const tipoTexto = tipoColaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado';
+  
+  return `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+      <title>Configure sua Conta - RMH</title>
+      <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;600&family=Ruda:wght@900&display=swap" rel="stylesheet">
+      <style>
+        body {
+          margin: 0;
+          font-family: 'Raleway', sans-serif;
+          background-color: #DADADA;
+          color: #0d3638;
+          padding: 20px;
+        }
+        .container {
+          max-width: 600px;
+          margin: auto;
+          background-color: #f9f9f9;
+          border-radius: 16px;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+          overflow: hidden;
+        }
+        .header {
+          background-color: #165A5D;
+          padding: 20px 0px;
+          text-align: center;
+        }
+        .header img {
+          height: 60px;
+        }
+        .header h1 {
+          font-family: 'Ruda', sans-serif;
+          font-size: 22px;
+          color: #ffffff;
+          margin: 0;
+          letter-spacing: 0.5px;
+        }
+        .content {
+          padding: 20px 30px 30px 30px;
+          text-align: center;
+          font-family: 'Cooper Hewitt', sans-serif;
+        }
+        .content h2 {
+          font-size: 20px;
+          color: #0d3638;
+          margin-bottom: 8px;
+        }
+        .content p {
+          font-size: 17px;
+          color: #555;
+          margin-top: 0;
+        }
+        .tipo-badge {
+          display: inline-block;
+          padding: 6px 12px;
+          background-color: #165A5D;
+          color: white;
+          border-radius: 20px;
+          font-size: 14px;
+          font-weight: 600;
+          margin: 10px 0;
+        }
+        .link-box {
+          margin: 30px auto;
+          background-color: #f8f8f8;
+          border: 2px dashed #165A5D;
+          border-radius: 12px;
+          padding: 30px 20px;
+          max-width: 400px;
+        }
+        .action-button {
+          background: #165A5D;
+          color: white;
+          padding: 15px 30px;
+          text-decoration: none;
+          border-radius: 8px;
+          display: inline-block;
+          font-weight: bold;
+          font-size: 16px;
+          margin: 10px 0;
+          transition: background-color 0.3s;
+        }
+        .action-button:hover {
+          background: #0d3638;
+        }
+        .info-box {
+          background: #e3f2fd;
+          padding: 15px;
+          border-radius: 8px;
+          margin: 20px 0;
+          text-align: left;
+          border-left: 4px solid #165A5D;
+        }
+        .note {
+          font-size: 13px;
+          color: #8b848b;
+          background-color: #EFEFEF;
+          padding: 15px;
+          border-radius: 10px;
+          margin-top: 20px;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <img src="https://rmh.up.railway.app/logo-rmh.ico" alt="Logo RMH" style="height: 50px; margin-bottom: 20px;" />
+          <h1>Configure sua Conta</h1>
+        </div>
+        <div class="content">
+          <h2>Olá, ${nome}!</h2>
+          <div class="tipo-badge">${tipoTexto}</div>
+          <p>Você foi adicionado à plataforma de dashboards da RMH por um administrador!</p>
+          
+          <div class="link-box">
+            <a href="${linkAtivacao}" class="action-button">
+              🔐 Configurar Minha Senha
+            </a>
+            <p style="font-size: 14px; color: #666; margin: 15px 0 0 0;">
+              Clique no botão para definir sua senha
+            </p>
+          </div>
+          
+          <div class="info-box">
+            <p style="margin: 0;"><strong>📧 Seu email de login:</strong> ${emailLogin}</p>
+            <p style="margin: 5px 0 0 0; color: #666; font-size: 14px;">Use este email para acessar a plataforma após configurar sua senha.</p>
+          </div>
+          
+          <p><strong>📋 Próximos passos:</strong></p>
+          <ol style="text-align: left; margin: 0 auto; display: inline-block;">
+            <li>Clique no botão "Configurar Minha Senha"</li>
+            <li>Defina uma senha segura para sua conta</li>
+            <li>Acesse a plataforma com suas credenciais</li>
+          </ol>
+          
+          <p class="note">Este link expira em 7 dias. Se precisar de ajuda, entre em contato com o administrador.</p>
+        </div>
+      </div>
+    </body>
+    </html>
   `;
 }
 
@@ -736,6 +1035,80 @@ app.post('/api/auth/verify-email', async (req, res) => {
   }
 });
 
+// NOVA ROTA: Validar email por token direto
+app.get('/api/auth/validar-email/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    console.log(`🔍 VALIDAÇÃO: Processando token: ${token}`);
+
+    // Buscar token válido
+    const tokenResult = await pool.query(
+      `SELECT v.*, u.nome, u.email_pessoal, u.tipo_colaborador 
+       FROM verificacoes_email v
+       JOIN usuarios u ON v.usuario_id = u.id
+       WHERE v.token = $1 
+         AND v.tipo_token = 'verificacao_email' 
+         AND v.usado_em IS NULL 
+         AND v.expira_em > NOW()`,
+      [token]
+    );
+
+    if (tokenResult.rows.length === 0) {
+      return res.status(400).send(`
+        <html><body style="font-family: Arial; text-align: center; padding: 50px;">
+          <h2>❌ Link inválido ou expirado</h2>
+          <p>Este link de validação não é válido ou já foi usado.</p>
+          <p>Entre em contato com o administrador.</p>
+        </body></html>
+      `);
+    }
+
+    const verification = tokenResult.rows[0];
+
+    // Marcar email como verificado
+    await pool.query('BEGIN');
+    
+    await pool.query(
+      'UPDATE usuarios SET email_verificado = true WHERE id = $1',
+      [verification.usuario_id]
+    );
+
+    await pool.query(
+      'UPDATE verificacoes_email SET usado_em = NOW() WHERE token = $1',
+      [token]
+    );
+
+    await pool.query('COMMIT');
+
+    console.log(`✅ Email validado automaticamente para: ${verification.email_pessoal}`);
+
+    // Página de sucesso
+    res.send(`
+      <html><body style="font-family: Arial; text-align: center; padding: 50px;">
+        <h2>✅ Email validado com sucesso!</h2>
+        <p>Olá, <strong>${verification.nome}</strong>!</p>
+        <p>Seu email foi validado automaticamente.</p>
+        <p>Agora você pode fazer login na plataforma.</p>
+        <br>
+        <a href="${process.env.API_BASE_URL}" 
+           style="background: #059669; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
+          🚀 Acessar Plataforma
+        </a>
+      </body></html>
+    `);
+
+  } catch (error) {
+    console.error('❌ Erro na validação automática:', error);
+    res.status(500).send(`
+      <html><body style="font-family: Arial; text-align: center; padding: 50px;">
+        <h2>❌ Erro interno</h2>
+        <p>Ocorreu um erro. Tente novamente mais tarde.</p>
+      </body></html>
+    `);
+  }
+});
+
 // LOGIN ATUALIZADO
 app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
@@ -890,6 +1263,78 @@ app.post('/api/auth/resend-verification', async (req, res) => {
   } catch (error) {
     console.error('❌ Erro ao reenviar código:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// ROTA: Configurar senha (usuário adicionado pelo admin)
+app.post('/api/auth/configurar-conta/:token', async (req, res) => {
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    const { token } = req.params;
+    const { senha } = req.body;
+
+    if (!senha || senha.length < 6) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).json({ error: 'Senha deve ter pelo menos 6 caracteres' });
+    }
+
+    // Buscar token válido
+    const tokenResult = await client.query(
+      `SELECT v.*, u.nome, u.email, u.email_pessoal, u.tipo_colaborador 
+       FROM verificacoes_email v
+       JOIN usuarios u ON v.usuario_id = u.id
+       WHERE v.token = $1 
+         AND v.tipo_token = 'ativacao_admin' 
+         AND v.usado_em IS NULL 
+         AND v.expira_em > NOW()`,
+      [token]
+    );
+
+    if (tokenResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).json({ error: 'Token inválido ou expirado' });
+    }
+
+    const verification = tokenResult.rows[0];
+
+    // Criptografar nova senha
+    const senhaHash = await bcrypt.hash(senha, 10);
+
+    // Atualizar usuário com nova senha e marcar como verificado
+    await client.query(
+      'UPDATE usuarios SET senha = $1, email_verificado = true, verificado_em = NOW() WHERE id = $2',
+      [senhaHash, verification.usuario_id]
+    );
+
+    // Marcar token como usado
+    await client.query(
+      'UPDATE verificacoes_email SET usado_em = NOW() WHERE token = $1',
+      [token]
+    );
+
+    await client.query('COMMIT');
+
+    console.log(`✅ Conta configurada com sucesso para: ${verification.nome}`);
+
+    res.json({
+      message: 'Conta configurada com sucesso! Agora você pode fazer login.',
+      usuario: {
+        nome: verification.nome,
+        email_login: verification.tipo_colaborador === 'estagiario' ? verification.email_pessoal : verification.email
+      }
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('❌ Erro ao configurar conta:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  } finally {
+    client.release();
   }
 });
 
@@ -1259,6 +1704,7 @@ const adminMiddleware = async (req, res, next) => {
     });
   }
 };
+
 // LISTAR USUÁRIOS PENDENTES DE APROVAÇÃO
 app.get('/api/admin/usuarios-pendentes', adminMiddleware, async (req, res) => {
   try {
@@ -1309,7 +1755,7 @@ app.get('/api/admin/usuarios-pendentes', adminMiddleware, async (req, res) => {
   }
 });
 
-// APROVAR CADASTRO DE ESTAGIÁRIO
+// APROVAR CADASTRO DE ESTAGIÁRIO - CORRIGIDO
 app.post('/api/admin/aprovar-usuario/:userId', adminMiddleware, async (req, res) => {
   const client = await pool.connect();
   
@@ -1321,7 +1767,7 @@ app.post('/api/admin/aprovar-usuario/:userId', adminMiddleware, async (req, res)
 
     console.log(`✅ ADMIN: Aprovando usuário ${userId}, enviar código: ${enviar_codigo}`);
 
-    // Buscar usuário
+    // Buscar usuário - ESTA LINHA ESTAVA FALTANDO!
     const userResult = await client.query(
       'SELECT * FROM usuarios WHERE id = $1 AND tipo_colaborador = $2',
       [userId, 'estagiario']
@@ -1348,8 +1794,8 @@ app.post('/api/admin/aprovar-usuario/:userId', adminMiddleware, async (req, res)
     );
 
     if (enviar_codigo) {
-      // Gerar novo código de verificação
-      const codigoVerificacao = Math.floor(100000 + Math.random() * 900000).toString();
+      // Gerar TOKEN único para validação direta (ao invés de código)
+      const tokenValidacao = crypto.randomBytes(32).toString('hex');
       const expiraEm = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
       // Invalidar códigos anteriores
@@ -1358,22 +1804,27 @@ app.post('/api/admin/aprovar-usuario/:userId', adminMiddleware, async (req, res)
         [userId]
       );
 
-      // Criar novo código
+      // Salvar token
       await client.query(
         `INSERT INTO verificacoes_email (usuario_id, token, tipo_token, expira_em) 
          VALUES ($1, $2, $3, $4)`,
-        [userId, codigoVerificacao, 'verificacao_email', expiraEm]
+        [userId, tokenValidacao, 'verificacao_email', expiraEm]
       );
 
       await client.query('COMMIT');
 
-      // Enviar email
+      // Criar link de validação
+      const linkValidacao = `${process.env.API_BASE_URL}/api/auth/validar-email/${tokenValidacao}`;
+
+      console.log(`🔗 ADMIN: Link de validação gerado: ${linkValidacao}`);
+
+      // Enviar email com LINK (não código)
       try {
         const emailResult = await resend.emails.send({
           from: 'andre.macedo@resendemh.com.br',
           to: [user.email_pessoal],
           subject: '✅ Cadastro aprovado - Dashboards RMH',
-          html: await gerarTemplateVerificacao(user.nome, codigoVerificacao, user.email_pessoal, user.tipo_colaborador)
+          html: await gerarTemplateValidacaoEstagiario(user.nome, linkValidacao, user.email_pessoal)
         });
 
         console.log(`✅ Email de aprovação enviado para ${user.email_pessoal}`);
@@ -1382,15 +1833,16 @@ app.post('/api/admin/aprovar-usuario/:userId', adminMiddleware, async (req, res)
       }
 
       res.json({
-        message: 'Usuário aprovado e código de verificação enviado',
-        codigo_enviado: true,
-        email_enviado_para: user.email_pessoal
+        message: 'Usuário aprovado e link de validação enviado',
+        link_enviado: true,
+        email_enviado_para: user.email_pessoal,
+        link_validacao: linkValidacao // Para debug (remover em produção)
       });
     } else {
       await client.query('COMMIT');
       
       res.json({
-        message: 'Usuário aprovado. Código não foi enviado.',
+        message: 'Usuário aprovado. Link não foi enviado.',
         codigo_enviado: false
       });
     }
@@ -1456,7 +1908,7 @@ app.delete('/api/admin/rejeitar-usuario/:userId', adminMiddleware, async (req, r
 // LISTAR TODOS OS USUÁRIOS (PARA ADMINISTRAÇÃO GERAL)
 app.get('/api/admin/usuarios', adminMiddleware, async (req, res) => {
   try {
-    const { status, tipo } = req.query;
+    const { status, tipo, setor } = req.query;
     
     let whereConditions = [];
     let params = [];
@@ -1465,11 +1917,20 @@ app.get('/api/admin/usuarios', adminMiddleware, async (req, res) => {
       whereConditions.push('email_verificado = true');
     } else if (status === 'nao_verificados') {
       whereConditions.push('email_verificado = false');
+    } else if (status === 'ativos') {
+      whereConditions.push('(ativo IS NULL OR ativo = true)');
+    } else if (status === 'revogados') {
+      whereConditions.push('ativo = false');
     }
     
     if (tipo && ['estagiario', 'clt_associado'].includes(tipo)) {
       whereConditions.push(`tipo_colaborador = $${params.length + 1}`);
       params.push(tipo);
+    }
+
+    if (setor && setor !== 'todos') {
+      whereConditions.push(`setor = $${params.length + 1}`);
+      params.push(setor);
     }
     
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
@@ -1481,6 +1942,10 @@ app.get('/api/admin/usuarios', adminMiddleware, async (req, res) => {
         setor,
         email,
         email_pessoal,
+        CASE 
+          WHEN tipo_colaborador = 'estagiario' THEN email_pessoal 
+          ELSE email 
+        END as email_login,
         tipo_colaborador,
         tipo_usuario,
         email_verificado,
@@ -1491,19 +1956,29 @@ app.get('/api/admin/usuarios', adminMiddleware, async (req, res) => {
         aprovado_admin,
         aprovado_em,
         aprovado_por,
-        is_coordenador
+        is_coordenador,
+        COALESCE(ativo, true) as ativo,
+        revogado_em,
+        revogado_por
       FROM usuarios 
       ${whereClause}
       ORDER BY criado_em DESC
     `, params);
 
+    // Buscar setores únicos
+    const setoresResult = await pool.query('SELECT DISTINCT setor FROM usuarios ORDER BY setor');
+    const setores = setoresResult.rows.map(row => row.setor);
+
     const usuarios = result.rows.map(user => ({
       ...user,
-      email_login: user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email
+      status: user.tipo_colaborador === 'estagiario' 
+        ? (user.aprovado_admin === null ? 'pendente_aprovacao' : 'aprovado')
+        : 'corporativo'
     }));
 
     res.json({
       usuarios,
+      setores,
       total: usuarios.length
     });
 
@@ -1635,6 +2110,342 @@ app.patch('/api/admin/usuarios/:userId/rebaixar', adminMiddleware, async (req, r
   }
 });
 
+// ROTA: Adicionar novo usuário (Admin)
+app.post('/api/admin/adicionar-usuario', adminMiddleware, async (req, res) => {
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    const { nome, email, email_pessoal, setor, tipo_colaborador } = req.body;
+
+    // Validações
+    if (!nome || !email_pessoal || !setor || !tipo_colaborador) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).json({ error: 'Campos obrigatórios: nome, email_pessoal, setor, tipo_colaborador' });
+    }
+
+    if (tipo_colaborador === 'clt_associado' && (!email || !email.endsWith('@resendemh.com.br'))) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).json({ error: 'Email corporativo é obrigatório para CLT/Associado' });
+    }
+
+    // Verificar se email já existe
+    const emailLogin = tipo_colaborador === 'estagiario' ? email_pessoal : email;
+    const userExists = await client.query(
+      `SELECT id FROM usuarios 
+       WHERE (tipo_colaborador = 'estagiario' AND email_pessoal = $1) 
+          OR (tipo_colaborador = 'clt_associado' AND email = $1)`,
+      [emailLogin]
+    );
+
+    if (userExists.rows.length > 0) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).json({ error: 'Email já cadastrado no sistema' });
+    }
+
+    // Gerar senha temporária
+    const senhaTemporaria = crypto.randomBytes(8).toString('hex');
+    const senhaHash = await bcrypt.hash(senhaTemporaria, 10);
+
+    // Inserir usuário
+    const result = await client.query(
+      `INSERT INTO usuarios (nome, email, email_pessoal, senha, setor, tipo_usuario, tipo_colaborador, email_verificado, aprovado_admin, criado_por_admin) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
+       RETURNING id, nome, email, email_pessoal, setor, tipo_colaborador`,
+      [
+        nome, 
+        email || null, 
+        email_pessoal, 
+        senhaHash, 
+        setor, 
+        'usuario', 
+        tipo_colaborador, 
+        false, // Email não verificado, precisará ativar
+        tipo_colaborador === 'clt_associado' ? true : null, // CLT aprovado automaticamente
+        req.user.id
+      ]
+    );
+
+    const newUser = result.rows[0];
+
+    // Gerar token de ativação
+    const tokenAtivacao = crypto.randomBytes(32).toString('hex');
+    const expiraEm = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 dias
+
+    await client.query(
+      `INSERT INTO verificacoes_email (usuario_id, token, tipo_token, expira_em) 
+       VALUES ($1, $2, $3, $4)`,
+      [newUser.id, tokenAtivacao, 'ativacao_admin', expiraEm]
+    );
+
+    await client.query('COMMIT');
+
+    // Enviar email de configuração
+    const linkAtivacao = `${process.env.FRONTEND_URL}/configurar-conta/${tokenAtivacao}`;
+    
+    try {
+      await resend.emails.send({
+        from: 'andre.macedo@resendemh.com.br',
+        to: [email_pessoal],
+        subject: '🔐 Configure sua conta - Dashboards RMH',
+        html: await gerarTemplateConfiguracaoConta(nome, linkAtivacao, emailLogin, tipo_colaborador)
+      });
+
+      console.log(`✅ ADMIN: Usuário ${nome} adicionado e email enviado para ${email_pessoal}`);
+    } catch (emailError) {
+      console.error('❌ Erro ao enviar email de configuração:', emailError);
+    }
+
+    res.status(201).json({
+      message: 'Usuário adicionado com sucesso',
+      usuario: newUser,
+      email_enviado: true,
+      email_enviado_para: email_pessoal
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('❌ Erro ao adicionar usuário:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  } finally {
+    client.release();
+  }
+});
+
+// ROTA: Editar usuário (Admin)
+app.put('/api/admin/editar-usuario/:userId', adminMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { nome, setor, email_pessoal } = req.body;
+
+    if (!nome || !setor || !email_pessoal) {
+      return res.status(400).json({ error: 'Campos obrigatórios: nome, setor, email_pessoal' });
+    }
+
+    // Verificar se usuário existe
+    const userExists = await pool.query('SELECT id FROM usuarios WHERE id = $1', [userId]);
+    if (userExists.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    // Atualizar usuário
+    const result = await pool.query(
+      `UPDATE usuarios 
+       SET nome = $1, setor = $2, email_pessoal = $3, atualizado_em = NOW() 
+       WHERE id = $4 
+       RETURNING id, nome, setor, email_pessoal`,
+      [nome, setor, email_pessoal, userId]
+    );
+
+    console.log(`✅ ADMIN: Usuário ${userId} editado por ${req.user.nome}`);
+
+    res.json({
+      message: 'Usuário editado com sucesso',
+      usuario: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao editar usuário:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// ROTA: Revogar acesso (Admin)
+app.patch('/api/admin/revogar-acesso/:userId', adminMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Verificar se usuário existe
+    const userResult = await pool.query(
+      'SELECT nome, email_login FROM usuarios WHERE id = $1',
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const user = userResult.rows[0];
+
+    // Revogar acesso (soft delete)
+    await pool.query(
+      'UPDATE usuarios SET ativo = false, revogado_em = NOW(), revogado_por = $1 WHERE id = $2',
+      [req.user.id, userId]
+    );
+
+    console.log(`🚫 ADMIN: Acesso revogado para ${user.nome} por ${req.user.nome}`);
+
+    res.json({
+      message: 'Acesso revogado com sucesso',
+      usuario_revogado: user.nome
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao revogar acesso:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// ROTA: Reativar usuário (Admin)
+app.patch('/api/admin/reativar-usuario/:userId', adminMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Verificar se usuário existe e está revogado
+    const userResult = await pool.query(
+      'SELECT nome FROM usuarios WHERE id = $1 AND ativo = false',
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado ou não está revogado' });
+    }
+
+    const user = userResult.rows[0];
+
+    // Reativar usuário
+    await pool.query(
+      'UPDATE usuarios SET ativo = true, reativado_em = NOW(), reativado_por = $1 WHERE id = $2',
+      [req.user.id, userId]
+    );
+
+    console.log(`✅ ADMIN: Usuário ${user.nome} reativado por ${req.user.nome}`);
+
+    res.json({
+      message: 'Usuário reativado com sucesso',
+      usuario_reativado: user.nome
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao reativar usuário:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// ROTA: Buscar detalhes de usuário específico (Admin)
+app.get('/api/admin/usuario/:userId', adminMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const result = await pool.query(`
+      SELECT 
+        u.*,
+        CASE 
+          WHEN u.tipo_colaborador = 'estagiario' THEN u.email_pessoal 
+          ELSE u.email 
+        END as email_login,
+        admin_criador.nome as criado_por_nome,
+        admin_aprovador.nome as aprovado_por_nome,
+        admin_revogador.nome as revogado_por_nome
+      FROM usuarios u
+      LEFT JOIN usuarios admin_criador ON u.criado_por_admin = admin_criador.id
+      LEFT JOIN usuarios admin_aprovador ON u.aprovado_por = admin_aprovador.id
+      LEFT JOIN usuarios admin_revogador ON u.revogado_por = admin_revogador.id
+      WHERE u.id = $1
+    `, [userId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    res.json({
+      usuario: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar usuário:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// ROTA: Estatísticas detalhadas do sistema (Admin)
+app.get('/api/admin/estatisticas', adminMiddleware, async (req, res) => {
+  try {
+    const stats = await pool.query(`
+      SELECT 
+        COUNT(*) as total_usuarios,
+        COUNT(*) FILTER (WHERE tipo_colaborador = 'estagiario') as total_estagiarios,
+        COUNT(*) FILTER (WHERE tipo_colaborador = 'clt_associado') as total_clt_associados,
+        COUNT(*) FILTER (WHERE is_coordenador = true) as total_coordenadores,
+        COUNT(*) FILTER (WHERE tipo_usuario = 'admin') as total_admins,
+        COUNT(*) FILTER (WHERE email_verificado = false) as nao_verificados,
+        COUNT(*) FILTER (WHERE tipo_colaborador = 'estagiario' AND aprovado_admin IS NULL) as pendentes_aprovacao,
+        COUNT(*) FILTER (WHERE ativo = false) as revogados,
+        COUNT(*) FILTER (WHERE ultimo_login > NOW() - INTERVAL '30 days') as ativos_ultimos_30_dias
+      FROM usuarios
+    `);
+
+    const estatisticasPorSetor = await pool.query(`
+      SELECT 
+        setor,
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE tipo_colaborador = 'estagiario') as estagiarios,
+        COUNT(*) FILTER (WHERE tipo_colaborador = 'clt_associado') as clt_associados,
+        COUNT(*) FILTER (WHERE is_coordenador = true) as coordenadores
+      FROM usuarios
+      WHERE COALESCE(ativo, true) = true
+      GROUP BY setor
+      ORDER BY total DESC
+    `);
+
+    res.json({
+      geral: stats.rows[0],
+      por_setor: estatisticasPorSetor.rows
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar estatísticas:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// ROTA: Histórico de ações administrativas
+app.get('/api/admin/historico-acoes', adminMiddleware, async (req, res) => {
+  try {
+    const { limite = 50 } = req.query;
+
+    const result = await pool.query(`
+      SELECT 
+        'aprovacao' as tipo_acao,
+        u.nome as usuario_afetado,
+        u.email_login,
+        admin.nome as admin_responsavel,
+        u.aprovado_em as data_acao,
+        'Usuário aprovado' as descricao
+      FROM usuarios u
+      JOIN usuarios admin ON u.aprovado_por = admin.id
+      WHERE u.aprovado_em IS NOT NULL
+      
+      UNION ALL
+      
+      SELECT 
+        'revogacao' as tipo_acao,
+        u.nome as usuario_afetado,
+        u.email_login,
+        admin.nome as admin_responsavel,
+        u.revogado_em as data_acao,
+        'Acesso revogado' as descricao
+      FROM usuarios u
+      JOIN usuarios admin ON u.revogado_por = admin.id
+      WHERE u.revogado_em IS NOT NULL
+      
+      ORDER BY data_acao DESC
+      LIMIT $1
+    `, [limite]);
+
+    res.json({
+      historico: result.rows
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar histórico:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
 
 // ===============================================
 // TRATAMENTO DE ERROS E ROTAS NÃO ENCONTRADAS
