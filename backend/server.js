@@ -4092,34 +4092,95 @@ app.get('/api/admin/usuario/:userId', adminMiddleware, async (req, res) => {
 });
 
 // ROTA: Estatísticas detalhadas do sistema (Admin)
+// backend/server.js - CORREÇÃO DAS ESTATÍSTICAS
+
 app.get('/api/admin/estatisticas', adminMiddleware, async (req, res) => {
   try {
+    // Usar a view v_usuarios_completo que já tem as informações consolidadas
     const stats = await pool.query(`
       SELECT 
-        COUNT(*) as total_usuarios,
-        COUNT(*) FILTER (WHERE tipo_colaborador = 'estagiario') as total_estagiarios,
-        COUNT(*) FILTER (WHERE tipo_colaborador = 'clt_associado') as total_clt_associados,
-        COUNT(*) FILTER (WHERE is_coordenador = true) as total_coordenadores,
-        COUNT(*) FILTER (WHERE tipo_usuario = 'admin') as total_admins,
-        COUNT(*) FILTER (WHERE email_verificado = false) as nao_verificados,
-        COUNT(*) FILTER (WHERE tipo_colaborador = 'estagiario' AND aprovado_admin IS NULL) as pendentes_aprovacao,
+        -- Total de usuários ativos (excluindo revogados)
+        COUNT(*) FILTER (WHERE ativo = true) as total_usuarios,
+        
+        -- Estagiários ativos e aprovados
+        COUNT(*) FILTER (
+          WHERE tipo_colaborador = 'estagiario' 
+          AND ativo = true
+          AND aprovado_admin = true 
+          AND email_verificado = true
+        ) as total_estagiarios,
+        
+        -- CLT/Associados ativos e verificados
+        COUNT(*) FILTER (
+          WHERE tipo_colaborador = 'clt_associado' 
+          AND ativo = true
+          AND email_verificado = true
+        ) as total_clt_associados,
+        
+        -- Coordenadores ativos
+        COUNT(*) FILTER (
+          WHERE is_coordenador = true 
+          AND ativo = true
+        ) as total_coordenadores,
+        
+        -- Administradores ativos
+        COUNT(*) FILTER (
+          WHERE tipo_usuario = 'admin' 
+          AND ativo = true
+        ) as total_admins,
+        
+        -- Usuários com email não verificado (excluindo estagiários pendentes)
+        COUNT(*) FILTER (
+          WHERE email_verificado = false 
+          AND ativo = true
+          AND NOT (tipo_colaborador = 'estagiario' AND aprovado_admin IS NULL)
+        ) as nao_verificados,
+        
+        -- Estagiários pendentes de aprovação
+        COUNT(*) FILTER (
+          WHERE tipo_colaborador = 'estagiario' 
+          AND aprovado_admin IS NULL 
+          AND ativo = true
+        ) as pendentes_aprovacao,
+        
+        -- Usuários revogados
         COUNT(*) FILTER (WHERE ativo = false) as revogados,
-        COUNT(*) FILTER (WHERE ultimo_login > NOW() - INTERVAL '30 days') as ativos_ultimos_30_dias
-      FROM usuarios
+        
+        -- Usuários ativos nos últimos 30 dias
+        COUNT(*) FILTER (
+          WHERE ultimo_login > NOW() - INTERVAL '30 days' 
+          AND ativo = true
+        ) as ativos_ultimos_30_dias
+      FROM v_usuarios_completo
     `);
 
+    // Estatísticas por setor (apenas usuários ativos)
     const estatisticasPorSetor = await pool.query(`
       SELECT 
         setor,
         COUNT(*) as total,
-        COUNT(*) FILTER (WHERE tipo_colaborador = 'estagiario') as estagiarios,
-        COUNT(*) FILTER (WHERE tipo_colaborador = 'clt_associado') as clt_associados,
-        COUNT(*) FILTER (WHERE is_coordenador = true) as coordenadores
-      FROM usuarios
-      WHERE COALESCE(ativo, true) = true
+        COUNT(*) FILTER (
+          WHERE tipo_colaborador = 'estagiario' 
+          AND aprovado_admin = true 
+          AND email_verificado = true
+        ) as estagiarios,
+        COUNT(*) FILTER (
+          WHERE tipo_colaborador = 'clt_associado' 
+          AND email_verificado = true
+        ) as clt_associados,
+        COUNT(*) FILTER (WHERE is_coordenador = true) as coordenadores,
+        COUNT(*) FILTER (WHERE tipo_usuario = 'admin') as admins
+      FROM v_usuarios_completo
+      WHERE ativo = true
       GROUP BY setor
       ORDER BY total DESC
     `);
+
+    // Log para debug
+    console.log('📊 ESTATÍSTICAS CALCULADAS:', {
+      ...stats.rows[0],
+      por_setor: estatisticasPorSetor.rows.length
+    });
 
     res.json({
       geral: stats.rows[0],

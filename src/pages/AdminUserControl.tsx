@@ -212,64 +212,43 @@ const AdminUserControl: React.FC = () => {
     try {
       setLoading(true);
       
-      const response = await fetchWithAuth(`${API_BASE_URL}/api/admin/usuarios`);
-
-      if (!response.ok) {
+      // 1️⃣ Buscar usuários
+      const usuariosResponse = await fetchWithAuth(`${API_BASE_URL}/api/admin/usuarios`);
+      if (!usuariosResponse.ok) {
         throw new Error('Erro ao carregar usuários');
       }
+      const usuariosData = await usuariosResponse.json();
+      setUsuarios(usuariosData.usuarios || []);
 
-      const data: UsuariosResponse = await response.json();
-      console.log('✅ ADMIN: Dados recebidos:', data);
+      // 2️⃣ Buscar estatísticas do backend (CORRIGIDAS)
+      const statsResponse = await fetchWithAuth(`${API_BASE_URL}/api/admin/estatisticas`);
+      if (!statsResponse.ok) {
+        throw new Error('Erro ao carregar estatísticas');
+      }
+      const statsData = await statsResponse.json();
       
-      setUsuarios(data.usuarios || []);
-      
-      const usuarios = data.usuarios || [];
-      
-      // ✅ CÁLCULOS CORRIGIDOS - considerando origem do usuário
-      const pendentes = usuarios.filter((u: Usuario) => isPendenteAprovacao(u)).length;
-      const naoVerificados = usuarios.filter((u: Usuario) => 
-        isPendenteVerificacao(u) && !isPendenteAprovacao(u)
-      ).length;
-      const admins = usuarios.filter((u: Usuario) => u.tipo_usuario === 'admin').length;
-      const coordenadores = usuarios.filter((u: Usuario) => u.is_coordenador === true).length;
-      const cltAssociados = usuarios.filter((u: Usuario) => 
-        u.tipo_colaborador === 'clt_associado' && !isPendenteVerificacao(u)
-      ).length;
-      const estagiarios = usuarios.filter((u: Usuario) => 
-        u.tipo_colaborador === 'estagiario' && 
-        !isPendenteAprovacao(u) && 
-        !isPendenteVerificacao(u)
-      ).length;
-      const revogados = usuarios.filter((u: Usuario) => u.ativo === false).length;
-      
+      // ✅ USAR STATS DO BACKEND (não calcular no frontend)
       setStats({
-        total: usuarios.length,
-        pendentes_aprovacao: pendentes,
-        nao_verificados: naoVerificados,
-        admins: admins,
-        coordenadores: coordenadores,
-        clt_associados: cltAssociados,
-        estagiarios: estagiarios,
-        revogados: revogados
+        total: parseInt(statsData.geral.total_usuarios) || 0,
+        pendentes_aprovacao: parseInt(statsData.geral.pendentes_aprovacao) || 0,
+        nao_verificados: parseInt(statsData.geral.nao_verificados) || 0,
+        admins: parseInt(statsData.geral.total_admins) || 0,
+        coordenadores: parseInt(statsData.geral.total_coordenadores) || 0,
+        clt_associados: parseInt(statsData.geral.total_clt_associados) || 0,
+        estagiarios: parseInt(statsData.geral.total_estagiarios) || 0,
+        revogados: parseInt(statsData.geral.revogados) || 0
       });
 
-      console.log('📊 ESTATÍSTICAS CALCULADAS:', {
-        total: usuarios.length,
-        pendentes_aprovacao: pendentes,
-        nao_verificados: naoVerificados,
-        // ✅ DEBUG: Mostrar quais usuários estão sendo considerados pendentes
-        usuarios_pendentes: usuarios.filter((u: Usuario) => isPendenteAprovacao(u)).map(u => ({
-          nome: u.nome,
-          criado_por_admin: u.criado_por_admin,
-          aprovado_admin: u.aprovado_admin
-        }))
+      console.log('✅ ADMIN: Usuários e estatísticas carregados:', {
+        usuarios: usuariosData.usuarios?.length || 0,
+        stats: statsData.geral
       });
 
     } catch (error) {
-      console.error('❌ Erro ao carregar usuários:', error);
+      console.error('❌ Erro ao carregar dados:', error);
       toast({
         title: "Erro",
-        description: "Não foi possível carregar a lista de usuários",
+        description: "Não foi possível carregar os dados",
         variant: "destructive"
       });
     } finally {
@@ -278,42 +257,45 @@ const AdminUserControl: React.FC = () => {
   };
 
   const setoresFiltrados = Object.keys(usuariosAgrupadosPorSetor).filter(setor => {
-  if (setorSelecionado !== 'todos' && setor !== setorSelecionado) {
-    return false;
-  }
-  
-  const usuariosDoSetor = usuariosAgrupadosPorSetor[setor].filter(usuario => {
-    const passaBusca = searchTerm === '' || 
-      usuario.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      usuario.email_login.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      usuario.setor.toLowerCase().includes(searchTerm.toLowerCase());
+    if (setorSelecionado !== 'todos' && setor !== setorSelecionado) {
+      return false;
+    }
+    
+    const usuariosDoSetor = usuariosAgrupadosPorSetor[setor].filter(usuario => {
+      const passaBusca = searchTerm === '' || 
+        usuario.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        usuario.email_login.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        usuario.setor.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const passaFiltroTipo = (() => {
-      switch (filter) {
-        case 'pendentes_aprovacao':
-          return isPendenteAprovacao(usuario);
-        case 'pendentes_verificacao':
-          return isPendenteVerificacao(usuario) && !isPendenteAprovacao(usuario);
-        case 'corporativos':
-          return usuario.tipo_colaborador === 'clt_associado' && !isPendenteVerificacao(usuario);
-        case 'estagiarios':
-          return usuario.tipo_colaborador === 'estagiario' && !isPendenteAprovacao(usuario) && !isPendenteVerificacao(usuario);
-        case 'admins':
-          return usuario.tipo_usuario === 'admin';
-        case 'coordenadores':
-          return usuario.is_coordenador === true;
-        case 'revogados':
-          return usuario.ativo === false;
-        default:
-          return true;
-      }
-    })();
+      // ✅ CORREÇÃO: Mesmo filtro com exclusão de revogados
+      const passaFiltroTipo = (() => {
+        switch (filter) {
+          case 'pendentes_aprovacao':
+            return isPendenteAprovacao(usuario) && usuario.ativo !== false;
+          case 'pendentes_verificacao':
+            return isPendenteVerificacao(usuario) && !isPendenteAprovacao(usuario) && usuario.ativo !== false;
+          case 'corporativos':
+            return usuario.tipo_colaborador === 'clt_associado' && !isPendenteVerificacao(usuario) && usuario.ativo !== false;
+          case 'estagiarios':
+            return usuario.tipo_colaborador === 'estagiario' && !isPendenteAprovacao(usuario) && !isPendenteVerificacao(usuario) && usuario.ativo !== false;
+          case 'admins':
+            return usuario.tipo_usuario === 'admin' && usuario.ativo !== false;
+          case 'coordenadores':
+            return usuario.is_coordenador === true && usuario.ativo !== false;
+          case 'revogados':
+            return usuario.ativo === false;
+          case 'todos':
+            return usuario.ativo !== false;
+          default:
+            return usuario.ativo !== false;
+        }
+      })();
 
-    return passaBusca && passaFiltroTipo;
+      return passaBusca && passaFiltroTipo;
+    });
+
+    return usuariosDoSetor.length > 0;
   });
-
-  return usuariosDoSetor.length > 0;
-});
 
   // NOVO: Adicionar usuário
   const adicionarUsuario = async () => {
@@ -592,39 +574,41 @@ const AdminUserControl: React.FC = () => {
 
   // Filtrar usuários com busca
   const usuariosFiltrados = usuarios.filter(usuario => {
-    // Filtro por busca
-    const passaBusca = searchTerm === '' || 
-      usuario.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      usuario.email_login.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      usuario.setor.toLowerCase().includes(searchTerm.toLowerCase());
+  // Filtro por busca
+  const passaBusca = searchTerm === '' || 
+    usuario.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    usuario.email_login.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    usuario.setor.toLowerCase().includes(searchTerm.toLowerCase());
 
-    // Filtro por tipo
-    const passaFiltroTipo = (() => {
-      switch (filter) {
-        case 'pendentes_aprovacao':
-          return isPendenteAprovacao(usuario);
-        case 'pendentes_verificacao':
-          return isPendenteVerificacao(usuario) && !isPendenteAprovacao(usuario); // ADICIONAR ESTA PARTE
-        case 'corporativos':
-          return usuario.tipo_colaborador === 'clt_associado' && !isPendenteVerificacao(usuario); // ADICIONAR ESTA PARTE
-        case 'estagiarios':
-          return usuario.tipo_colaborador === 'estagiario' && !isPendenteAprovacao(usuario) && !isPendenteVerificacao(usuario); // ADICIONAR ESTA PARTE
-        case 'admins':
-          return usuario.tipo_usuario === 'admin';
-        case 'coordenadores':
-          return usuario.is_coordenador === true;
-        case 'revogados':
-          return usuario.ativo === false;
-        default:
-          return true;
-      }
-    })();
+  // ✅ CORREÇÃO: Filtro por tipo (excluindo revogados dos outros filtros)
+  const passaFiltroTipo = (() => {
+    switch (filter) {
+      case 'pendentes_aprovacao':
+        return isPendenteAprovacao(usuario) && usuario.ativo !== false; // ✅ Excluir revogados
+      case 'pendentes_verificacao':
+        return isPendenteVerificacao(usuario) && !isPendenteAprovacao(usuario) && usuario.ativo !== false; // ✅ Excluir revogados
+      case 'corporativos':
+        return usuario.tipo_colaborador === 'clt_associado' && !isPendenteVerificacao(usuario) && usuario.ativo !== false; // ✅ Excluir revogados
+      case 'estagiarios':
+        return usuario.tipo_colaborador === 'estagiario' && !isPendenteAprovacao(usuario) && !isPendenteVerificacao(usuario) && usuario.ativo !== false; // ✅ Excluir revogados
+      case 'admins':
+        return usuario.tipo_usuario === 'admin' && usuario.ativo !== false; // ✅ Excluir revogados
+      case 'coordenadores':
+        return usuario.is_coordenador === true && usuario.ativo !== false; // ✅ Excluir revogados
+      case 'revogados':
+        return usuario.ativo === false; // ✅ Apenas revogados
+      case 'todos':
+        return usuario.ativo !== false; // ✅ Todos exceto revogados
+      default:
+        return usuario.ativo !== false; // ✅ Por padrão, excluir revogados
+    }
+  })();
 
-    // Filtro por setor
-    const passaFiltroSetor = setorSelecionado === 'todos' || usuario.setor === setorSelecionado;
+  // Filtro por setor
+  const passaFiltroSetor = setorSelecionado === 'todos' || usuario.setor === setorSelecionado;
 
-    return passaBusca && passaFiltroTipo && passaFiltroSetor;
-  });
+  return passaBusca && passaFiltroTipo && passaFiltroSetor;
+});
 
   // Função para abrir modal de edição
   const abrirModalEdicao = (usuario: Usuario) => {
