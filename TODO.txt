@@ -14,7 +14,11 @@
 - Bug/Ajuste
  - Não da pra adicionar dashboard
  - Coordenador pode virar coordenador ✅
+ - cada pessoa só vê os dashboards do seu setor
  - Arrumar o template de email pros estagiários + arrumar página de validação do email
+ - Botão reativar não funciona
+ - Revogado não mostra aviso
+ - Estagiário cadastrado pelo admin e verificado aparece como status indefinido por NULL em aprovado pelo admin
 
  OBS:
 
