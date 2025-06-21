@@ -7,7 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -78,9 +77,9 @@ interface UsuariosStats {
   nao_verificados: number;
   admins: number;
   coordenadores: number;
-  clt_associados: number;
-  estagiarios: number;
-  revogados: number;
+  clt_associados: number; // NOVO
+  estagiarios: number; // NOVO
+  revogados: number; // NOVO
 }
 
 interface UsuariosResponse {
@@ -119,143 +118,6 @@ const API_BASE_URL = process.env.REACT_APP_API_URL ||
   (process.env.NODE_ENV === 'production' 
     ? 'https://rmh.up.railway.app'
     : 'http://localhost:3001');
-
-// 🆕 COMPONENTE PARA TOKENS EXPIRADOS (definido FORA do componente principal)
-const TokensExpiradosSection: React.FC<{
-  activeTab: string;
-  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
-  toast: ReturnType<typeof useToast>['toast'];
-}> = ({ activeTab, fetchWithAuth, toast }) => {
-  const [categoriasTokens, setCategoriaTokens] = useState({
-    tokens_expirados: [],
-    sem_codigo: [],
-    aguardando_verificacao: []
-  });
-  const [reenviarLoading, setReenviarLoading] = useState<string | null>(null);
-
-  // Função para carregar usuários com problemas de token
-  const fetchUsuariosTokens = async () => {
-    try {
-      const response = await fetchWithAuth(`${API_BASE_URL}/api/admin/usuarios-pendentes`);
-      if (!response.ok) throw new Error('Erro ao carregar tokens');
-      
-      const data = await response.json();
-      setCategoriaTokens(data.usuarios_por_categoria || {
-        tokens_expirados: [],
-        sem_codigo: [],
-        aguardando_verificacao: []
-      });
-    } catch (error) {
-      console.error('❌ Erro ao carregar tokens:', error);
-    }
-  };
-
-  // Função de reenvio
-  const reenviarCodigo = async (userId: string, nome: string, tipoColaborador: string) => {
-    try {
-      setReenviarLoading(userId);
-      
-      const response = await fetchWithAuth(`${API_BASE_URL}/api/admin/reenviar-codigo/${userId}`, {
-        method: 'POST'
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Erro ao reenviar código');
-      }
-
-      toast({
-        title: "✅ Código reenviado!",
-        description: `${tipoColaborador === 'estagiario' ? 'Link' : 'Código'} enviado para ${nome}`,
-        variant: "default"
-      });
-
-      await fetchUsuariosTokens();
-    } catch (error) {
-      toast({
-        title: "Erro",
-        description: error instanceof Error ? error.message : "Erro ao reenviar código",
-        variant: "destructive"
-      });
-    } finally {
-      setReenviarLoading(null);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === 'verificacoes') {
-      fetchUsuariosTokens();
-    }
-  }, [activeTab]);
-
-  return (
-    <div className="space-y-6">
-      {/* Seção de Tokens Expirados */}
-      {categoriasTokens.tokens_expirados.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2 text-red-600">
-              <Clock className="h-5 w-5" />
-              <span>Usuários com Tokens Expirados ({categoriasTokens.tokens_expirados.length})</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {categoriasTokens.tokens_expirados.map((usuario: Usuario) => (
-                <div key={usuario.id} className="flex items-center justify-between p-4 border rounded-lg bg-white">
-                  <div className="flex items-center space-x-3">
-                    <User className="h-8 w-8 text-gray-400" />
-                    <div>
-                      <h4 className="font-medium">{usuario.nome}</h4>
-                      <p className="text-sm text-gray-600">{usuario.email_login} • {usuario.setor}</p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <Badge variant={usuario.tipo_colaborador === 'estagiario' ? 'default' : 'secondary'}>
-                      {usuario.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}
-                    </Badge>
-                    
-                    <Button
-                      size="sm"
-                      onClick={() => reenviarCodigo(usuario.id, usuario.nome, usuario.tipo_colaborador)}
-                      disabled={reenviarLoading === usuario.id}
-                      className="bg-blue-600 hover:bg-blue-700"
-                    >
-                      {reenviarLoading === usuario.id ? (
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <>
-                          <Send className="h-4 w-4 mr-1" />
-                          Reenviar
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Mensagem se não houver problemas */}
-      {categoriasTokens.tokens_expirados.length === 0 && (
-        <Card>
-          <CardContent className="p-8 text-center">
-            <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              Nenhum token expirado!
-            </h3>
-            <p className="text-gray-600">
-              Todos os usuários estão com tokens válidos ou já verificados.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  );
-};
 
 const AdminUserControl: React.FC = () => {
   const navigate = useNavigate();
@@ -742,6 +604,7 @@ const AdminUserControl: React.FC = () => {
         return usuario.ativo !== false; // ✅ Por padrão, excluir revogados
     }
   })();
+
   // Filtro por setor
   const passaFiltroSetor = setorSelecionado === 'todos' || usuario.setor === setorSelecionado;
 
@@ -890,449 +753,426 @@ const AdminUserControl: React.FC = () => {
         </Card>
       </div>
 
-      {/* 🆕 SISTEMA DE ABAS */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="geral">
-            <Users className="h-4 w-4 mr-2" />
-            Usuários Gerais
-          </TabsTrigger>
-          <TabsTrigger value="verificacoes" className="relative">
-            <Clock className="h-4 w-4 mr-2" />
-            Verificações & Tokens
-            {(stats.pendentes_aprovacao + stats.nao_verificados) > 0 && (
-              <Badge variant="destructive" className="ml-2 h-5 w-5 p-0 text-xs">
-                {stats.pendentes_aprovacao + stats.nao_verificados}
-              </Badge>
-            )}
-          </TabsTrigger>
-        </TabsList>
-
-        {/* 🆕 ABA 1: USUÁRIOS GERAIS */}
-        <TabsContent value="geral" className="space-y-4">
-          <div className="space-y-4">
-            {/* Busca */}
-            <div className="flex gap-4">
-              <div className="flex-1 max-w-md">
-                <Input
-                  placeholder="Buscar por nome, email ou setor..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full"
-                />
-              </div>
-              <Select value={setorSelecionado} onValueChange={setSetorSelecionado}>
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="Filtrar por setor" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos os setores</SelectItem>
-                  {setores.map(setor => (
-                    <SelectItem key={setor} value={setor}>{setor}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              
-              {/* Toggle para Agrupar por Setores */}
-              <div className="flex items-center space-x-2 px-3 py-2 bg-gray-50 rounded-lg border">
-                <Building2 className="h-4 w-4 text-gray-600" />
-                <Label htmlFor="toggle-setores" className="text-sm font-medium cursor-pointer whitespace-nowrap">
-                  Agrupar por Setores
-                </Label>
-                <Switch
-                  id="toggle-setores"
-                  checked={visualizacaoPorSetores}
-                  onCheckedChange={setVisualizacaoPorSetores}
-                />
-              </div>
-            </div>
-            {/* Filtros por tipo */}
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant={filter === 'pendentes_aprovacao' ? 'default' : 'outline'}
-                onClick={() => setFilter('pendentes_aprovacao')}
-                size="sm"
-              >
-                <Clock className="h-4 w-4 mr-1" />
-                Aguard. Aprovação ({stats.pendentes_aprovacao})
-              </Button>
-              <Button
-                variant={filter === 'pendentes_verificacao' ? 'default' : 'outline'}
-                onClick={() => setFilter('pendentes_verificacao')}
-                size="sm"
-              >
-                <MailSearch className="h-4 w-4 mr-1" />
-                Aguard. Verificação ({stats.nao_verificados})
-              </Button>
-              <Button
-                variant={filter === 'corporativos' ? 'default' : 'outline'}
-                onClick={() => setFilter('corporativos')}
-                size="sm"
-              >
-                <Briefcase className="h-4 w-4 mr-1" />
-                CLT/Associados ({stats.clt_associados})
-              </Button>
-              <Button
-                variant={filter === 'estagiarios' ? 'default' : 'outline'}
-                onClick={() => setFilter('estagiarios')}
-                size="sm"
-              >
-                <GraduationCap className="h-4 w-4 mr-1" />
-                Estagiários ({stats.estagiarios})
-              </Button>
-              <Button
-                variant={filter === 'coordenadores' ? 'default' : 'outline'}
-                onClick={() => setFilter('coordenadores')}
-                size="sm"
-              >
-                <Crown className="h-4 w-4 mr-1" />
-                Coordenadores ({stats.coordenadores})
-              </Button>
-              <Button
-                variant={filter === 'admins' ? 'default' : 'outline'}
-                onClick={() => setFilter('admins')}
-                size="sm"
-              >
-                <Shield className="h-4 w-4 mr-1" />
-                Admins ({stats.admins})
-              </Button>
-              <Button
-                variant={filter === 'revogados' ? 'default' : 'outline'}
-                onClick={() => setFilter('revogados')}
-                size="sm"
-              >
-                <Ban className="h-4 w-4 mr-1" />
-                Revogados ({stats.revogados})
-              </Button>
-              <Button
-                variant={filter === 'todos' ? 'default' : 'outline'}
-                onClick={() => setFilter('todos')}
-                size="sm"
-              >
-                Todos
-              </Button>
-            </div>
+      {/* Filtros e Busca */}
+      <div className="space-y-4">
+        {/* Busca */}
+        <div className="flex gap-4">
+          <div className="flex-1 max-w-md">
+            <Input
+              placeholder="Buscar por nome, email ou setor..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full"
+            />
           </div>
+          <Select value={setorSelecionado} onValueChange={setSetorSelecionado}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Filtrar por setor" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos os setores</SelectItem>
+              {setores.map(setor => (
+                <SelectItem key={setor} value={setor}>{setor}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
+          {/* Toggle para Agrupar por Setores */}
+          <div className="flex items-center space-x-2 px-3 py-2 bg-gray-50 rounded-lg border">
+            <Building2 className="h-4 w-4 text-gray-600" />
+            <Label htmlFor="toggle-setores" className="text-sm font-medium cursor-pointer whitespace-nowrap">
+              Agrupar por Setores
+            </Label>
+            <Switch
+              id="toggle-setores"
+              checked={visualizacaoPorSetores}
+              onCheckedChange={setVisualizacaoPorSetores}
+            />
+          </div>
+        </div>
+        {/* Filtros por tipo */}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant={filter === 'pendentes_aprovacao' ? 'default' : 'outline'}
+            onClick={() => setFilter('pendentes_aprovacao')}
+            size="sm"
+          >
+            <Clock className="h-4 w-4 mr-1" />
+            Aguard. Aprovação ({stats.pendentes_aprovacao})
+          </Button>
+          <Button
+            variant={filter === 'pendentes_verificacao' ? 'default' : 'outline'}
+            onClick={() => setFilter('pendentes_verificacao')}
+            size="sm"
+          >
+            <MailSearch className="h-4 w-4 mr-1" />
+            Aguard. Verificação ({stats.nao_verificados})
+          </Button>
+          <Button
+            variant={filter === 'corporativos' ? 'default' : 'outline'}
+            onClick={() => setFilter('corporativos')}
+            size="sm"
+          >
+            <Briefcase className="h-4 w-4 mr-1" />
+            CLT/Associados ({stats.clt_associados})
+          </Button>
+          <Button
+            variant={filter === 'estagiarios' ? 'default' : 'outline'}
+            onClick={() => setFilter('estagiarios')}
+            size="sm"
+          >
+            <GraduationCap className="h-4 w-4 mr-1" />
+            Estagiários ({stats.estagiarios})
+          </Button>
+          <Button
+            variant={filter === 'coordenadores' ? 'default' : 'outline'}
+            onClick={() => setFilter('coordenadores')}
+            size="sm"
+          >
+            <Crown className="h-4 w-4 mr-1" />
+            Coordenadores ({stats.coordenadores})
+          </Button>
+          <Button
+            variant={filter === 'admins' ? 'default' : 'outline'}
+            onClick={() => setFilter('admins')}
+            size="sm"
+          >
+            <Shield className="h-4 w-4 mr-1" />
+            Admins ({stats.admins})
+          </Button>
+          <Button
+            variant={filter === 'revogados' ? 'default' : 'outline'}
+            onClick={() => setFilter('revogados')}
+            size="sm"
+          >
+            <Ban className="h-4 w-4 mr-1" />
+            Revogados ({stats.revogados})
+          </Button>
+          <Button
+            variant={filter === 'todos' ? 'default' : 'outline'}
+            onClick={() => setFilter('todos')}
+            size="sm"
+          >
+            Todos
+          </Button>
+        </div>
+      </div>
 
-          {/* Lista de usuários DENTRO da aba geral */}
-          <div className="space-y-4">
-            {!visualizacaoPorSetores ? (
-              // VISUALIZAÇÃO NORMAL (Lista única)
-              <>
-                {usuariosFiltrados.length === 0 ? (
-                  <Card>
-                    <CardContent className="p-8 text-center">
-                      <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">
-                        Nenhum usuário encontrado
-                      </h3>
-                      <p className="text-gray-500">
-                        Não há usuários que correspondam aos filtros selecionados.
-                      </p>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  usuariosFiltrados.map((usuario) => (
-                    <Card key={usuario.id}>
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-4">
-                            <div className="flex-1">
-                              <div className="flex items-center space-x-2">
-                                <h3 className="font-medium text-lg">{usuario.nome}</h3>
-                                {getStatusBadge(usuario)}
-                              </div>
-                              <p className="text-sm text-gray-600 mt-1">
-                                {usuario.email_login} • {usuario.setor} • {usuario.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}
-                              </p>
+      {/* Lista de usuários */}
+      {/* Lista de usuários - SUBSTITUA a seção atual por esta: */}
+        <div className="space-y-4">
+          {!visualizacaoPorSetores ? (
+            // VISUALIZAÇÃO NORMAL (Lista única)
+            <>
+              {usuariosFiltrados.length === 0 ? (
+                <Card>
+                  <CardContent className="p-8 text-center">
+                    <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">
+                      Nenhum usuário encontrado
+                    </h3>
+                    <p className="text-gray-500">
+                      Não há usuários que correspondam aos filtros selecionados.
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                usuariosFiltrados.map((usuario) => (
+                  <Card key={usuario.id}>
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-4">
+                          <div className="flex-1">
+                            <div className="flex items-center space-x-2">
+                              <h3 className="font-medium text-lg">{usuario.nome}</h3>
+                              {getStatusBadge(usuario)}
                             </div>
+                            <p className="text-sm text-gray-600 mt-1">
+                              {usuario.email_login} • {usuario.setor} • {usuario.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}
+                            </p>
                           </div>
+                        </div>
 
-                          <div className="flex items-center space-x-2">
-                            {/* Botões para aprovação (apenas estagiários pendentes) */}
-                            {isPendenteAprovacao(usuario) && (
-                              <>
-                                <Button
-                                  onClick={() => setUsuarioParaAprovar({ id: usuario.id, nome: usuario.nome })}
-                                  size="sm"
-                                  className="bg-green-600 hover:bg-green-700"
-                                >
-                                  <UserCheck className="h-4 w-4 mr-1" />
-                                  Aprovar
-                                </Button>
-                                <Button
-                                  onClick={() => setUsuarioParaRejeitar({ id: usuario.id, nome: usuario.nome })}
-                                  size="sm"
-                                  variant="destructive"
-                                >
-                                  <UserX className="h-4 w-4 mr-1" />
-                                  Rejeitar
-                                </Button>
-                              </>
-                            )}
+                        <div className="flex items-center space-x-2">
+                          {/* Botões para aprovação (apenas estagiários pendentes) */}
+                          {isPendenteAprovacao(usuario) && (
+                            <>
+                              <Button
+                                onClick={() => setUsuarioParaAprovar({ id: usuario.id, nome: usuario.nome })}
+                                size="sm"
+                                className="bg-green-600 hover:bg-green-700"
+                              >
+                                <UserCheck className="h-4 w-4 mr-1" />
+                                Aprovar
+                              </Button>
+                              <Button
+                                onClick={() => setUsuarioParaRejeitar({ id: usuario.id, nome: usuario.nome })}
+                                size="sm"
+                                variant="destructive"
+                              >
+                                <UserX className="h-4 w-4 mr-1" />
+                                Rejeitar
+                              </Button>
+                            </>
+                          )}
 
-                            {/* Botões para usuários ativos */}
-                            {usuario.aprovado_admin && usuario.email_verificado && usuario.ativo !== false && usuario.tipo_usuario !== 'admin' && (
-                              <>
-                                {/* Botão de coordenação */}
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => setUsuarioParaPromover({ 
-                                    id: usuario.id, 
-                                    nome: usuario.nome, 
-                                    isCoordenador: usuario.is_coordenador 
-                                  })}
-                                  className={usuario.is_coordenador 
-                                    ? "text-gray-600 hover:text-gray-700" 
-                                    : "text-yellow-600 hover:text-yellow-700"
-                                  }
-                                >
-                                  <Crown className="h-4 w-4 mr-1" />
-                                  {usuario.is_coordenador ? 'Remover Coordenação' : 'Tornar Coordenador'}
-                                </Button>
-
-                                {/* Botão de editar */}
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => abrirModalEdicao(usuario)}
-                                  className="text-blue-600 hover:text-blue-700"
-                                >
-                                  <Edit className="h-4 w-4 mr-1" />
-                                  Editar
-                                </Button>
-
-                                {/* Botão de revogar */}
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => setUsuarioParaRevogar({ id: usuario.id, nome: usuario.nome })}
-                                  className="text-red-600 hover:text-red-700"
-                                >
-                                  <Ban className="h-4 w-4 mr-1" />
-                                  Revogar
-                                </Button>
-                              </>
-                            )}
-
-                            {/* Para usuários revogados, botão de reativar */}
-                            {usuario.ativo === false && (
+                          {/* Botões para usuários ativos */}
+                          {usuario.aprovado_admin && usuario.email_verificado && usuario.ativo !== false && usuario.tipo_usuario !== 'admin' && (
+                            <>
+                              {/* Botão de coordenação */}
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => {/* Implementar reativação */}}
-                                className="text-green-600 hover:text-green-700"
+                                onClick={() => setUsuarioParaPromover({ 
+                                  id: usuario.id, 
+                                  nome: usuario.nome, 
+                                  isCoordenador: usuario.is_coordenador 
+                                })}
+                                className={usuario.is_coordenador 
+                                  ? "text-gray-600 hover:text-gray-700" 
+                                  : "text-yellow-600 hover:text-yellow-700"
+                                }
                               >
-                                <CheckCircle className="h-4 w-4 mr-1" />
-                                Reativar
+                                <Crown className="h-4 w-4 mr-1" />
+                                {usuario.is_coordenador ? 'Remover Coordenação' : 'Tornar Coordenador'}
                               </Button>
-                            )}
-                          </div>
+
+                              {/* Botão de editar */}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => abrirModalEdicao(usuario)}
+                                className="text-blue-600 hover:text-blue-700"
+                              >
+                                <Edit className="h-4 w-4 mr-1" />
+                                Editar
+                              </Button>
+
+                              {/* Botão de revogar */}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setUsuarioParaRevogar({ id: usuario.id, nome: usuario.nome })}
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                <Ban className="h-4 w-4 mr-1" />
+                                Revogar
+                              </Button>
+                            </>
+                          )}
+
+                          {/* Para usuários revogados, botão de reativar */}
+                          {usuario.ativo === false && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {/* Implementar reativação */}}
+                              className="text-green-600 hover:text-green-700"
+                            >
+                              <CheckCircle className="h-4 w-4 mr-1" />
+                              Reativar
+                            </Button>
+                          )}
                         </div>
-                      </CardContent>
-                    </Card>
-                  ))
-                )}
-              </>
-            ) : (
-              // VISUALIZAÇÃO POR SETORES (Agrupado) - código igual ao anterior
-              <>
-                {setoresFiltrados.length === 0 ? (
-                  <Card>
-                    <CardContent className="p-8 text-center">
-                      <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">
-                        Nenhum setor encontrado
-                      </h3>
-                      <p className="text-gray-500">
-                        Não há setores que correspondam aos filtros selecionados.
-                      </p>
+                      </div>
                     </CardContent>
                   </Card>
-                ) : (
-                  setoresFiltrados.map((setor) => {
-                    const usuariosDoSetor = usuariosAgrupadosPorSetor[setor].filter(usuario => {
-                      const passaBusca = searchTerm === '' || 
-                        usuario.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        usuario.email_login.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        usuario.setor.toLowerCase().includes(searchTerm.toLowerCase());
+                ))
+              )}
+            </>
+          ) : (
+            // VISUALIZAÇÃO POR SETORES (Agrupado)
+            <>
+              {setoresFiltrados.length === 0 ? (
+                <Card>
+                  <CardContent className="p-8 text-center">
+                    <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">
+                      Nenhum setor encontrado
+                    </h3>
+                    <p className="text-gray-500">
+                      Não há setores que correspondam aos filtros selecionados.
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                setoresFiltrados.map((setor) => {
+                  const usuariosDoSetor = usuariosAgrupadosPorSetor[setor].filter(usuario => {
+                    const passaBusca = searchTerm === '' || 
+                      usuario.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                      usuario.email_login.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                      usuario.setor.toLowerCase().includes(searchTerm.toLowerCase());
 
-                      const passaFiltroTipo = (() => {
-                        switch (filter) {
-                          case 'pendentes_aprovacao':
-                            return isPendenteAprovacao(usuario);
-                          case 'pendentes_verificacao':
-                            return isPendenteVerificacao(usuario) && !isPendenteAprovacao(usuario);
-                          case 'corporativos':
-                            return usuario.tipo_colaborador === 'clt_associado' && !isPendenteVerificacao(usuario);
-                          case 'estagiarios':
-                            return usuario.tipo_colaborador === 'estagiario' && !isPendenteAprovacao(usuario) && !isPendenteVerificacao(usuario);
-                          case 'admins':
-                            return usuario.tipo_usuario === 'admin';
-                          case 'coordenadores':
-                            return usuario.is_coordenador === true;
-                          case 'revogados':
-                            return usuario.ativo === false;
-                          default:
-                            return true;
-                        }
-                      })();
+                    const passaFiltroTipo = (() => {
+                      switch (filter) {
+                        case 'pendentes_aprovacao':
+                          return isPendenteAprovacao(usuario);
+                        case 'pendentes_verificacao':
+                          return isPendenteVerificacao(usuario) && !isPendenteAprovacao(usuario);
+                        case 'corporativos':
+                          return usuario.tipo_colaborador === 'clt_associado' && !isPendenteVerificacao(usuario);
+                        case 'estagiarios':
+                          return usuario.tipo_colaborador === 'estagiario' && !isPendenteAprovacao(usuario) && !isPendenteVerificacao(usuario);
+                        case 'admins':
+                          return usuario.tipo_usuario === 'admin';
+                        case 'coordenadores':
+                          return usuario.is_coordenador === true;
+                        case 'revogados':
+                          return usuario.ativo === false;
+                        default:
+                          return true;
+                      }
+                    })();
 
-                      return passaBusca && passaFiltroTipo;
-                    });
+                    return passaBusca && passaFiltroTipo;
+                  });
 
-                    return (
-                      <Card key={setor} className="mb-6">
-                        <CardHeader className="pb-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
-                              <div>
-                                <CardTitle className="text-xl text-primary">{setor}</CardTitle>
-                                <p className="text-sm text-gray-600 mt-1">
-                                  {usuariosDoSetor.length} {usuariosDoSetor.length === 1 ? 'usuário' : 'usuários'}
-                                </p>
-                              </div>
-                            </div>
-                            
-                            {/* Estatísticas rápidas do setor */}
-                            <div className="flex space-x-4 text-sm">
-                              <div className="text-center">
-                                <p className="text-2xl font-bold text-green-600">
-                                  {usuariosDoSetor.filter(u => u.tipo_colaborador === 'estagiario' && !isPendenteAprovacao(u) && !isPendenteVerificacao(u)).length}
-                                </p>
-                                <p className="text-gray-500">Estagiários</p>
-                              </div>
-                              <div className="text-center">
-                                <p className="text-2xl font-bold text-blue-600">
-                                  {usuariosDoSetor.filter(u => u.tipo_colaborador === 'clt_associado' && !isPendenteVerificacao(u)).length}
-                                </p>
-                                <p className="text-gray-500">CLT</p>
-                              </div>
-                              <div className="text-center">
-                                <p className="text-2xl font-bold text-yellow-600">
-                                  {usuariosDoSetor.filter(u => u.is_coordenador).length}
-                                </p>
-                                <p className="text-gray-500">Coordenador</p>
-                              </div>
+                  return (
+                    <Card key={setor} className="mb-6">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <div>
+                              <CardTitle className="text-xl text-primary">{setor}</CardTitle>
+                              <p className="text-sm text-gray-600 mt-1">
+                                {usuariosDoSetor.length} {usuariosDoSetor.length === 1 ? 'usuário' : 'usuários'}
+                              </p>
                             </div>
                           </div>
-                        </CardHeader>
-                        
-                        <CardContent className="space-y-3">
-                          {usuariosDoSetor.map((usuario) => (
-                            <div key={usuario.id} className="p-3 border border-gray-200 rounded-lg bg-gray-50">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center space-x-3">
-                                  <div className="flex-1">
-                                    <div className="flex items-center space-x-2">
-                                      <h4 className="font-medium">{usuario.nome}</h4>
-                                      {getStatusBadge(usuario)}
-                                    </div>
-                                    <p className="text-sm text-gray-600 mt-1">
-                                      {usuario.email_login} • {usuario.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}
-                                    </p>
+                          
+                          {/* Estatísticas rápidas do setor */}
+                          <div className="flex space-x-4 text-sm">
+                            <div className="text-center">
+                              <p className="text-2xl font-bold text-green-600">
+                                {usuariosDoSetor.filter(u => u.tipo_colaborador === 'estagiario' && !isPendenteAprovacao(u) && !isPendenteVerificacao(u)).length}
+                              </p>
+                              <p className="text-gray-500">Estagiários</p>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-2xl font-bold text-blue-600">
+                                {usuariosDoSetor.filter(u => u.tipo_colaborador === 'clt_associado' && !isPendenteVerificacao(u)).length}
+                              </p>
+                              <p className="text-gray-500">CLT</p>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-2xl font-bold text-yellow-600">
+                                {usuariosDoSetor.filter(u => u.is_coordenador).length}
+                              </p>
+                              <p className="text-gray-500">Coordenador</p>
+                            </div>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      
+                      <CardContent className="space-y-3">
+                        {usuariosDoSetor.map((usuario) => (
+                          <div key={usuario.id} className="p-3 border border-gray-200 rounded-lg bg-gray-50">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-3">
+                                <div className="flex-1">
+                                  <div className="flex items-center space-x-2">
+                                    <h4 className="font-medium">{usuario.nome}</h4>
+                                    {getStatusBadge(usuario)}
                                   </div>
+                                  <p className="text-sm text-gray-600 mt-1">
+                                    {usuario.email_login} • {usuario.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}
+                                  </p>
                                 </div>
+                              </div>
 
-                                <div className="flex items-center space-x-2">
-                                  {/* Botões iguais aos da visualização normal */}
-                                  {isPendenteAprovacao(usuario) && (
-                                    <>
-                                      <Button
-                                        onClick={() => setUsuarioParaAprovar({ id: usuario.id, nome: usuario.nome })}
-                                        size="sm"
-                                        className="bg-green-600 hover:bg-green-700"
-                                      >
-                                        <UserCheck className="h-4 w-4 mr-1" />
-                                        Aprovar
-                                      </Button>
-                                      <Button
-                                        onClick={() => setUsuarioParaRejeitar({ id: usuario.id, nome: usuario.nome })}
-                                        size="sm"
-                                        variant="destructive"
-                                      >
-                                        <UserX className="h-4 w-4 mr-1" />
-                                        Rejeitar
-                                      </Button>
-                                    </>
-                                  )}
+                              <div className="flex items-center space-x-2">
+                                {/* Botões para aprovação (apenas estagiários pendentes) */}
+                                {isPendenteAprovacao(usuario) && (
+                                  <>
+                                    <Button
+                                      onClick={() => setUsuarioParaAprovar({ id: usuario.id, nome: usuario.nome })}
+                                      size="sm"
+                                      className="bg-green-600 hover:bg-green-700"
+                                    >
+                                      <UserCheck className="h-4 w-4 mr-1" />
+                                      Aprovar
+                                    </Button>
+                                    <Button
+                                      onClick={() => setUsuarioParaRejeitar({ id: usuario.id, nome: usuario.nome })}
+                                      size="sm"
+                                      variant="destructive"
+                                    >
+                                      <UserX className="h-4 w-4 mr-1" />
+                                      Rejeitar
+                                    </Button>
+                                  </>
+                                )}
 
-                                  {usuario.aprovado_admin && usuario.email_verificado && usuario.ativo !== false && usuario.tipo_usuario !== 'admin' && (
-                                    <>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => setUsuarioParaPromover({ 
-                                          id: usuario.id, 
-                                          nome: usuario.nome, 
-                                          isCoordenador: usuario.is_coordenador 
-                                        })}
-                                        className={usuario.is_coordenador 
-                                          ? "text-gray-600 hover:text-gray-700" 
-                                          : "text-yellow-600 hover:text-yellow-700"
-                                        }
-                                      >
-                                        <Crown className="h-4 w-4 mr-1" />
-                                        {usuario.is_coordenador ? 'Remover' : 'Coordenador'}
-                                      </Button>
-
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => abrirModalEdicao(usuario)}
-                                        className="text-blue-600 hover:text-blue-700"
-                                      >
-                                        <Edit className="h-4 w-4 mr-1" />
-                                        Editar
-                                      </Button>
-
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => setUsuarioParaRevogar({ id: usuario.id, nome: usuario.nome })}
-                                        className="text-red-600 hover:text-red-700"
-                                      >
-                                        <Ban className="h-4 w-4 mr-1" />
-                                        Revogar
-                                      </Button>
-                                    </>
-                                  )}
-
-                                  {usuario.ativo === false && (
+                                {/* Botões para usuários ativos */}
+                                {usuario.aprovado_admin && usuario.email_verificado && usuario.ativo !== false && usuario.tipo_usuario !== 'admin' && (
+                                  <>
+                                    {/* Botão de coordenação */}
                                     <Button
                                       size="sm"
                                       variant="outline"
-                                      onClick={() => {/* Implementar reativação */}}
-                                      className="text-green-600 hover:text-green-700"
+                                      onClick={() => setUsuarioParaPromover({ 
+                                        id: usuario.id, 
+                                        nome: usuario.nome, 
+                                        isCoordenador: usuario.is_coordenador 
+                                      })}
+                                      className={usuario.is_coordenador 
+                                        ? "text-gray-600 hover:text-gray-700" 
+                                        : "text-yellow-600 hover:text-yellow-700"
+                                      }
                                     >
-                                      <CheckCircle className="h-4 w-4 mr-1" />
-                                      Reativar
+                                      <Crown className="h-4 w-4 mr-1" />
+                                      {usuario.is_coordenador ? 'Remover' : 'Coordenador'}
                                     </Button>
-                                  )}
-                                </div>
+
+                                    {/* Botão de editar */}
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => abrirModalEdicao(usuario)}
+                                      className="text-blue-600 hover:text-blue-700"
+                                    >
+                                      <Edit className="h-4 w-4 mr-1" />
+                                      Editar
+                                    </Button>
+
+                                    {/* Botão de revogar */}
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => setUsuarioParaRevogar({ id: usuario.id, nome: usuario.nome })}
+                                      className="text-red-600 hover:text-red-700"
+                                    >
+                                      <Ban className="h-4 w-4 mr-1" />
+                                      Revogar
+                                    </Button>
+                                  </>
+                                )}
+
+                                {/* Para usuários revogados, botão de reativar */}
+                                {usuario.ativo === false && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {/* Implementar reativação */}}
+                                    className="text-green-600 hover:text-green-700"
+                                  >
+                                    <CheckCircle className="h-4 w-4 mr-1" />
+                                    Reativar
+                                  </Button>
+                                )}
                               </div>
                             </div>
-                          ))}
-                        </CardContent>
-                      </Card>
-                    );
-                  })
-                )}
-              </>
-            )}
-          </div>
-        </TabsContent>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  );
+                })
+              )}
+            </>
+          )}
+        </div>
 
-        {/* 🆕 ABA 2: VERIFICAÇÕES & TOKENS */}
-        <TabsContent value="verificacoes" className="space-y-6">
-          <TokensExpiradosSection 
-            activeTab={activeTab}
-            fetchWithAuth={fetchWithAuth}
-            toast={toast}
-          />
-        </TabsContent>
-      </Tabs>
       {/* MODAL: Adicionar Novo Usuário */}
       <Dialog open={modalNovoUsuario} onOpenChange={setModalNovoUsuario}>
         <DialogContent className="sm:max-w-md">
