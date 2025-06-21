@@ -3312,23 +3312,40 @@ app.get('/api/admin/usuarios-pendentes', adminMiddleware, async (req, res) => {
         u.tipo_colaborador,
         u.email_verificado,
         u.aprovado_admin,
-        ual.criado_por_admin,
         u.criado_em,
         v.token as codigo_verificacao,
-        v.expira_em as codigo_expira_em
+        v.expira_em as codigo_expira_em,
+        v.criado_em as codigo_criado_em,
+        -- Status detalhado do token
+        CASE 
+          WHEN v.token IS NULL THEN 'sem_codigo'
+          WHEN v.expira_em < NOW() THEN 'codigo_expirado' 
+          WHEN v.usado_em IS NOT NULL THEN 'codigo_usado'
+          ELSE 'codigo_ativo'
+        END as status_token,
+        -- Tempo desde criação
+        EXTRACT(EPOCH FROM (NOW() - u.criado_em))/3600 as horas_desde_criacao,
+        -- Tempo até/desde expiração
+        CASE 
+          WHEN v.expira_em IS NOT NULL THEN 
+            EXTRACT(EPOCH FROM (v.expira_em - NOW()))/3600
+          ELSE NULL
+        END as horas_para_expiracao
       FROM usuarios u
-      LEFT JOIN usuarios_admin_log ual ON u.id = ual.usuario_id
       LEFT JOIN verificacoes_email v ON u.id = v.usuario_id 
         AND v.tipo_token = 'verificacao_email' 
         AND v.usado_em IS NULL
       WHERE 
-        -- ✅ CORREÇÃO: Apenas estagiários CADASTRADOS PELO PRÓPRIO USUÁRIO e não aprovados
-        (u.tipo_colaborador = 'estagiario' 
-         AND u.aprovado_admin IS NULL 
-         AND ual.criado_por_admin IS NULL)
-        -- OU usuários não verificados (qualquer tipo)
+        (u.tipo_colaborador = 'estagiario' AND u.aprovado_admin IS NULL)
         OR (u.email_verificado = false)
-      ORDER BY u.criado_em DESC
+      ORDER BY 
+        CASE 
+          WHEN u.tipo_colaborador = 'estagiario' AND u.aprovado_admin IS NULL THEN 1
+          WHEN v.expira_em < NOW() THEN 2
+          WHEN v.token IS NULL THEN 3
+          ELSE 4
+        END,
+        u.criado_em DESC
     `);
 
     const usuarios = result.rows.map(user => ({
@@ -3338,15 +3355,34 @@ app.get('/api/admin/usuarios-pendentes', adminMiddleware, async (req, res) => {
         ? (user.aprovado_admin === null ? 'pendente_aprovacao' : 'aprovado')
         : 'corporativo',
       codigo_ativo: user.codigo_verificacao && user.codigo_expira_em > new Date(),
-      origem: user.criado_por_admin ? 'admin' : 'auto_cadastro'
+      pode_reenviar: user.email_verificado === false && (
+        user.tipo_colaborador === 'clt_associado' || 
+        (user.tipo_colaborador === 'estagiario' && user.aprovado_admin === true)
+      ),
+      tempo_expirado_horas: user.horas_para_expiracao < 0 ? Math.abs(user.horas_para_expiracao) : 0
     }));
+
+    // Separar por categorias
+    const pendentes_aprovacao = usuarios.filter(u => u.status === 'pendente_aprovacao');
+    const tokens_expirados = usuarios.filter(u => u.status_token === 'codigo_expirado');
+    const sem_codigo = usuarios.filter(u => u.status_token === 'sem_codigo' && u.status !== 'pendente_aprovacao');
+    const aguardando_verificacao = usuarios.filter(u => u.status_token === 'codigo_ativo');
 
     res.json({
       usuarios,
       total: usuarios.length,
-      pendentes_aprovacao: usuarios.filter(u => u.status === 'pendente_aprovacao' && u.origem === 'auto_cadastro').length,
-      nao_verificados: usuarios.filter(u => !u.email_verificado).length,
-      info: 'Apenas estagiários que se cadastraram sozinhos aparecem como pendentes de aprovação. Estagiários adicionados por admin são automaticamente aprovados.'
+      categorias: {
+        pendentes_aprovacao: pendentes_aprovacao.length,
+        tokens_expirados: tokens_expirados.length,
+        sem_codigo: sem_codigo.length,
+        aguardando_verificacao: aguardando_verificacao.length
+      },
+      usuarios_por_categoria: {
+        pendentes_aprovacao,
+        tokens_expirados,
+        sem_codigo,
+        aguardando_verificacao
+      }
     });
 
   } catch (error) {
@@ -3633,58 +3669,109 @@ app.post('/api/admin/reenviar-codigo/:userId', adminMiddleware, async (req, res)
     
     const { userId } = req.params;
 
+    console.log(`🔄 ADMIN: Reenviando código para usuário ${userId} por ${req.user.nome}`);
+
     // Buscar usuário
     const userResult = await client.query(
-      'SELECT * FROM usuarios WHERE id = $1 AND email_verificado = false',
+      'SELECT * FROM usuarios WHERE id = $1',
       [userId]
     );
 
     if (userResult.rows.length === 0) {
       await client.query('ROLLBACK');
       client.release();
-      return res.status(404).json({ error: 'Usuário não encontrado ou já verificado' });
+      return res.status(404).json({ error: 'Usuário não encontrado' });
     }
 
     const user = userResult.rows[0];
-    const emailLogin = user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email;
 
-    // ✅ CORREÇÃO: Invalidar códigos anteriores PRIMEIRO
+    if (user.email_verificado) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).json({ error: 'Usuário já verificado' });
+    }
+
+    // Determinar email de destino
+    const emailLogin = user.tipo_colaborador === 'estagiario' ? 
+      user.email_pessoal : user.email;
+
+    if (!emailLogin) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).json({ error: 'Email não encontrado para este usuário' });
+    }
+
+    // Para estagiários, verificar se foi aprovado
+    if (user.tipo_colaborador === 'estagiario' && !user.aprovado_admin) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).json({ error: 'Estagiário ainda não foi aprovado. Aprove primeiro.' });
+    }
+
+    // Gerar novo token/código dependendo do tipo
+    let novoToken, tipoToken, templateHtml;
+    const expiraEm = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    if (user.tipo_colaborador === 'estagiario') {
+      // Para estagiários: gerar LINK de validação
+      novoToken = crypto.randomBytes(32).toString('hex');
+      tipoToken = 'verificacao_email';
+      const linkValidacao = `${process.env.API_BASE_URL}/api/auth/validar-email/${novoToken}`;
+      templateHtml = await gerarTemplateValidacaoEstagiario(user.nome, linkValidacao, emailLogin);
+    } else {
+      // Para CLT: gerar CÓDIGO
+      novoToken = Math.floor(100000 + Math.random() * 900000).toString();
+      tipoToken = 'verificacao_email';
+      templateHtml = await gerarTemplateVerificacao(user.nome, novoToken, emailLogin, user.tipo_colaborador);
+    }
+
+    // Invalidar tokens/códigos anteriores
     await client.query(
       'UPDATE verificacoes_email SET usado_em = NOW() WHERE usuario_id = $1 AND usado_em IS NULL',
       [userId]
     );
 
-    // Gerar novo código
-    const codigoVerificacao = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiraEm = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
-    // Criar novo código
+    // Criar novo token/código
     await client.query(
       `INSERT INTO verificacoes_email (usuario_id, token, tipo_token, expira_em) 
        VALUES ($1, $2, $3, $4)`,
-      [userId, codigoVerificacao, 'verificacao_email', expiraEm]
+      [userId, novoToken, tipoToken, expiraEm]
     );
 
     await client.query('COMMIT');
 
     // Enviar email
     try {
-      await resend.emails.send({
+      const emailResult = await resend.emails.send({
         from: 'andre.macedo@resendemh.com.br',
         to: [emailLogin],
-        subject: '🔐 Novo código de verificação - Dashboards RMH',
-        html: await gerarTemplateVerificacao(user.nome, codigoVerificacao, emailLogin, user.tipo_colaborador)
+        subject: user.tipo_colaborador === 'estagiario' 
+          ? '🔗 Novo link de validação - Dashboards RMH'
+          : '🔐 Novo código de verificação - Dashboards RMH',
+        html: templateHtml
       });
 
-      console.log(`📧 ADMIN: Código reenviado para ${emailLogin} pelo admin ${req.user.nome}`);
+      console.log(`📧 ADMIN: ${user.tipo_colaborador === 'estagiario' ? 'Link' : 'Código'} reenviado para ${emailLogin} pelo admin ${req.user.nome}`);
+
+      // Log da ação admin
+      await pool.query(
+        `INSERT INTO logs_email (usuario_id, email_para, tipo_email, status) 
+         VALUES ($1, $2, $3, $4)`,
+        [userId, emailLogin, 'reenvio_admin', 'enviado']
+      );
+
     } catch (emailError) {
       console.error('❌ Erro ao enviar email:', emailError);
+      return res.status(500).json({ error: 'Erro ao enviar email' });
     }
 
     res.json({
-      message: 'Novo código enviado com sucesso',
+      message: user.tipo_colaborador === 'estagiario' 
+        ? 'Novo link de validação enviado com sucesso'
+        : 'Novo código de verificação enviado com sucesso',
       email_enviado_para: emailLogin,
-      tipo_colaborador: user.tipo_colaborador
+      tipo_colaborador: user.tipo_colaborador,
+      tipo_envio: user.tipo_colaborador === 'estagiario' ? 'link' : 'codigo'
     });
 
   } catch (error) {
@@ -3693,6 +3780,68 @@ app.post('/api/admin/reenviar-codigo/:userId', adminMiddleware, async (req, res)
     res.status(500).json({ error: 'Erro interno do servidor' });
   } finally {
     client.release();
+  }
+});
+
+app.get('/api/admin/usuarios-tokens-expirados', adminMiddleware, async (req, res) => {
+  try {
+    console.log('⏰ ADMIN: Listando usuários com tokens expirados');
+
+    const result = await pool.query(`
+      SELECT 
+        u.id,
+        u.nome,
+        u.email,
+        u.email_pessoal,
+        u.setor,
+        u.tipo_colaborador,
+        u.email_verificado,
+        u.aprovado_admin,
+        u.criado_em,
+        v.token as codigo_verificacao,
+        v.expira_em as codigo_expira_em,
+        v.criado_em as codigo_criado_em,
+        EXTRACT(EPOCH FROM (NOW() - v.expira_em))/3600 as horas_expirado,
+        EXTRACT(EPOCH FROM (NOW() - u.criado_em))/3600 as horas_desde_criacao
+      FROM usuarios u
+      LEFT JOIN verificacoes_email v ON u.id = v.usuario_id 
+        AND v.tipo_token = 'verificacao_email' 
+        AND v.usado_em IS NULL
+      WHERE 
+        u.email_verificado = false
+        AND (
+          -- CLT com código expirado
+          (u.tipo_colaborador = 'clt_associado' AND v.expira_em < NOW())
+          OR
+          -- Estagiário aprovado com link expirado
+          (u.tipo_colaborador = 'estagiario' AND u.aprovado_admin = true AND v.expira_em < NOW())
+          OR
+          -- Usuários sem nenhum código/link gerado há mais de 1 hora
+          (v.token IS NULL AND u.criado_em < NOW() - INTERVAL '1 hour')
+        )
+      ORDER BY v.expira_em ASC NULLS LAST, u.criado_em DESC
+    `);
+
+    const usuarios = result.rows.map(user => ({
+      ...user,
+      email_login: user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email,
+      status_token: user.codigo_verificacao 
+        ? (user.codigo_expira_em < new Date() ? 'expirado' : 'ativo')
+        : 'sem_codigo',
+      pode_reenviar: user.tipo_colaborador === 'clt_associado' || 
+                     (user.tipo_colaborador === 'estagiario' && user.aprovado_admin)
+    }));
+
+    res.json({
+      usuarios,
+      total: usuarios.length,
+      com_codigo_expirado: usuarios.filter(u => u.status_token === 'expirado').length,
+      sem_codigo: usuarios.filter(u => u.status_token === 'sem_codigo').length
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao listar tokens expirados:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 
