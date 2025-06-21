@@ -21,5 +21,62 @@
  - Estagiário cadastrado pelo admin e verificado aparece como status indefinido por NULL em aprovado pelo admin
 
  OBS:
-
+ verificar a questão dos tokens - token expirado são linhas excluidas??
  reportID e groupdID deixam o dashboard embed seguro
+
+
+ faria sentido eu não excluir os usuários e colocar eles em uma aba em que os tokens estão expirados e ver se eu quero reenviar ou excluir ele mesmo?EditarEXCELENTE ideia! Isso faria muito mais sentido do ponto de vista de gestão de usuários. Ao invés de excluir automaticamente, você teria controle total sobre o que fazer.
+🎯 Vantagens dessa abordagem:
+1. Controle administrativo
+
+Você decide se realmente quer excluir
+Pode reenviar código para usuários legítimos
+Evita perder cadastros por erro
+
+2. Melhor experiência do usuário
+
+Usuário não "desaparece" do sistema
+Possibilidade de recuperar cadastro facilmente
+Menos fricção no processo
+
+3. Insights valiosos
+
+Ver quantos usuários "abandonam" o processo
+Identificar padrões (emails corporativos vs pessoais)
+Decidir se vale reenviar baseado no perfil
+
+🏗️ Como implementar:
+Modificar o script de limpeza:
+javascript// Ao invés de excluir, marcar como "token_expirado"
+UPDATE usuarios 
+SET status_verificacao = 'token_expirado', 
+    data_expiracao = NOW()
+WHERE email_verificado = false 
+  AND criado_em < NOW() - INTERVAL '7 days'
+Criar nova aba no admin:
+
+"Tokens Expirados" 📋
+Mostrar usuários com status_verificacao = 'token_expirado'
+Botões: "Reenviar Código" / "Excluir Definitivamente"
+
+Campos úteis para adicionar:
+sqlALTER TABLE usuarios ADD COLUMN status_verificacao VARCHAR(50) DEFAULT 'pendente';
+ALTER TABLE usuarios ADD COLUMN data_expiracao TIMESTAMP;
+ALTER TABLE usuarios ADD COLUMN tentativas_reenvio INTEGER DEFAULT 0;
+📊 Interface sugerida:
+┌─ ABA: Tokens Expirados (23) ─┐
+│ 
+│ 👤 João Silva - joao@email.com
+│    📅 Expirou há 2 dias | 🔄 0 reenvios
+│    [Reenviar Código] [Excluir]
+│
+│ 👤 Maria Santos - maria@empresa.com  
+│    📅 Expirou há 5 dias | 🔄 1 reenvio
+│    [Reenviar Código] [Excluir]
+│
+└─────────────────────────────────┘
+🚀 Ações em lote:
+
+"Reenviar para todos" (usuários selecionados)
+"Excluir selecionados"
+"Limpar tokens antigos" (>30 dias)
