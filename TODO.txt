@@ -1,0 +1,21 @@
+- Melhorar a página de controle de usuário ✅
+ - Adicionar alguém por ali (será mandado um email para a pessoa para ela configurar uma senha) ✅
+ - Mudar setor da pessoa ✅
+ - Revogar acesso ✅
+ - Melhorar a questão de Tornar Coordenador (ex: pessoa pode virar coordenador ja sendo coordenador) ✅
+ - Adicionar dois cartões de número de pessoas CLT/Associado e Estagiário ✅
+- Dashboards
+ - Melhorar a seção no Header
+ - Não é página principal (a pagina principal vai ser o dashboard geral do escritório e uma leve introdução)
+- Nivel de usuários
+ - Usuário: pode ver o dashboard geral da empresa + documentos + organograma + newsletter
+ - Coordenador: tudo que o usuário pode + aba de dashboard de cada setor (cada coordenador só pode ver os dashboards do seu setor - excluir e criar?)
+ - Admin: tudo do coordenador + acesso total (controle de usuários)
+- Bug/Ajuste
+ - Não da pra adicionar dashboard
+ - Coordenador pode virar coordenador ✅
+ - Arrumar o template de email pros estagiários + arrumar página de validação do email
+
+ OBS:
+
+ reportID e groupdID deixam o dashboard embed seguro

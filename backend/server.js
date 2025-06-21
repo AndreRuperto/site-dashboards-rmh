@@ -78,7 +78,9 @@ app.use(
         ],
         frameSrc: [
           "'self'",
-          "https://app.fabric.microsoft.com"
+          "https://app.fabric.microsoft.com",
+          "https://app.powerbi.com",          // ✅ ADICIONAR ESTA LINHA
+          "https://msit.powerbi.com" 
         ],
         scriptSrc: [
           "'self'",
@@ -104,7 +106,7 @@ app.use(cors({
     ? [
         'https://rmh.up.railway.app',
         'https://railway.com',
-        process.env.FRONTEND_URL,
+        process.env.API_BASE_URL,
         'http://localhost:3001'
       ]
     : [
@@ -257,9 +259,19 @@ const authMiddleware = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     console.log('✅ AUTH: Token válido para usuário ID:', decoded.id);
     
+    // ✅ CORREÇÃO: Query usando LEFT JOIN com usuarios_admin_log
     const result = await pool.query(
-      `SELECT id, nome, email, email_pessoal, setor, tipo_usuario, tipo_colaborador, email_verificado, COALESCE(ativo, true) as ativo
-       FROM usuarios WHERE id = $1`,
+      `SELECT 
+         u.id, u.nome, u.email, u.email_pessoal, u.setor, u.tipo_usuario, u.tipo_colaborador,
+         u.email_verificado, u.is_coordenador,
+         COALESCE(ual.ativo, true) as ativo,
+         CASE 
+           WHEN u.tipo_colaborador = 'estagiario' THEN u.email_pessoal 
+           ELSE u.email 
+         END as email_login
+       FROM usuarios u
+       LEFT JOIN usuarios_admin_log ual ON u.id = ual.usuario_id
+       WHERE u.id = $1`,
       [decoded.id]
     );
 
@@ -276,13 +288,13 @@ const authMiddleware = async (req, res, next) => {
     }
 
     if (!user.ativo) {
-      console.log('❌ AUTH: Usuário com acesso revogado');
+      console.log('❌ AUTH: Usuário inativo/revogado');
       return res.status(401).json({ error: 'Acesso revogado. Entre em contato com o administrador.' });
     }
 
     req.user = user;
     console.log('✅ AUTH: Usuário autenticado:', 
-      req.user.tipo_colaborador === 'estagiario' ? req.user.email_pessoal : req.user.email
+      user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email
     );
     next();
   } catch (error) {
@@ -568,6 +580,152 @@ async function gerarTemplateValidacaoEstagiario(nome, linkValidacao, email) {
   `;
 }
 
+async function gerarTemplateEstagiarioAdicionadoPorAdmin(nome, linkValidacao, email) {
+  return `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+      <title>Conta Criada - RMH</title>
+      <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;600&family=Ruda:wght@900&display=swap" rel="stylesheet">
+      <style>
+        body {
+          margin: 0;
+          font-family: 'Raleway', sans-serif;
+          background-color: #DADADA;
+          color: #0d3638;
+          padding: 20px;
+        }
+        .container {
+          max-width: 600px;
+          margin: auto;
+          background-color: #f9f9f9;
+          border-radius: 16px;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+          overflow: hidden;
+        }
+        .header {
+          background-color: #165A5D;
+          padding: 20px 0px;
+          text-align: center;
+        }
+        .header img {
+          height: 60px;
+        }
+        .header h1 {
+          font-family: 'Ruda', sans-serif;
+          font-size: 22px;
+          color: #ffffff;
+          margin: 0;
+          letter-spacing: 0.5px;
+        }
+        .content {
+          padding: 20px 30px 30px 30px;
+          text-align: center;
+          font-family: 'Cooper Hewitt', sans-serif;
+        }
+        .content h2 {
+          font-size: 20px;
+          color: #0d3638;
+          margin-bottom: 8px;
+        }
+        .content p {
+          font-size: 17px;
+          color: #555;
+          margin-top: 0;
+        }
+        .tipo-badge {
+          display: inline-block;
+          padding: 6px 12px;
+          background-color: #165A5D;
+          color: white;
+          border-radius: 20px;
+          font-size: 14px;
+          font-weight: 600;
+          margin: 10px 0;
+        }
+        .link-box {
+          margin: 30px auto;
+          background-color: #f8f8f8;
+          border: 2px dashed #165A5D;
+          border-radius: 12px;
+          padding: 30px 20px;
+          max-width: 400px;
+        }
+        .action-button {
+          background: #165A5D;
+          color: white;
+          padding: 15px 30px;
+          text-decoration: none;
+          border-radius: 8px;
+          display: inline-block;
+          font-weight: bold;
+          font-size: 16px;
+          margin: 10px 0;
+          transition: background-color 0.3s;
+        }
+        .action-button:hover {
+          background: #0d3638;
+        }
+        .info-box {
+          background: #e3f2fd;
+          padding: 15px;
+          border-radius: 8px;
+          margin: 20px 0;
+          text-align: left;
+          border-left: 4px solid #165A5D;
+        }
+        .note {
+          font-size: 13px;
+          color: #8b848b;
+          background-color: #EFEFEF;
+          padding: 15px;
+          border-radius: 10px;
+          margin-top: 20px;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <img src="https://rmh.up.railway.app/logo-rmh.ico" alt="Logo RMH" style="height: 50px; margin-bottom: 20px;" />
+          <h1>🎉 Conta Criada</h1>
+        </div>
+        <div class="content">
+          <h2>Olá, ${nome}!</h2>
+          <div class="tipo-badge">Estagiário</div>
+          <p>Você foi adicionado à plataforma de dashboards da RMH por um administrador!</p>
+          
+          <div class="link-box">
+            <a href="${linkValidacao}" class="action-button" style="color: #ffffff;">
+              🚀 Ativar Conta Automaticamente
+            </a>
+            <p style="font-size: 14px; color: #666; margin: 15px 0 0 0;">
+              Clique no botão para ativar sua conta instantaneamente
+            </p>
+          </div>
+          
+          <div class="info-box">
+            <p style="margin: 0;"><strong>📧 Seu email de login:</strong> ${email}</p>
+            <p style="margin: 5px 0 0 0; color: #666; font-size: 14px;">Use este email para fazer login após ativar a conta.</p>
+          </div>
+          
+          <p><strong>📋 Próximos passos:</strong></p>
+          <ol style="text-align: left; margin: 0 auto; display: inline-block;">
+            <li>Clique no botão "Ativar Conta Automaticamente"</li>
+            <li>Sua conta será ativada instantaneamente</li>
+            <li>Faça login na plataforma com suas credenciais</li>
+          </ol>
+          
+          <p class="note">Este link expira em 7 dias. Sua senha foi gerada automaticamente - você pode alterá-la após o primeiro login.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
 // TEMPLATE: Email de configuração de conta
 async function gerarTemplateConfiguracaoConta(nome, linkAtivacao, emailLogin, tipoColaborador) {
   const tipoTexto = tipoColaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado';
@@ -717,6 +875,143 @@ async function gerarTemplateConfiguracaoConta(nome, linkAtivacao, emailLogin, ti
   `;
 }
 
+async function gerarTemplateConfigurarSenha(nome, linkConfiguracao, email) {
+  return `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+      <title>Configure sua Senha - RMH</title>
+      <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;600&family=Ruda:wght@900&display=swap" rel="stylesheet">
+      <style>
+        body {
+          margin: 0;
+          font-family: 'Raleway', sans-serif;
+          background-color: #DADADA;
+          color: #0d3638;
+          padding: 20px;
+        }
+        .container {
+          max-width: 600px;
+          margin: auto;
+          background-color: #f9f9f9;
+          border-radius: 16px;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+          overflow: hidden;
+        }
+        .header {
+          background-color: #165A5D;
+          padding: 20px 0px;
+          text-align: center;
+        }
+        .header h1 {
+          font-family: 'Ruda', sans-serif;
+          font-size: 22px;
+          color: #ffffff;
+          margin: 0;
+          letter-spacing: 0.5px;
+        }
+        .content {
+          padding: 20px 30px 30px 30px;
+          text-align: center;
+          font-family: 'Cooper Hewitt', sans-serif;
+        }
+        .content h2 {
+          font-size: 20px;
+          color: #0d3638;
+          margin-bottom: 8px;
+        }
+        .content p {
+          font-size: 17px;
+          color: #555;
+          margin-top: 0;
+        }
+        .tipo-badge {
+          display: inline-block;
+          padding: 6px 12px;
+          background-color: #165A5D;
+          color: white;
+          border-radius: 20px;
+          font-size: 14px;
+          font-weight: 600;
+          margin: 10px 0;
+        }
+        .link-box {
+          margin: 30px auto;
+          background-color: #f8f8f8;
+          border: 2px dashed #165A5D;
+          border-radius: 12px;
+          padding: 30px 20px;
+          max-width: 400px;
+        }
+        .action-button {
+          background: #165A5D;
+          color: white;
+          padding: 15px 30px;
+          text-decoration: none;
+          border-radius: 8px;
+          display: inline-block;
+          font-weight: bold;
+          font-size: 16px;
+          margin: 10px 0;
+          transition: background-color 0.3s;
+        }
+        .action-button:hover {
+          background: #0d3638;
+        }
+        .info-box {
+          background: #e3f2fd;
+          padding: 15px;
+          border-radius: 8px;
+          margin: 20px 0;
+          text-align: left;
+          border-left: 4px solid #165A5D;
+        }
+        .steps {
+          background: #f0f9ff;
+          padding: 20px;
+          border-radius: 10px;
+          margin: 20px 0;
+          text-align: left;
+        }
+        .note {
+          font-size: 13px;
+          color: #8b848b;
+          background-color: #EFEFEF;
+          padding: 15px;
+          border-radius: 10px;
+          margin-top: 20px;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <img src="https://rmh.up.railway.app/logo-rmh.ico" alt="Logo RMH" style="height: 50px; margin-bottom: 20px;" />
+          <h1>Configure sua Senha</h1>
+        </div>
+        <div class="content">
+          <h2>Olá, ${nome}!</h2>
+          <div class="tipo-badge">Estagiário</div>
+          <p>Você foi adicionado à plataforma de dashboards da RMH! Agora precisa definir sua senha para acessar a plataforma.</p>
+          
+          <div class="link-box">
+            <a href="${linkConfiguracao}" class="action-button" style="color: #ffffff;">
+              🔑 Definir Minha Senha
+            </a>
+            <p style="font-size: 14px; color: #666; margin: 15px 0 0 0;">
+              Clique no botão para escolher sua senha
+            </p>
+          </div>
+          <p class="note">Este link expira em 7 dias. Se precisar de ajuda, entre em contato com o administrador.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
 // ===============================================
 // ROTAS DE HEALTH CHECK E KEEP-ALIVE
 // ===============================================
@@ -844,8 +1139,12 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
 
     // LÓGICA DIFERENCIADA POR TIPO DE COLABORADOR
     if (tipo_colaborador === 'clt_associado') {
-      // ========== CLT/ASSOCIADO: PROCESSO AUTOMÁTICO ==========
-      
+  // ✅ ADICIONAR: Invalidar códigos anteriores se usuário já existir
+      await client.query(
+        'UPDATE verificacoes_email SET usado_em = NOW() WHERE usuario_id = $1 AND usado_em IS NULL',
+        [newUser.id]
+      );
+
       // Gerar código de verificação
       const codigoVerificacao = Math.floor(100000 + Math.random() * 900000).toString();
       const expiraEm = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -853,7 +1152,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
       // Salvar token na tabela de verificações
       await client.query(
         `INSERT INTO verificacoes_email (usuario_id, token, tipo_token, expira_em) 
-         VALUES ($1, $2, $3, $4)`,
+        VALUES ($1, $2, $3, $4)`,
         [newUser.id, codigoVerificacao, 'verificacao_email', expiraEm]
       );
 
@@ -939,17 +1238,23 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
 
 // VERIFICAR CÓDIGO DE EMAIL ATUALIZADO (CORRIGIDO!)
 app.post('/api/auth/verify-email', async (req, res) => {
+  const client = await pool.connect(); // ✅ ADICIONADO: client definido
+  
   try {
+    await client.query('BEGIN');
+    
     const { email, codigo } = req.body;
 
     if (!email || !codigo) {
+      await client.query('ROLLBACK');
+      client.release();
       return res.status(400).json({ error: 'Email e código são obrigatórios' });
     }
 
     console.log(`🔍 VERIFICAÇÃO: Email: ${email}, Código: ${codigo}`);
 
     // Buscar usuário (por email corporativo ou pessoal)
-    const userResult = await pool.query(
+    const userResult = await client.query(
       `SELECT id, nome, email, email_pessoal, tipo_colaborador, email_verificado 
        FROM usuarios 
        WHERE (tipo_colaborador = 'estagiario' AND email_pessoal = $1) 
@@ -958,31 +1263,35 @@ app.post('/api/auth/verify-email', async (req, res) => {
     );
 
     if (userResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      client.release();
       return res.status(404).json({ error: 'Usuário não encontrado' });
     }
 
     const user = userResult.rows[0];
 
     if (user.email_verificado) {
+      await client.query('ROLLBACK');
+      client.release();
       return res.status(400).json({ error: 'Email já verificado' });
     }
 
-    // BUSCAR TOKEN VÁLIDO (essa é a parte correta!)
-    const tokenResult = await pool.query(
-      `SELECT id, token, expira_em, usado_em 
-       FROM verificacoes_email 
-       WHERE usuario_id = $1 
-         AND token = $2 
-         AND tipo_token = 'verificacao_email' 
-         AND expira_em > NOW() 
-         AND usado_em IS NULL
-       ORDER BY criado_em DESC 
-       LIMIT 1`,
-      [user.id, codigo]
+    // ✅ CORRIGIDO: Usar client em vez de pool
+    const tokenResult = await client.query(
+      `SELECT v.*, u.nome, u.email, u.email_pessoal, u.tipo_colaborador 
+       FROM verificacoes_email v
+       JOIN usuarios u ON v.usuario_id = u.id
+       WHERE v.token = $1 
+         AND v.tipo_token = 'verificacao_email'
+         AND v.usado_em IS NULL 
+         AND v.expira_em > NOW()`,
+      [codigo] // ✅ CORRIGIDO: usar 'codigo' em vez de 'token'
     );
 
     if (tokenResult.rows.length === 0) {
       console.log(`❌ VERIFICAÇÃO: Código inválido ou expirado para usuário ${user.id}`);
+      await client.query('ROLLBACK');
+      client.release();
       return res.status(400).json({ 
         error: 'Código inválido ou expirado. Solicite um novo código.' 
       });
@@ -992,16 +1301,18 @@ app.post('/api/auth/verify-email', async (req, res) => {
     console.log(`✅ VERIFICAÇÃO: Código válido encontrado!`);
 
     // Marcar usuário como verificado
-    await pool.query(
+    await client.query(
       'UPDATE usuarios SET email_verificado = TRUE, verificado_em = NOW() WHERE id = $1',
       [user.id]
     );
 
     // Marcar token como usado
-    await pool.query(
+    await client.query(
       'UPDATE verificacoes_email SET usado_em = NOW() WHERE id = $1',
       [verification.id]
     );
+
+    await client.query('COMMIT');
 
     // Gerar JWT para login automático após verificação
     const token = jwt.sign(
@@ -1030,8 +1341,11 @@ app.post('/api/auth/verify-email', async (req, res) => {
     });
 
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('❌ Erro na verificação:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
+  } finally {
+    client.release(); // ✅ ADICIONADO: sempre liberar conexão
   }
 });
 
@@ -1042,31 +1356,365 @@ app.get('/api/auth/validar-email/:token', async (req, res) => {
 
     console.log(`🔍 VALIDAÇÃO: Processando token: ${token}`);
 
-    // Buscar token válido
+    // Buscar token (incluindo os expirados e usados para diagnóstico)
     const tokenResult = await pool.query(
-      `SELECT v.*, u.nome, u.email_pessoal, u.tipo_colaborador 
+      `SELECT v.*, u.nome, u.email_pessoal, u.tipo_colaborador, u.email_verificado
        FROM verificacoes_email v
        JOIN usuarios u ON v.usuario_id = u.id
-       WHERE v.token = $1 
-         AND v.tipo_token = 'verificacao_email' 
-         AND v.usado_em IS NULL 
-         AND v.expira_em > NOW()`,
+       WHERE v.token = $1 AND v.tipo_token = 'verificacao_email'`,
       [token]
     );
 
     if (tokenResult.rows.length === 0) {
       return res.status(400).send(`
-        <html><body style="font-family: Arial; text-align: center; padding: 50px;">
-          <h2>❌ Link inválido ou expirado</h2>
-          <p>Este link de validação não é válido ou já foi usado.</p>
-          <p>Entre em contato com o administrador.</p>
-        </body></html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>Token Não Encontrado - RMH</title>
+          <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;600&family=Ruda:wght@900&display=swap" rel="stylesheet">
+          <style>
+            body { 
+              font-family: 'Raleway', sans-serif; 
+              background-color: #DADADA;
+              color: #0d3638;
+              margin: 0; padding: 20px; min-height: 100vh;
+              display: flex; align-items: center; justify-content: center;
+            }
+            .container { 
+              background: #f9f9f9; padding: 40px; border-radius: 16px; 
+              box-shadow: 0 10px 30px rgba(0,0,0,0.08); text-align: center; 
+              max-width: 500px; margin: 20px;
+            }
+            .header {
+              background-color: #165A5D;
+              margin: -40px -40px 30px -40px;
+              padding: 30px 40px;
+              border-radius: 16px 16px 0 0;
+              color: white;
+            }
+            .header h1 {
+              font-family: 'Ruda', sans-serif;
+              font-size: 24px;
+              margin: 0;
+              letter-spacing: 0.5px;
+            }
+            .icon { font-size: 48px; margin-bottom: 10px; }
+            h2 { color: #0d3638; margin: 20px 0; font-family: 'Ruda', sans-serif; }
+            p { color: #555; line-height: 1.6; margin: 15px 0; }
+            .reason { 
+              background: #EFEFEF; padding: 15px; border-radius: 10px; 
+              border-left: 4px solid #165A5D; margin: 20px 0; text-align: left;
+            }
+            .contact { 
+              background: #e3f2fd; padding: 15px; border-radius: 10px; 
+              margin: 20px 0; border-left: 4px solid #165A5D;
+            }
+            .button {
+              background: #165A5D; color: white; padding: 15px 30px;
+              text-decoration: none; border-radius: 8px; display: inline-block;
+              margin: 20px 10px; transition: all 0.3s; font-weight: 600;
+            }
+            .button:hover { background: #0d3638; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <div class="icon">🔍</div>
+              <h1>Token Não Encontrado</h1>
+            </div>
+            <h2>Link de Validação Inválido</h2>
+            <p>Este link de validação não foi encontrado em nossa base de dados.</p>
+            
+            <div class="reason">
+              <strong>❌ Motivo:</strong> Token inexistente ou inválido
+            </div>
+            
+            <div class="contact">
+              <strong>💡 O que fazer:</strong><br>
+              • Verifique se copiou o link completo<br>
+              • Solicite um novo link de verificação<br>
+              • Entre em contato com o administrador
+            </div>
+            
+            <a href="${process.env.API_BASE_URL || 'http://localhost:3001'}" class="button">
+              🏠 Voltar ao Início
+            </a>
+          </div>
+        </body>
+        </html>
       `);
     }
 
     const verification = tokenResult.rows[0];
+    const agora = new Date();
+    const expirou = new Date(verification.expira_em) < agora;
+    const jaUsado = verification.usado_em !== null;
+    const usuarioJaVerificado = verification.email_verificado;
 
-    // Marcar email como verificado
+    console.log(`📊 DIAGNÓSTICO:`, {
+      token_encontrado: true,
+      expirou: expirou,
+      ja_usado: jaUsado,
+      usuario_ja_verificado: usuarioJaVerificado,
+      expira_em: verification.expira_em,
+      usado_em: verification.usado_em,
+      criado_em: verification.criado_em
+    });
+
+    // VERIFICAR CONDIÇÕES DE ERRO
+    if (usuarioJaVerificado) {
+      return res.status(400).send(`
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>Conta Já Ativada - RMH</title>
+          <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;600&family=Ruda:wght@900&display=swap" rel="stylesheet">
+          <style>
+            body { 
+              font-family: 'Raleway', sans-serif; 
+              background-color: #DADADA;
+              color: #0d3638;
+              margin: 0; padding: 20px; min-height: 100vh;
+              display: flex; align-items: center; justify-content: center;
+            }
+            .container { 
+              background: #f9f9f9; padding: 40px; border-radius: 16px; 
+              box-shadow: 0 10px 30px rgba(0,0,0,0.08); text-align: center; 
+              max-width: 500px; margin: 20px;
+            }
+            .header {
+              background-color: #165A5D;
+              margin: -40px -40px 30px -40px;
+              padding: 30px 40px;
+              border-radius: 16px 16px 0 0;
+              color: white;
+            }
+            .header h1 {
+              font-family: 'Ruda', sans-serif;
+              font-size: 24px;
+              margin: 0;
+              letter-spacing: 0.5px;
+            }
+            .icon { font-size: 48px; margin-bottom: 10px; }
+            h2 { color: #0d3638; margin: 20px 0; font-family: 'Ruda', sans-serif; }
+            p { color: #555; line-height: 1.6; margin: 15px 0; }
+            .info { 
+              background: #EFEFEF; padding: 15px; border-radius: 10px; 
+              border-left: 4px solid #165A5D; margin: 20px 0;
+            }
+            .button {
+              background: #165A5D; color: white; padding: 15px 30px;
+              text-decoration: none; border-radius: 8px; display: inline-block;
+              margin: 20px 10px; transition: all 0.3s; font-weight: 600;
+            }
+            .button:hover { background: #0d3638; }
+            .success-badge {
+              display: inline-block;
+              padding: 6px 12px;
+              background-color: #165A5D;
+              color: white;
+              border-radius: 20px;
+              font-size: 14px;
+              font-weight: 600;
+              margin: 10px 0;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <div class="icon">✅</div>
+              <h1>Conta Já Ativada</h1>
+            </div>
+            <h2>Olá, ${verification.nome}!</h2>
+            <div class="success-badge">${verification.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}</div>
+            <p>Sua conta já foi verificada anteriormente e está ativa.</p>
+            
+            <div class="info">
+              <strong>✨ Status:</strong> Email já verificado<br>
+              <strong>📧 Email:</strong> ${verification.email_pessoal}<br>
+              <strong>🎯 Tipo:</strong> ${verification.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}
+            </div>
+            
+            <p>Você já pode fazer login na plataforma!</p>
+            
+            <a href="${process.env.API_BASE_URL || 'http://localhost:3001'}" class="button">
+              🚀 Acessar Plataforma
+            </a>
+          </div>
+        </body>
+        </html>
+      `);
+    }
+
+    if (jaUsado) {
+      const dataUso = new Date(verification.usado_em).toLocaleString('pt-BR');
+      
+      return res.status(400).send(`
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>Link Já Utilizado - RMH</title>
+          <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;600&family=Ruda:wght@900&display=swap" rel="stylesheet">
+          <style>
+            body { 
+              font-family: 'Raleway', sans-serif; 
+              background-color: #DADADA;
+              color: #0d3638;
+              margin: 0; padding: 20px; min-height: 100vh;
+              display: flex; align-items: center; justify-content: center;
+            }
+            .container { 
+              background: #f9f9f9; padding: 40px; border-radius: 16px; 
+              box-shadow: 0 10px 30px rgba(0,0,0,0.08); text-align: center; 
+              max-width: 500px; margin: 20px;
+            }
+            .header {
+              background-color: #165A5D;
+              margin: -40px -40px 30px -40px;
+              padding: 30px 40px;
+              border-radius: 16px 16px 0 0;
+              color: white;
+            }
+            .header h1 {
+              font-family: 'Ruda', sans-serif;
+              font-size: 24px;
+              margin: 0;
+              letter-spacing: 0.5px;
+            }
+            .icon { font-size: 48px; margin-bottom: 10px; }
+            h2 { color: #0d3638; margin: 20px 0; font-family: 'Ruda', sans-serif; }
+            p { color: #555; line-height: 1.6; margin: 15px 0; }
+            .reason { 
+              background: #EFEFEF; padding: 15px; border-radius: 10px; 
+              border-left: 4px solid #165A5D; margin: 20px 0; text-align: left;
+            }
+            .contact { 
+              background: #e3f2fd; padding: 15px; border-radius: 10px; 
+              margin: 20px 0; border-left: 4px solid #165A5D;
+            }
+            .button {
+              background: #165A5D; color: white; padding: 15px 30px;
+              text-decoration: none; border-radius: 8px; display: inline-block;
+              margin: 20px 10px; transition: all 0.3s; font-weight: 600;
+            }
+            .button:hover { background: #0d3638; }
+            .warning-badge {
+              display: inline-block;
+              padding: 6px 12px;
+              background-color: #165A5D;
+              color: white;
+              border-radius: 20px;
+              font-size: 14px;
+              font-weight: 600;
+              margin: 10px 0;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <div class="icon">🔒</div>
+              <h1>Link Já Utilizado</h1>
+            </div>
+            <h2>Olá, ${verification.nome}!</h2>
+            <div class="warning-badge">${verification.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}</div>
+            <p>Este link de validação já foi usado anteriormente.</p>
+            
+            <div class="reason">
+              <strong>⚠️ Motivo:</strong> Link já utilizado<br>
+              <strong>📅 Usado em:</strong> ${dataUso}<br>
+              <strong>👤 Usuário:</strong> ${verification.nome}
+            </div>
+            
+            <div class="contact">
+              <strong>💡 O que fazer:</strong><br>
+              • Tente fazer login normalmente<br>
+              • Se não conseguir, solicite um novo link<br>
+              • Entre em contato com o administrador se precisar
+            </div>
+            
+            <a href="${process.env.API_BASE_URL || 'http://localhost:3001'}" class="button">
+              🚀 Tentar Login
+            </a>
+          </div>
+        </body>
+        </html>
+      `);
+    }
+
+    if (expirou) {
+      const dataExpiracao = new Date(verification.expira_em).toLocaleString('pt-BR');
+      const horasAtrasado = Math.floor((agora - new Date(verification.expira_em)) / (1000 * 60 * 60));
+      
+      return res.status(400).send(`
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>Link Expirado - RMH</title>
+          <style>
+            body { 
+              font-family: 'Segoe UI', Arial, sans-serif; 
+              background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+              margin: 0; padding: 0; min-height: 100vh;
+              display: flex; align-items: center; justify-content: center;
+            }
+            .container { 
+              background: white; padding: 40px; border-radius: 15px; 
+              box-shadow: 0 20px 40px rgba(0,0,0,0.1); text-align: center; 
+              max-width: 500px; margin: 20px;
+            }
+            .icon { font-size: 64px; margin-bottom: 20px; }
+            h2 { color: #e74c3c; margin: 20px 0; }
+            p { color: #666; line-height: 1.6; margin: 15px 0; }
+            .reason { 
+              background: #fdf2f2; padding: 15px; border-radius: 8px; 
+              border-left: 4px solid #e74c3c; margin: 20px 0; text-align: left;
+            }
+            .contact { 
+              background: #e3f2fd; padding: 15px; border-radius: 8px; 
+              margin: 20px 0; border-left: 4px solid #2196f3;
+            }
+            .button {
+              background: #165A5D; color: white; padding: 12px 24px;
+              text-decoration: none; border-radius: 6px; display: inline-block;
+              margin: 20px 10px; transition: all 0.3s;
+            }
+            .button:hover { background: #0d3638; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="icon">⏰</div>
+            <h2>Link Expirado</h2>
+            <p>Olá, <strong>${verification.nome}</strong>!</p>
+            <p>Este link de validação expirou e não pode mais ser usado.</p>
+            
+            <div class="reason">
+              <strong>❌ Motivo:</strong> Link expirado<br>
+              <strong>📅 Expirou em:</strong> ${dataExpiracao}<br>
+              <strong>⏳ Há:</strong> ${horasAtrasado} hora(s) atrás<br>
+              <strong>👤 Usuário:</strong> ${verification.nome}
+            </div>
+            
+            <div class="contact">
+              <strong>💡 O que fazer:</strong><br>
+              • Solicite um novo link de verificação<br>
+              • Entre em contato com o administrador<br>
+              • Use a opção "Reenviar código" no login
+            </div>
+            
+            <a href="${process.env.API_BASE_URL || 'http://localhost:3001'}" class="button">
+              🔄 Solicitar Novo Link
+            </a>
+          </div>
+        </body>
+        </html>
+      `);
+    }
+
+    // SE CHEGOU ATÉ AQUI, O TOKEN É VÁLIDO - PROCESSAR VERIFICAÇÃO
     await pool.query('BEGIN');
     
     await pool.query(
@@ -1083,28 +1731,126 @@ app.get('/api/auth/validar-email/:token', async (req, res) => {
 
     console.log(`✅ Email validado automaticamente para: ${verification.email_pessoal}`);
 
-    // Página de sucesso
+    // PÁGINA DE SUCESSO
     res.send(`
-      <html><body style="font-family: Arial; text-align: center; padding: 50px;">
-        <h2>✅ Email validado com sucesso!</h2>
-        <p>Olá, <strong>${verification.nome}</strong>!</p>
-        <p>Seu email foi validado automaticamente.</p>
-        <p>Agora você pode fazer login na plataforma.</p>
-        <br>
-        <a href="${process.env.API_BASE_URL}" 
-           style="background: #059669; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
-          🚀 Acessar Plataforma
-        </a>
-      </body></html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Email Verificado - RMH</title>
+        <style>
+          body { 
+            font-family: 'Segoe UI', Arial, sans-serif; 
+            background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+            margin: 0; padding: 0; min-height: 100vh;
+            display: flex; align-items: center; justify-content: center;
+          }
+          .container { 
+            background: white; padding: 40px; border-radius: 15px; 
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1); text-align: center; 
+            max-width: 500px; margin: 20px;
+            animation: slideIn 0.5s ease-out;
+          }
+          @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+          .icon { font-size: 64px; margin-bottom: 20px; animation: bounce 1s; }
+          @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-10px); }
+            60% { transform: translateY(-5px); }
+          }
+          h2 { color: #27ae60; margin: 20px 0; }
+          p { color: #666; line-height: 1.6; margin: 15px 0; }
+          .success { 
+            background: #e8f5e8; padding: 15px; border-radius: 8px; 
+            border-left: 4px solid #27ae60; margin: 20px 0;
+          }
+          .button {
+            background: #165A5D; color: white; padding: 15px 30px;
+            text-decoration: none; border-radius: 6px; display: inline-block;
+            margin: 20px 10px; transition: all 0.3s; font-weight: bold;
+          }
+          .button:hover { background: #0d3638; transform: translateY(-2px); }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="icon">🎉</div>
+          <h2>Email Verificado com Sucesso!</h2>
+          <p>Parabéns, <strong>${verification.nome}</strong>!</p>
+          <p>Seu email foi verificado automaticamente e sua conta está ativa.</p>
+          
+          <div class="success">
+            <strong>✅ Status:</strong> Conta ativada<br>
+            <strong>📧 Email:</strong> ${verification.email_pessoal}<br>
+            <strong>🎯 Tipo:</strong> ${verification.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}<br>
+            <strong>⏰ Verificado:</strong> ${new Date().toLocaleString('pt-BR')}
+          </div>
+          
+          <p>Agora você pode fazer login na plataforma com suas credenciais!</p>
+          
+          <a href="${process.env.API_BASE_URL || 'http://localhost:3001'}" class="button">
+            🚀 Acessar Plataforma
+          </a>
+        </div>
+      </body>
+      </html>
     `);
 
   } catch (error) {
     console.error('❌ Erro na validação automática:', error);
     res.status(500).send(`
-      <html><body style="font-family: Arial; text-align: center; padding: 50px;">
-        <h2>❌ Erro interno</h2>
-        <p>Ocorreu um erro. Tente novamente mais tarde.</p>
-      </body></html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Erro Interno - RMH</title>
+        <style>
+          body { 
+            font-family: 'Segoe UI', Arial, sans-serif; 
+            background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
+            margin: 0; padding: 0; min-height: 100vh;
+            display: flex; align-items: center; justify-content: center;
+          }
+          .container { 
+            background: white; padding: 40px; border-radius: 15px; 
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1); text-align: center; 
+            max-width: 500px; margin: 20px;
+          }
+          .icon { font-size: 64px; margin-bottom: 20px; }
+          h2 { color: #7f8c8d; margin: 20px 0; }
+          p { color: #666; line-height: 1.6; margin: 15px 0; }
+          .error { 
+            background: #f8f9fa; padding: 15px; border-radius: 8px; 
+            border-left: 4px solid #7f8c8d; margin: 20px 0;
+          }
+          .button {
+            background: #165A5D; color: white; padding: 12px 24px;
+            text-decoration: none; border-radius: 6px; display: inline-block;
+            margin: 20px 10px; transition: all 0.3s;
+          }
+          .button:hover { background: #0d3638; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="icon">⚠️</div>
+          <h2>Erro Interno do Servidor</h2>
+          <p>Ocorreu um erro inesperado ao processar sua solicitação.</p>
+          
+          <div class="error">
+            <strong>🔧 Situação:</strong> Erro interno do sistema<br>
+            <strong>💡 Recomendação:</strong> Tente novamente em alguns instantes
+          </div>
+          
+          <p>Se o problema persistir, entre em contato com o administrador.</p>
+          
+          <a href="${process.env.API_BASE_URL || 'http://localhost:3001'}" class="button">
+            🏠 Voltar ao Início
+          </a>
+        </div>
+      </body>
+      </html>
     `);
   }
 });
@@ -1197,16 +1943,40 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 });
 
 // ROTA PARA REENVIAR CÓDIGO DE VERIFICAÇÃO ATUALIZADA
-app.post('/api/auth/resend-verification', async (req, res) => {
+const resendLimiter = rateLimit({
+  windowMs: 2 * 60 * 1000, // 2 minutos
+  max: 3, // máximo 3 tentativas por 2 minutos
+  message: { error: 'Muitas tentativas de reenvio. Aguarde 2 minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    // Rate limit por email, não por IP
+    return req.body.email || req.ip;
+  }
+});
+
+// ===============================================
+// ROTA PARA REENVIAR CÓDIGO DE VERIFICAÇÃO - VERSÃO COMPLETA OTIMIZADA
+// ===============================================
+
+app.post('/api/auth/resend-verification', resendLimiter, async (req, res) => {
+  const client = await pool.connect();
+  
   try {
+    await client.query('BEGIN');
+    
     const { email } = req.body;
 
     if (!email) {
+      await client.query('ROLLBACK');
+      client.release();
       return res.status(400).json({ error: 'Email é obrigatório' });
     }
 
+    console.log(`🔄 REENVIO: Solicitação para email: ${email}`);
+
     // Buscar usuário (por email corporativo ou pessoal)
-    const userResult = await pool.query(
+    const userResult = await client.query(
       `SELECT id, nome, email, email_pessoal, tipo_colaborador, email_verificado 
        FROM usuarios 
        WHERE (tipo_colaborador = 'estagiario' AND email_pessoal = $1) 
@@ -1215,30 +1985,72 @@ app.post('/api/auth/resend-verification', async (req, res) => {
     );
 
     if (userResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      client.release();
       return res.status(404).json({ error: 'Usuário não encontrado' });
     }
 
     const user = userResult.rows[0];
 
     if (user.email_verificado) {
+      await client.query('ROLLBACK');
+      client.release();
       return res.status(400).json({ error: 'Email já verificado' });
     }
+
+    // ✅ VERIFICAR SE JÁ FOI REENVIADO RECENTEMENTE
+    const ultimoReenvio = await client.query(
+      `SELECT criado_em FROM verificacoes_email 
+       WHERE usuario_id = $1
+         AND tipo_token = 'verificacao_email'
+       ORDER BY criado_em DESC 
+       LIMIT 1`,
+      [user.id]
+    );
+
+    if (ultimoReenvio.rows.length > 0) {
+      const tempoEspera = 60; // 60 segundos
+      const ultimoCriado = new Date(ultimoReenvio.rows[0].criado_em);
+      const agora = new Date();
+      const diferencaSegundos = (agora.getTime() - ultimoCriado.getTime()) / 1000;
+
+      if (diferencaSegundos < tempoEspera) {
+        const restante = Math.ceil(tempoEspera - diferencaSegundos);
+        await client.query('ROLLBACK');
+        client.release();
+        return res.status(429).json({ 
+          error: `Aguarde ${restante} segundos antes de solicitar novo código.` 
+        });
+      }
+    }
+
+    // ✅ INVALIDAR TODOS OS CÓDIGOS ANTERIORES
+    const tokensInvalidados = await client.query(
+      'UPDATE verificacoes_email SET usado_em = NOW() WHERE usuario_id = $1 AND usado_em IS NULL RETURNING id',
+      [user.id]
+    );
+
+    console.log(`🗑️ REENVIO: ${tokensInvalidados.rowCount} tokens anteriores invalidados para usuário ${user.id}`);
 
     // Gerar novo código
     const codigoVerificacao = Math.floor(100000 + Math.random() * 900000).toString();
     const expiraEm = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     // Salvar novo token
-    await pool.query(
+    const novoTokenResult = await client.query(
       `INSERT INTO verificacoes_email (usuario_id, token, tipo_token, expira_em) 
-       VALUES ($1, $2, $3, $4)`,
+       VALUES ($1, $2, $3, $4) 
+       RETURNING id, criado_em`,
       [user.id, codigoVerificacao, 'verificacao_email', expiraEm]
     );
+
+    await client.query('COMMIT');
 
     const emailLogin = user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email;
 
     console.log(`🔄 REENVIO: Novo código para ${user.tipo_colaborador}: ${emailLogin}`);
     console.log(`🔢 Novo código: ${codigoVerificacao}`);
+    console.log(`📅 Token ID: ${novoTokenResult.rows[0].id}, Criado: ${novoTokenResult.rows[0].criado_em}`);
 
     // Enviar email
     try {
@@ -1249,20 +2061,34 @@ app.post('/api/auth/resend-verification', async (req, res) => {
         html: await gerarTemplateVerificacao(user.nome, codigoVerificacao, emailLogin, user.tipo_colaborador)
       });
 
-      console.log(`✅ Novo código enviado com sucesso!`, emailResult);
+      console.log(`✅ Novo código enviado com sucesso! Email ID:`, emailResult.id);
+
+      res.json({
+        message: 'Novo código enviado para seu email',
+        email_enviado_para: emailLogin,
+        tipo_colaborador: user.tipo_colaborador,
+        codigo_expira_em: expiraEm.toISOString(),
+        timestamp: new Date().toISOString()
+      });
+
     } catch (emailError) {
       console.error('❌ Erro ao enviar email:', emailError);
+      
+      // Mesmo com erro no email, não falhar a API
+      res.json({
+        message: 'Novo código gerado, mas houve erro no envio do email. Tente novamente.',
+        email_enviado_para: emailLogin,
+        tipo_colaborador: user.tipo_colaborador,
+        email_error: true
+      });
     }
 
-    res.json({
-      message: 'Novo código enviado para seu email',
-      email_enviado_para: emailLogin,
-      tipo_colaborador: user.tipo_colaborador
-    });
-
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('❌ Erro ao reenviar código:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
+  } finally {
+    client.release();
   }
 });
 
@@ -1278,34 +2104,83 @@ app.post('/api/auth/configurar-conta/:token', async (req, res) => {
 
     if (!senha || senha.length < 6) {
       await client.query('ROLLBACK');
-      client.release();
       return res.status(400).json({ error: 'Senha deve ter pelo menos 6 caracteres' });
     }
 
-    // Buscar token válido
+    console.log(`🔑 CONFIGURAR CONTA: Processando token: ${token.substring(0, 8)}...`);
+
+    // ✅ CORREÇÃO: Busca mais permissiva + debug
     const tokenResult = await client.query(
-      `SELECT v.*, u.nome, u.email, u.email_pessoal, u.tipo_colaborador 
+      `SELECT 
+         v.*,
+         u.nome, 
+         u.email, 
+         u.email_pessoal, 
+         u.tipo_colaborador, 
+         u.email_verificado,
+         NOW() as agora_servidor,
+         (v.expira_em > NOW()) as token_ainda_valido
        FROM verificacoes_email v
        JOIN usuarios u ON v.usuario_id = u.id
        WHERE v.token = $1 
-         AND v.tipo_token = 'ativacao_admin' 
-         AND v.usado_em IS NULL 
-         AND v.expira_em > NOW()`,
+         AND v.tipo_token IN ('configuracao_senha', 'ativacao_admin')`,
       [token]
     );
 
     if (tokenResult.rows.length === 0) {
       await client.query('ROLLBACK');
-      client.release();
-      return res.status(400).json({ error: 'Token inválido ou expirado' });
+      console.log('❌ Token não encontrado no banco');
+      return res.status(400).json({ error: 'Token não encontrado' });
     }
 
     const verification = tokenResult.rows[0];
+    
+    console.log('📊 DEBUG Configuração:', {
+      tipo: verification.tipo_token,
+      usuario: verification.nome,
+      email_verificado: verification.email_verificado,
+      usado: verification.usado_em,
+      token_ainda_valido: verification.token_ainda_valido
+    });
 
-    // Criptografar nova senha
+    // Verificar se já foi usado
+    if (verification.usado_em) {
+      await client.query('ROLLBACK');
+      console.log('❌ Token já foi usado');
+      return res.status(400).json({ error: 'Este link já foi utilizado' });
+    }
+
+    // Verificar se usuário já foi verificado
+    if (verification.email_verificado) {
+      await client.query('ROLLBACK');
+      console.log('❌ Usuário já verificado');
+      return res.status(400).json({ error: 'Esta conta já foi configurada' });
+    }
+
+    // ✅ PERMITIR TOKENS EXPIRADOS POR ALGUMAS HORAS (mesma lógica da validação)
+    const agora = new Date();
+    const expiracao = new Date(verification.expira_em);
+    const horasAtrasado = (agora.getTime() - expiracao.getTime()) / (1000 * 60 * 60);
+    
+    if (horasAtrasado > 24) { // Só rejeitar se expirou há mais de 24h
+      await client.query('ROLLBACK');
+      console.log(`❌ Token expirado há ${horasAtrasado.toFixed(1)} horas`);
+      return res.status(400).json({ 
+        error: 'Token expirado há muito tempo',
+        horas_expirado: horasAtrasado.toFixed(1)
+      });
+    }
+
+    if (horasAtrasado > 0) {
+      console.log(`⚠️ Token expirado há ${horasAtrasado.toFixed(1)} horas, mas permitindo uso`);
+    }
+
+    console.log(`✅ CONFIGURAR CONTA: Token aceito para ${verification.nome}`);
+
+    // Criptografar senha escolhida pelo usuário
     const senhaHash = await bcrypt.hash(senha, 10);
 
-    // Atualizar usuário com nova senha e marcar como verificado
+    // Atualizar usuário: senha + email verificado + conta ativada
     await client.query(
       'UPDATE usuarios SET senha = $1, email_verificado = true, verificado_em = NOW() WHERE id = $2',
       [senhaHash, verification.usuario_id]
@@ -1318,54 +2193,140 @@ app.post('/api/auth/configurar-conta/:token', async (req, res) => {
     );
 
     await client.query('COMMIT');
+    console.log(`🎉 CONTA CONFIGURADA: ${verification.nome} - conta ativada com sucesso!`);
 
-    console.log(`✅ Conta configurada com sucesso para: ${verification.nome}`);
+    // Gerar JWT para login automático
+    const jwtToken = jwt.sign(
+      { 
+        id: verification.usuario_id, 
+        email: verification.tipo_colaborador === 'estagiario' ? verification.email_pessoal : verification.email,
+        tipo_usuario: 'usuario'
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    );
 
     res.json({
-      message: 'Conta configurada com sucesso! Agora você pode fazer login.',
+      message: 'Conta configurada com sucesso! Você foi logado automaticamente.',
+      token: jwtToken,
       usuario: {
+        id: verification.usuario_id,
         nome: verification.nome,
+        email: verification.email,
+        email_pessoal: verification.email_pessoal,
+        tipo_colaborador: verification.tipo_colaborador,
+        email_verificado: true,
         email_login: verification.tipo_colaborador === 'estagiario' ? verification.email_pessoal : verification.email
       }
     });
 
   } catch (error) {
-    await client.query('ROLLBACK');
+    // ✅ CORREÇÃO: Rollback seguro
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.error('❌ Erro no rollback:', rollbackError);
+    }
+    
     console.error('❌ Erro ao configurar conta:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   } finally {
-    client.release();
+    // ✅ CORREÇÃO: Release seguro - só fazer release se ainda conectado
+    try {
+      client.release();
+    } catch (releaseError) {
+      console.error('❌ Erro ao liberar conexão:', releaseError);
+    }
   }
+});
+
+app.post('/api/auth/configurar-senha/:token', async (req, res) => {
+  // Redirecionar para a rota unificada
+  req.url = req.url.replace('/configurar-senha/', '/configurar-conta/');
+  return app._router.handle(req, res);
 });
 
 app.get('/api/auth/validar-token-configuracao/:token', async (req, res) => {
   try {
     const { token } = req.params;
 
-    // Buscar token válido
+    console.log(`🔍 VALIDAR TOKEN: ${token.substring(0, 8)}...`);
+
+    // ✅ BUSCA MAIS PERMISSIVA - Não verificar expiração ainda
     const tokenResult = await pool.query(
-      `SELECT v.*, u.nome, u.email, u.email_pessoal, u.tipo_colaborador 
+      `SELECT 
+         v.*,
+         u.nome, 
+         u.email, 
+         u.email_pessoal, 
+         u.tipo_colaborador, 
+         u.email_verificado,
+         NOW() as agora_servidor,
+         (v.expira_em > NOW()) as token_ainda_valido
        FROM verificacoes_email v
        JOIN usuarios u ON v.usuario_id = u.id
        WHERE v.token = $1 
-         AND v.tipo_token = 'ativacao_admin' 
-         AND v.usado_em IS NULL 
-         AND v.expira_em > NOW()`,
+         AND v.tipo_token IN ('configuracao_senha', 'ativacao_admin')`,
       [token]
     );
 
     if (tokenResult.rows.length === 0) {
-      return res.status(400).json({ error: 'Token inválido ou expirado' });
+      console.log('❌ Token não encontrado no banco');
+      return res.status(400).json({ error: 'Token não encontrado' });
     }
 
     const verification = tokenResult.rows[0];
+    
+    console.log('📊 DEBUG Token:', {
+      tipo: verification.tipo_token,
+      criado: verification.criado_em,
+      expira: verification.expira_em,
+      agora: verification.agora_servidor,
+      usado: verification.usado_em,
+      email_verificado: verification.email_verificado,
+      token_ainda_valido: verification.token_ainda_valido
+    });
 
+    // Verificar se já foi usado
+    if (verification.usado_em) {
+      console.log('❌ Token já foi usado');
+      return res.status(400).json({ error: 'Este link já foi utilizado' });
+    }
+
+    // Verificar se usuário já foi verificado
+    if (verification.email_verificado) {
+      console.log('❌ Usuário já verificado');
+      return res.status(400).json({ error: 'Esta conta já foi configurada' });
+    }
+
+    // ✅ PERMITIR TOKENS EXPIRADOS POR ALGUMAS HORAS (flexibilidade)
+    const agora = new Date();
+    const expiracao = new Date(verification.expira_em);
+    const horasAtrasado = (agora.getTime() - expiracao.getTime()) / (1000 * 60 * 60);
+    
+    if (horasAtrasado > 24) { // Só rejeitar se expirou há mais de 24h
+      console.log(`❌ Token expirado há ${horasAtrasado.toFixed(1)} horas`);
+      return res.status(400).json({ 
+        error: 'Token expirado há muito tempo',
+        horas_expirado: horasAtrasado.toFixed(1)
+      });
+    }
+
+    if (horasAtrasado > 0) {
+      console.log(`⚠️ Token expirado há ${horasAtrasado.toFixed(1)} horas, mas permitindo uso`);
+    }
+
+    // ✅ TOKEN VÁLIDO
+    console.log('✅ Token aceito para uso');
+    
     res.json({
       valido: true,
       usuario: {
         nome: verification.nome,
-        email_login: verification.tipo_colaborador === 'estagiario' ? verification.email_pessoal : verification.email
-      }
+        email_login: verification.tipo_colaborador === 'estagiario' ? verification.email_pessoal : verification.email,
+        tipo_colaborador: verification.tipo_colaborador
+      },
+      aviso: horasAtrasado > 0 ? `Token expirou há ${horasAtrasado.toFixed(1)} horas, mas ainda permitindo uso` : null
     });
 
   } catch (error) {
@@ -1417,6 +2378,49 @@ app.post('/api/auth/logout', authMiddleware, async (req, res) => {
   }
 });
 
+app.get('/api/auth/validar-token-configuracao-senha/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    console.log(`🔍 VALIDAR TOKEN: ${token.substring(0, 8)}...`);
+
+    // Buscar token válido
+    const tokenResult = await pool.query(
+      `SELECT v.*, u.nome, u.email, u.email_pessoal, u.tipo_colaborador, u.email_verificado
+       FROM verificacoes_email v
+       JOIN usuarios u ON v.usuario_id = u.id
+       WHERE v.token = $1 
+         AND v.tipo_token = 'configuracao_senha' 
+         AND v.usado_em IS NULL 
+         AND v.expira_em > NOW()`,
+      [token]
+    );
+
+    if (tokenResult.rows.length === 0) {
+      return res.status(400).json({ error: 'Token inválido ou expirado' });
+    }
+
+    const verification = tokenResult.rows[0];
+
+    if (verification.email_verificado) {
+      return res.status(400).json({ error: 'Esta conta já foi configurada' });
+    }
+
+    res.json({
+      valido: true,
+      usuario: {
+        nome: verification.nome,
+        email_login: verification.tipo_colaborador === 'estagiario' ? verification.email_pessoal : verification.email,
+        tipo_colaborador: verification.tipo_colaborador
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao validar token:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 // ===============================================
 // ROTAS DE DASHBOARDS (PROTEGIDAS)
 // ===============================================
@@ -1424,7 +2428,7 @@ app.post('/api/auth/logout', authMiddleware, async (req, res) => {
 app.get('/api/dashboards', authMiddleware, async (req, res) => {
   try {
     console.log(`📊 DASHBOARDS: Listando para usuário ${req.user.id} (${req.user.tipo_colaborador}, ${req.user.tipo_usuario})`);
-
+    
     let query;
     let params = [];
 
@@ -1436,6 +2440,7 @@ app.get('/api/dashboards', authMiddleware, async (req, res) => {
           d.id, d.titulo, d.descricao, d.setor, d.url_iframe, 
           d.ativo, d.largura, d.altura, d.criado_por, 
           d.criado_em, d.atualizado_em,
+          d.tipo_visibilidade, d.powerbi_report_id, d.powerbi_group_id, d.embed_type,
           u.nome as criado_por_nome
         FROM dashboards d
         LEFT JOIN usuarios u ON d.criado_por = u.id
@@ -1443,18 +2448,22 @@ app.get('/api/dashboards', authMiddleware, async (req, res) => {
         ORDER BY d.criado_em DESC
       `;
     } else {
-      // USUÁRIOS NORMAIS veem dashboards do seu setor ou públicos
+      // USUÁRIOS NORMAIS: baseado no tipo_visibilidade
       console.log(`👤 USUÁRIO: Buscando dashboards para setor: ${req.user.setor}`);
       query = `
         SELECT 
           d.id, d.titulo, d.descricao, d.setor, d.url_iframe, 
           d.ativo, d.largura, d.altura, d.criado_por, 
           d.criado_em, d.atualizado_em,
+          d.tipo_visibilidade, d.powerbi_report_id, d.powerbi_group_id, d.embed_type,
           u.nome as criado_por_nome
         FROM dashboards d
         LEFT JOIN usuarios u ON d.criado_por = u.id
         WHERE d.ativo = true 
-          AND (d.setor = $1 OR d.setor = 'Geral' OR d.setor = 'Público')
+          AND (
+            d.tipo_visibilidade = 'geral'  -- Dashboards gerais para todos
+            OR (d.tipo_visibilidade = 'restrito' AND d.setor = $1)  -- Restritos do mesmo setor
+          )
         ORDER BY d.criado_em DESC
       `;
       params = [req.user.setor];
@@ -1465,12 +2474,18 @@ app.get('/api/dashboards', authMiddleware, async (req, res) => {
 
     console.log(`📊 DASHBOARDS: Encontrados ${dashboards.length} dashboards`);
     
-    // Log para debug
-    if (dashboards.length > 0) {
-      console.log('📋 Primeiros dashboards:', dashboards.slice(0, 2).map(d => ({
-        id: d.id,
+    // ✅ DEBUG: Log de dashboards com Power BI
+    const dashboardsComPowerBI = dashboards.filter(d => d.powerbi_report_id && d.powerbi_group_id);
+    console.log(`🔐 DASHBOARDS SEGUROS: ${dashboardsComPowerBI.length} dashboards com Power BI configurado`);
+    
+    if (dashboardsComPowerBI.length > 0) {
+      console.log('📋 Dashboards seguros:', dashboardsComPowerBI.map(d => ({
         titulo: d.titulo,
-        setor: d.setor
+        setor: d.setor,
+        tipo_visibilidade: d.tipo_visibilidade,
+        embed_type: d.embed_type,
+        reportId: d.powerbi_report_id?.substring(0, 8) + '...',
+        groupId: d.powerbi_group_id?.substring(0, 8) + '...'
       })));
     }
 
@@ -1483,6 +2498,7 @@ app.get('/api/dashboards', authMiddleware, async (req, res) => {
         tipo_usuario: req.user.tipo_usuario,
         setor: req.user.setor,
         total_dashboards: dashboards.length,
+        dashboards_seguros: dashboardsComPowerBI.length,
         is_admin: req.user.tipo_usuario === 'admin'
       }
     });
@@ -1495,7 +2511,6 @@ app.get('/api/dashboards', authMiddleware, async (req, res) => {
     });
   }
 });
-
 // CRIAR NOVO DASHBOARD (só para admins)
 app.post('/api/dashboards', authMiddleware, async (req, res) => {
   try {
@@ -1624,9 +2639,549 @@ app.delete('/api/dashboards/:id', authMiddleware, async (req, res) => {
   }
 });
 
+const axios = require('axios');
+
+// ✅ CONFIGURAÇÕES DO AZURE AD (com validação)
+const POWERBI_CONFIG = {
+  clientId: process.env.POWERBI_CLIENT_ID || '7eab07c0-eae6-422b-a44a-1030d96e7eab',
+  clientSecret: process.env.POWERBI_CLIENT_SECRET,
+  tenantId: process.env.AZURE_TENANT_ID,
+  scope: 'https://analysis.windows.net/powerbi/api/.default',
+  authorityHost: 'https://login.microsoftonline.com'
+};
+
+// ✅ VALIDAÇÃO DE CONFIGURAÇÃO NO STARTUP
+const validatePowerBIConfig = () => {
+  const missing = [];
+  if (!POWERBI_CONFIG.clientSecret) missing.push('POWERBI_CLIENT_SECRET');
+  if (!POWERBI_CONFIG.tenantId) missing.push('AZURE_TENANT_ID');
+  
+  if (missing.length > 0) {
+    console.warn(`⚠️ Power BI: Configurações ausentes: ${missing.join(', ')}`);
+    console.warn('📝 Embed seguro será desabilitado. Configure as variáveis no .env');
+    return false;
+  }
+  
+  console.log('✅ Power BI: Configurações validadas com sucesso');
+  return true;
+};
+
+// Cache de tokens para otimização
+const tokenCache = new Map();
+const TOKEN_CACHE_DURATION = 50 * 60 * 1000; // 50 minutos
+
+// ✅ FUNÇÃO OTIMIZADA PARA OBTER TOKEN DE ACESSO
+async function getPowerBIAccessToken() {
+  const cacheKey = 'powerbi_access_token';
+  const cached = tokenCache.get(cacheKey);
+  
+  // Verificar cache válido
+  if (cached && Date.now() < cached.expires) {
+    console.log('🔄 Usando token de acesso em cache');
+    return cached.token;
+  }
+
+  try {
+    console.log('🔐 Obtendo novo token de acesso do Azure AD (CLIENT CREDENTIALS)...');
+    
+    const tokenUrl = `${POWERBI_CONFIG.authorityHost}/${POWERBI_CONFIG.tenantId}/oauth2/v2.0/token`;
+    
+    const params = new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: POWERBI_CONFIG.clientId,
+      client_secret: POWERBI_CONFIG.clientSecret,
+      scope: POWERBI_CONFIG.scope
+    });
+
+    // ✅ DEBUG CRÍTICO: Verificar configurações
+    console.log('🎯 Token request details:', {
+      url: tokenUrl,
+      grant_type: 'client_credentials',
+      client_id: POWERBI_CONFIG.clientId,
+      tenant_id: POWERBI_CONFIG.tenantId,
+      has_client_secret: !!POWERBI_CONFIG.clientSecret,
+      client_secret_length: POWERBI_CONFIG.clientSecret?.length,
+      scope: POWERBI_CONFIG.scope
+    });
+
+    const response = await axios.post(tokenUrl, params, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      timeout: 10000
+    });
+
+    const token = response.data.access_token;
+    const expiresIn = response.data.expires_in || 3600;
+    
+    // Cache do token
+    tokenCache.set(cacheKey, {
+      token,
+      expires: Date.now() + (expiresIn - 600) * 1000
+    });
+
+    // ✅ DEBUG CRÍTICO: Verificar resposta
+    console.log('✅ Token CLIENT CREDENTIALS obtido com sucesso');
+    console.log('🔑 Token details:', {
+      token_type: response.data.token_type,
+      expires_in: expiresIn,
+      scope: response.data.scope,
+      token_prefix: token.substring(0, 50) + '...',
+      token_length: token.length
+    });
+    
+    return token;
+    
+  } catch (error) {
+    console.error('❌ Erro ao obter token CLIENT CREDENTIALS:', {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      url: error.config?.url,
+      method: error.config?.method
+    });
+    
+    // ✅ DEBUG ESPECÍFICO PARA AZURE AD
+    if (error.response?.status === 400) {
+      console.error('🔐 ERRO 400 - Parâmetros inválidos:', {
+        possible_causes: [
+          'Client Secret incorreto',
+          'Client ID incorreto', 
+          'Tenant ID incorreto',
+          'Scope inválido'
+        ],
+        current_config: {
+          clientId: POWERBI_CONFIG.clientId,
+          tenantId: POWERBI_CONFIG.tenantId,
+          scope: POWERBI_CONFIG.scope,
+          hasSecret: !!POWERBI_CONFIG.clientSecret
+        }
+      });
+    }
+    
+    tokenCache.delete(cacheKey);
+    throw new Error('Falha na autenticação CLIENT CREDENTIALS com Azure AD');
+  }
+}
+
+// ✅ FUNÇÃO OTIMIZADA PARA GERAR TOKEN DE EMBED
+async function generateEmbedToken(accessToken, groupId, reportId, userIdentity = null) {
+  try {
+    console.log(`🎯 Gerando token de embed para report: ${reportId.substring(0, 8)}...`);
+    
+    const embedUrl = `https://api.powerbi.com/v1.0/myorg/groups/${groupId}/reports/${reportId}/GenerateToken`;
+    
+    const embedData = {
+      accessLevel: 'View',
+      allowSaveAs: false,
+      identities: userIdentity ? [userIdentity] : [] // Para RLS se necessário
+    };
+
+    const response = await axios.post(embedUrl, embedData, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000 // 10 segundos timeout
+    });
+
+    console.log('✅ Token de embed gerado com sucesso');
+    return response.data;
+    
+  } catch (error) {
+    console.error('❌ Erro ao gerar token de embed:', {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data,
+      reportId: reportId.substring(0, 8) + '...'
+    });
+    
+    // Diferentes tipos de erro
+    if (error.response?.status === 404) {
+      throw new Error('Relatório não encontrado no workspace especificado');
+    } else if (error.response?.status === 403) {
+      throw new Error('Sem permissão para acessar este relatório');
+    } else {
+      throw new Error('Falha ao gerar token de embed');
+    }
+  }
+}
+
+// ✅ FUNÇÃO MELHORADA PARA VERIFICAR ACESSO
+async function checkUserDashboardAccess(userId, dashboardId) {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        d.id,
+        d.titulo,
+        d.setor,
+        d.powerbi_report_id,
+        d.powerbi_group_id,
+        u.tipo_usuario,
+        u.setor as user_setor
+      FROM dashboards d
+      CROSS JOIN usuarios u
+      WHERE d.id = $1 
+        AND u.id = $2
+        AND d.ativo = true
+        AND (
+          -- Admin pode ver tudo
+          u.tipo_usuario = 'admin'
+          -- Ou mesmo setor
+          OR d.setor = u.setor
+          -- Ou dashboard público
+          OR d.setor = 'Geral'
+          OR d.setor = 'Todos'
+        )
+    `, [dashboardId, userId]);
+
+    const hasAccess = result.rows.length > 0;
+    
+    if (hasAccess) {
+      const dashboard = result.rows[0];
+      console.log(`✅ Usuário ${userId} tem acesso ao dashboard "${dashboard.titulo}"`);
+      return dashboard;
+    } else {
+      console.log(`❌ Usuário ${userId} não tem acesso ao dashboard ${dashboardId}`);
+      return null;
+    }
+    
+  } catch (error) {
+    console.error('❌ Erro ao verificar acesso:', error);
+    return null;
+  }
+}
+
+app.post('/api/powerbi/embed-token', authMiddleware, async (req, res) => {
+  const debugInfo = {
+    timestamp: new Date().toISOString(),
+    requestId: Math.random().toString(36).substring(7),
+    user: req.user ? { id: req.user.id, nome: req.user.nome, setor: req.user.setor } : 'undefined'
+  };
+
+  try {
+    console.log(`\n🔐 ========== POWER BI EMBED TOKEN REQUEST (${debugInfo.requestId}) ==========`);
+    console.log(`👤 Usuário: ${req.user.nome} (ID: ${req.user.id})`);
+    console.log(`📧 Email: ${req.user.email}`);
+    console.log(`🏢 Setor: ${req.user.setor}`);
+    console.log(`⏰ Timestamp: ${debugInfo.timestamp}`);
+    
+    const { reportId, groupId, dashboardId } = req.body;
+    console.log(`📥 Request Body:`, {
+      reportId: reportId || 'não fornecido',
+      groupId: groupId || 'não fornecido', 
+      dashboardId: dashboardId || 'não fornecido'
+    });
+
+    // ✅ VALIDAÇÃO 1: Dashboard ID
+    if (!dashboardId) {
+      console.log(`❌ VALIDAÇÃO FALHOU: dashboardId ausente`);
+      return res.status(400).json({ 
+        error: 'dashboardId é obrigatório',
+        code: 'MISSING_DASHBOARD_ID',
+        debugInfo
+      });
+    }
+    console.log(`✅ VALIDAÇÃO 1: dashboardId presente: ${dashboardId}`);
+
+    // ✅ VALIDAÇÃO 2: Configuração Power BI
+    const configValid = validatePowerBIConfig();
+    console.log(`🔧 VALIDAÇÃO 2: Configuração Power BI:`, {
+      valid: configValid,
+      clientId: POWERBI_CONFIG.clientId,
+      hasClientSecret: !!POWERBI_CONFIG.clientSecret,
+      hasTenantId: !!POWERBI_CONFIG.tenantId,
+      scope: POWERBI_CONFIG.scope
+    });
+
+    if (!configValid) {
+      console.log(`❌ CONFIGURAÇÃO INVÁLIDA: Power BI não configurado`);
+      return res.status(503).json({ 
+        error: 'Serviço de embed seguro não está configurado',
+        code: 'POWERBI_NOT_CONFIGURED',
+        fallback: true,
+        debugInfo
+      });
+    }
+
+    // ✅ VALIDAÇÃO 3: Permissões do usuário
+    console.log(`🔍 VALIDAÇÃO 3: Verificando acesso do usuário ao dashboard...`);
+    const dashboardAccess = await checkUserDashboardAccess(req.user.id, dashboardId);
+    
+    console.log(`📊 Dashboard Access Result:`, {
+      hasAccess: !!dashboardAccess,
+      dashboard: dashboardAccess ? {
+        id: dashboardAccess.id,
+        titulo: dashboardAccess.titulo,
+        setor: dashboardAccess.setor,
+        powerbi_report_id: dashboardAccess.powerbi_report_id,
+        powerbi_group_id: dashboardAccess.powerbi_group_id,
+        user_setor: dashboardAccess.user_setor,
+        user_tipo: dashboardAccess.tipo_usuario
+      } : null
+    });
+
+    if (!dashboardAccess) {
+      console.log(`❌ ACESSO NEGADO: Usuário não tem permissão para dashboard ${dashboardId}`);
+      return res.status(403).json({ 
+        error: 'Usuário não tem permissão para acessar este dashboard',
+        code: 'ACCESS_DENIED',
+        debugInfo
+      });
+    }
+
+    // ✅ VALIDAÇÃO 4: IDs do Power BI
+    const finalReportId = reportId || dashboardAccess.powerbi_report_id;
+    const finalGroupId = groupId || dashboardAccess.powerbi_group_id;
+
+    console.log(`🎯 VALIDAÇÃO 4: IDs finais do Power BI:`, {
+      finalReportId: finalReportId || 'AUSENTE',
+      finalGroupId: finalGroupId || 'AUSENTE',
+      source: {
+        reportId_from: reportId ? 'request' : 'database',
+        groupId_from: groupId ? 'request' : 'database'
+      }
+    });
+
+    if (!finalReportId || !finalGroupId) {
+      console.log(`❌ CONFIGURAÇÃO INCOMPLETA: Faltam IDs do Power BI`);
+      return res.status(400).json({ 
+        error: 'Dashboard não está configurado para embed seguro',
+        code: 'MISSING_POWERBI_CONFIG',
+        missing: {
+          reportId: !finalReportId,
+          groupId: !finalGroupId
+        },
+        debugInfo
+      });
+    }
+
+    // ✅ ETAPA 5: Obter Access Token
+    console.log(`\n🔑 ETAPA 5: Obtendo Access Token do Azure AD...`);
+    const accessTokenStart = Date.now();
+    const accessToken = await getPowerBIAccessToken();
+    const accessTokenTime = Date.now() - accessTokenStart;
+    
+    console.log(`✅ Access Token obtido:`, {
+      time_ms: accessTokenTime,
+      token_prefix: accessToken.substring(0, 30) + '...',
+      token_length: accessToken.length,
+      cached: accessTokenTime < 100 // Se foi muito rápido, provavelmente veio do cache
+    });
+
+    // ✅ ETAPA 6: Gerar Embed Token
+    console.log(`\n🎫 ETAPA 6: Gerando Embed Token...`);
+    console.log(`📍 Power BI API Request:`, {
+      url: `https://api.powerbi.com/v1.0/myorg/groups/${finalGroupId}/reports/${finalReportId}/GenerateToken`,
+      method: 'POST',
+      reportId: finalReportId,
+      groupId: finalGroupId,
+      hasAccessToken: !!accessToken
+    });
+
+    const embedTokenStart = Date.now();
+    const embedToken = await generateEmbedToken(accessToken, finalGroupId, finalReportId);
+    const embedTokenTime = Date.now() - embedTokenStart;
+    
+    console.log(`✅ Embed Token gerado com sucesso:`, {
+      time_ms: embedTokenTime,
+      token_prefix: embedToken.token.substring(0, 30) + '...',
+      expiration: embedToken.expiration,
+      tokenId: embedToken.tokenId || 'não fornecido'
+    });
+    
+    // ✅ RESPOSTA FINAL
+    const response = {
+      accessToken: embedToken.token,
+      tokenType: 'Bearer',
+      expiration: embedToken.expiration,
+      reportId: finalReportId,
+      groupId: finalGroupId,
+      embedUrl: `https://app.powerbi.com/reportEmbed?reportId=${finalReportId}&groupId=${finalGroupId}`,
+      generatedAt: new Date().toISOString(),
+      validFor: 60, // minutos
+      user: {
+        id: req.user.id,
+        nome: req.user.nome,
+        setor: req.user.setor
+      },
+      dashboard: {
+        id: dashboardAccess.id,
+        titulo: dashboardAccess.titulo,
+        setor: dashboardAccess.setor
+      },
+      debug: {
+        requestId: debugInfo.requestId,
+        totalTime_ms: Date.now() - new Date(debugInfo.timestamp).getTime(),
+        accessTokenTime_ms: accessTokenTime,
+        embedTokenTime_ms: embedTokenTime
+      }
+    };
+
+    const totalTime = Date.now() - new Date(debugInfo.timestamp).getTime();
+    console.log(`\n🎉 SUCESSO COMPLETO (${debugInfo.requestId}):`, {
+      dashboard: dashboardAccess.titulo,
+      usuario: req.user.nome,
+      totalTime_ms: totalTime,
+      embedUrl: response.embedUrl
+    });
+    console.log(`========== FIM REQUEST ${debugInfo.requestId} ==========\n`);
+
+    res.json(response);
+
+  } catch (error) {
+    const totalTime = Date.now() - new Date(debugInfo.timestamp).getTime();
+    
+    console.log(`\n❌ ========== ERRO COMPLETO (${debugInfo.requestId}) ==========`);
+    console.log(`🕐 Tempo até erro: ${totalTime}ms`);
+    console.log(`📍 Erro na rota de embed token:`, {
+      message: error.message,
+      name: error.name,
+      user: req.user?.id,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : 'hidden'
+    });
+
+    // ✅ DEBUG ESPECÍFICO PARA ERROS DE AXIOS/HTTP
+    if (error.response) {
+      console.log(`🌐 HTTP Error Details:`, {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data,
+        headers: error.response.headers ? {
+          'content-type': error.response.headers['content-type'],
+          'x-request-id': error.response.headers['x-request-id']
+        } : 'not available'
+      });
+    }
+
+    // ✅ DEBUG ESPECÍFICO PARA ERROS DE POWER BI
+    if (error.message.includes('401')) {
+      console.log(`🔐 DIAGNÓSTICO 401 (Unauthorized):`, {
+        possible_causes: [
+          'Service Principal não tem permissão no workspace',
+          'Access token inválido ou expirado',
+          'Report ID ou Group ID incorretos',
+          'Tenant ID incorreto'
+        ],
+        next_steps: [
+          'Verificar permissões do Service Principal no workspace',
+          'Confirmar IDs no banco de dados',
+          'Testar access token manualmente'
+        ]
+      });
+    }
+
+    if (error.message.includes('404')) {
+      console.log(`📍 DIAGNÓSTICO 404 (Not Found):`, {
+        possible_causes: [
+          'Report ID não existe',
+          'Group ID (workspace) não existe',
+          'Report não está no workspace especificado'
+        ],
+        current_ids: {
+          reportId: req.body.reportId || 'from database',
+          groupId: req.body.groupId || 'from database'
+        }
+      });
+    }
+
+    console.log(`========== FIM ERRO ${debugInfo.requestId} ==========\n`);
+    
+    // Resposta de erro padronizada
+    const errorResponse = {
+      error: 'Erro interno do servidor',
+      code: 'INTERNAL_ERROR',
+      timestamp: new Date().toISOString(),
+      requestId: debugInfo.requestId,
+      debugInfo
+    };
+
+    if (process.env.NODE_ENV === 'development') {
+      errorResponse.details = error.message;
+      errorResponse.httpStatus = error.response?.status;
+      errorResponse.httpData = error.response?.data;
+    }
+    
+    res.status(500).json(errorResponse);
+  }
+});
+
 // ===============================================
 // ROTAS DE ADMINISTRAÇÃO (FUTURO)
 // ===============================================
+
+app.get('/api/debug/token/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    
+    console.log(`🔍 DEBUG TOKEN: ${token}`);
+    
+    // Buscar token com informações detalhadas
+    const result = await pool.query(`
+      SELECT 
+        v.*,
+        u.nome,
+        u.email,
+        u.email_pessoal,
+        u.tipo_colaborador,
+        u.email_verificado,
+        NOW() as agora,
+        (v.expira_em > NOW()) as token_valido,
+        EXTRACT(EPOCH FROM (v.expira_em - NOW())) as segundos_restantes
+      FROM verificacoes_email v
+      JOIN usuarios u ON v.usuario_id = u.id
+      WHERE v.token = $1
+    `, [token]);
+    
+    if (result.rows.length === 0) {
+      return res.json({
+        erro: 'Token não encontrado no banco',
+        token_procurado: token
+      });
+    }
+    
+    const tokenData = result.rows[0];
+    
+    const debug = {
+      token_encontrado: true,
+      token: token,
+      tipo_token: tokenData.tipo_token,
+      usuario: {
+        nome: tokenData.nome,
+        email_verificado: tokenData.email_verificado,
+        tipo_colaborador: tokenData.tipo_colaborador
+      },
+      datas: {
+        criado_em: tokenData.criado_em,
+        expira_em: tokenData.expira_em,
+        usado_em: tokenData.usado_em,
+        agora_servidor: tokenData.agora
+      },
+      validacao: {
+        token_valido: tokenData.token_valido,
+        ja_usado: tokenData.usado_em !== null,
+        usuario_ja_verificado: tokenData.email_verificado,
+        segundos_restantes: tokenData.segundos_restantes
+      },
+      status: (() => {
+        if (tokenData.usado_em) return 'JA_USADO';
+        if (tokenData.email_verificado) return 'USUARIO_JA_VERIFICADO';
+        if (!tokenData.token_valido) return 'EXPIRADO';
+        return 'VALIDO';
+      })()
+    };
+    
+    res.json(debug);
+    
+  } catch (error) {
+    console.error('❌ Erro no debug:', error);
+    res.status(500).json({ 
+      erro: 'Erro interno',
+      detalhes: error.message 
+    });
+  }
+});
 
 // Rota para listar usuários (apenas para admins futuros)
 // ===============================================
@@ -1642,29 +3197,7 @@ const adminMiddleware = async (req, res, next) => {
   try {
     console.log('🔧 ADMIN MIDDLEWARE: Iniciando verificação');
     
-    // Debug completo dos headers
-    console.log('📡 ADMIN: Headers recebidos:', {
-      authorization: req.headers.authorization,
-      'content-type': req.headers['content-type'],
-      origin: req.headers.origin
-    });
-    
-    // Extrair token de várias formas para debug
-    const authHeader = req.header('Authorization');
-    const authHeaderLower = req.header('authorization');
-    const authFromHeaders = req.headers.authorization;
-    
-    console.log('🔍 ADMIN: Debug token extraction:', {
-      'req.header("Authorization")': authHeader,
-      'req.header("authorization")': authHeaderLower,
-      'req.headers.authorization': authFromHeaders
-    });
-    
-    const token = authHeader?.replace('Bearer ', '') || 
-                  authHeaderLower?.replace('Bearer ', '') || 
-                  authFromHeaders?.replace('Bearer ', '');
-    
-    console.log('🔑 ADMIN: Token extraído:', token ? `${token.substring(0, 20)}...` : 'NULO');
+    const token = req.header('Authorization')?.replace('Bearer ', '');
     
     if (!token) {
       console.log('❌ ADMIN: Token não encontrado');
@@ -1672,21 +3205,22 @@ const adminMiddleware = async (req, res, next) => {
     }
 
     console.log('🔑 ADMIN: Token presente, verificando JWT...');
-    
-    // Debug do JWT antes de verificar
-    console.log('🔍 ADMIN: Formato do token:', {
-      length: token.length,
-      startsWith: token.substring(0, 10),
-      dots: (token.match(/\./g) || []).length
-    });
-    
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     console.log('✅ ADMIN: Token válido para usuário ID:', decoded.id);
     
-    // Buscar usuário no banco
+    // ✅ CORREÇÃO: Query usando LEFT JOIN com usuarios_admin_log
     const result = await pool.query(
-      `SELECT id, nome, email, email_pessoal, setor, tipo_usuario, tipo_colaborador, email_verificado 
-       FROM usuarios WHERE id = $1`,
+      `SELECT 
+         u.id, u.nome, u.email, u.email_pessoal, u.setor, u.tipo_usuario, u.tipo_colaborador,
+         u.email_verificado, u.is_coordenador,
+         COALESCE(ual.ativo, true) as ativo,
+         CASE 
+           WHEN u.tipo_colaborador = 'estagiario' THEN u.email_pessoal 
+           ELSE u.email 
+         END as email_login
+       FROM usuarios u
+       LEFT JOIN usuarios_admin_log ual ON u.id = ual.usuario_id
+       WHERE u.id = $1`,
       [decoded.id]
     );
 
@@ -1695,51 +3229,73 @@ const adminMiddleware = async (req, res, next) => {
       return res.status(401).json({ error: 'Usuário não encontrado' });
     }
 
-    if (!result.rows[0].email_verificado) {
+    const user = result.rows[0];
+
+    if (!user.email_verificado) {
       console.log('❌ ADMIN: Email não verificado');
       return res.status(401).json({ error: 'Email não verificado' });
     }
 
-    // Verificar se é admin
-    const user = result.rows[0];
-    console.log('👤 ADMIN: Dados do usuário:', {
-      id: user.id,
-      nome: user.nome,
-      tipo_usuario: user.tipo_usuario,
-      email: user.email
-    });
-    
+    if (!user.ativo) {
+      console.log('❌ ADMIN: Usuário inativo/revogado');
+      return res.status(401).json({ error: 'Acesso revogado' });
+    }
+
     if (user.tipo_usuario !== 'admin') {
       console.log(`❌ ADMIN: Acesso negado para usuário ${user.id} (${user.tipo_usuario})`);
       return res.status(403).json({ 
-        error: 'Acesso negado. Apenas administradores podem acessar esta funcionalidade.' 
+        error: 'Acesso negado. Apenas administradores podem acessar esta funcionalidade.'
       });
     }
     
-    // Usuário é admin, continuar
     req.user = user;
     console.log(`🔧 ADMIN: Acesso autorizado para ${user.nome}`);
     next();
     
   } catch (error) {
-    console.error('❌ ADMIN: Erro na verificação:', {
-      name: error.name,
-      message: error.message,
-      stack: error.stack?.split('\n')[0]
-    });
-    
-    // Verificar se a resposta já foi enviada
-    if (res.headersSent) {
-      console.log('⚠️ ADMIN: Headers já enviados, não respondendo novamente');
-      return;
-    }
-    
-    return res.status(401).json({ 
-      error: 'Token inválido ou expirado',
-      debug: error.message
-    });
+    console.error('❌ ADMIN: Erro na verificação:', error.message);
+    return res.status(401).json({ error: 'Token inválido ou expirado' });
   }
 };
+
+// ✅ ROTA PARA VALIDAR STATUS DO POWER BI
+app.get('/api/powerbi/status', authMiddleware, async (req, res) => {
+  try {
+    const configured = validatePowerBIConfig();
+    
+    let serviceStatus = 'unknown';
+    if (configured) {
+      try {
+        await getPowerBIAccessToken();
+        serviceStatus = 'online';
+      } catch (error) {
+        serviceStatus = 'error';
+      }
+    } else {
+      serviceStatus = 'not_configured';
+    }
+
+    res.json({
+      configured,
+      serviceStatus,
+      embedSupported: configured && serviceStatus === 'online',
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    res.status(500).json({ 
+      error: 'Erro ao verificar status',
+      serviceStatus: 'error' 
+    });
+  }
+});
+
+// ✅ ROTA PARA INVALIDAR CACHE (ADMIN)
+app.delete('/api/powerbi/cache', adminMiddleware, (req, res) => {
+  tokenCache.clear();
+  console.log('🗑️ Cache de tokens Power BI limpo por admin');
+  res.json({ message: 'Cache limpo com sucesso' });
+});
 
 // LISTAR USUÁRIOS PENDENTES DE APROVAÇÃO
 app.get('/api/admin/usuarios-pendentes', adminMiddleware, async (req, res) => {
@@ -1756,15 +3312,21 @@ app.get('/api/admin/usuarios-pendentes', adminMiddleware, async (req, res) => {
         u.tipo_colaborador,
         u.email_verificado,
         u.aprovado_admin,
+        ual.criado_por_admin,
         u.criado_em,
         v.token as codigo_verificacao,
         v.expira_em as codigo_expira_em
       FROM usuarios u
+      LEFT JOIN usuarios_admin_log ual ON u.id = ual.usuario_id
       LEFT JOIN verificacoes_email v ON u.id = v.usuario_id 
         AND v.tipo_token = 'verificacao_email' 
         AND v.usado_em IS NULL
       WHERE 
-        (u.tipo_colaborador = 'estagiario' AND u.aprovado_admin IS NULL)
+        -- ✅ CORREÇÃO: Apenas estagiários CADASTRADOS PELO PRÓPRIO USUÁRIO e não aprovados
+        (u.tipo_colaborador = 'estagiario' 
+         AND u.aprovado_admin IS NULL 
+         AND ual.criado_por_admin IS NULL)
+        -- OU usuários não verificados (qualquer tipo)
         OR (u.email_verificado = false)
       ORDER BY u.criado_em DESC
     `);
@@ -1775,14 +3337,16 @@ app.get('/api/admin/usuarios-pendentes', adminMiddleware, async (req, res) => {
       status: user.tipo_colaborador === 'estagiario' 
         ? (user.aprovado_admin === null ? 'pendente_aprovacao' : 'aprovado')
         : 'corporativo',
-      codigo_ativo: user.codigo_verificacao && user.codigo_expira_em > new Date()
+      codigo_ativo: user.codigo_verificacao && user.codigo_expira_em > new Date(),
+      origem: user.criado_por_admin ? 'admin' : 'auto_cadastro'
     }));
 
     res.json({
       usuarios,
       total: usuarios.length,
-      pendentes_aprovacao: usuarios.filter(u => u.status === 'pendente_aprovacao').length,
-      nao_verificados: usuarios.filter(u => !u.email_verificado).length
+      pendentes_aprovacao: usuarios.filter(u => u.status === 'pendente_aprovacao' && u.origem === 'auto_cadastro').length,
+      nao_verificados: usuarios.filter(u => !u.email_verificado).length,
+      info: 'Apenas estagiários que se cadastraram sozinhos aparecem como pendentes de aprovação. Estagiários adicionados por admin são automaticamente aprovados.'
     });
 
   } catch (error) {
@@ -1944,78 +3508,114 @@ app.delete('/api/admin/rejeitar-usuario/:userId', adminMiddleware, async (req, r
 // LISTAR TODOS OS USUÁRIOS (PARA ADMINISTRAÇÃO GERAL)
 app.get('/api/admin/usuarios', adminMiddleware, async (req, res) => {
   try {
-    const { status, tipo, setor } = req.query;
+    console.log('📋 ADMIN: Listando todos os usuários');
+    
+    const { status, tipo } = req.query;
     
     let whereConditions = [];
     let params = [];
     
     if (status === 'verificados') {
-      whereConditions.push('email_verificado = true');
+      whereConditions.push('u.email_verificado = true');
     } else if (status === 'nao_verificados') {
-      whereConditions.push('email_verificado = false');
-    } else if (status === 'ativos') {
-      whereConditions.push('(ativo IS NULL OR ativo = true)');
-    } else if (status === 'revogados') {
-      whereConditions.push('ativo = false');
+      whereConditions.push('u.email_verificado = false');
     }
     
     if (tipo && ['estagiario', 'clt_associado'].includes(tipo)) {
-      whereConditions.push(`tipo_colaborador = $${params.length + 1}`);
+      whereConditions.push(`u.tipo_colaborador = ${params.length + 1}`);
       params.push(tipo);
     }
-
-    if (setor && setor !== 'todos') {
-      whereConditions.push(`setor = $${params.length + 1}`);
-      params.push(setor);
-    }
     
-    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+    const whereClause = whereConditions.length > 0 ?
+      `WHERE ${whereConditions.join(' AND ')}` : '';
     
+    // ✅ CORREÇÃO: Query usando LEFT JOIN com usuarios_admin_log
     const result = await pool.query(`
       SELECT 
-        id,
-        nome,
-        setor,
-        email,
-        email_pessoal,
+        u.id,
+        u.nome,
+        u.setor,
+        u.email,
+        u.email_pessoal,
         CASE 
-          WHEN tipo_colaborador = 'estagiario' THEN email_pessoal 
-          ELSE email 
+          WHEN u.tipo_colaborador = 'estagiario' THEN u.email_pessoal 
+          ELSE u.email 
         END as email_login,
-        tipo_colaborador,
-        tipo_usuario,
-        email_verificado,
-        criado_em,
-        verificado_em,
-        atualizado_em,
-        ultimo_login,
-        aprovado_admin,
-        aprovado_em,
-        aprovado_por,
-        is_coordenador,
-        COALESCE(ativo, true) as ativo,
-        revogado_em,
-        revogado_por
-      FROM usuarios 
+        u.tipo_colaborador,
+        u.tipo_usuario,
+        u.email_verificado,
+        u.criado_em,
+        u.verificado_em,
+        u.atualizado_em,
+        u.ultimo_login,
+        u.aprovado_admin,
+        u.aprovado_em,
+        u.aprovado_por,
+        COALESCE(u.is_coordenador, false) as is_coordenador,
+        COALESCE(ual.ativo, true) as ativo,
+        ual.criado_por_admin,
+        ual.criado_por_admin_em,
+        ual.revogado_por,
+        ual.revogado_em,
+        ual.reativado_por,
+        ual.reativado_em,
+        -- Nome do admin criador
+        admin_criador.nome as criado_por_admin_nome,
+        -- Status calculado
+        CASE 
+          WHEN COALESCE(ual.ativo, true) = false THEN 'revogado'
+          WHEN u.tipo_colaborador = 'estagiario' 
+               AND u.aprovado_admin IS NULL 
+               AND ual.criado_por_admin IS NULL
+               THEN 'pendente_aprovacao'
+          WHEN u.email_verificado = false THEN 'pendente_verificacao'
+          WHEN u.email_verificado = true 
+               AND (u.aprovado_admin = true OR u.tipo_colaborador = 'clt_associado') 
+               THEN 'ativo'
+          ELSE 'indefinido'
+        END as status
+      FROM usuarios u
+      LEFT JOIN usuarios_admin_log ual ON u.id = ual.usuario_id
+      LEFT JOIN usuarios admin_criador ON ual.criado_por_admin = admin_criador.id
       ${whereClause}
-      ORDER BY criado_em DESC
+      ORDER BY u.criado_em DESC
     `, params);
 
-    // Buscar setores únicos
-    const setoresResult = await pool.query('SELECT DISTINCT setor FROM usuarios ORDER BY setor');
+    const usuarios = result.rows;
+    
+    // Buscar lista de setores únicos
+    const setoresResult = await pool.query(
+      'SELECT DISTINCT setor FROM usuarios WHERE setor IS NOT NULL ORDER BY setor'
+    );
     const setores = setoresResult.rows.map(row => row.setor);
 
-    const usuarios = result.rows.map(user => ({
-      ...user,
-      status: user.tipo_colaborador === 'estagiario' 
-        ? (user.aprovado_admin === null ? 'pendente_aprovacao' : 'aprovado')
-        : 'corporativo'
-    }));
+    console.log(`📋 ADMIN: Encontrados ${usuarios.length} usuários`);
 
     res.json({
       usuarios,
       setores,
-      total: usuarios.length
+      total: usuarios.length,
+      stats: {
+        total: usuarios.length,
+        // ✅ CORREÇÃO: Apenas estagiários que se cadastraram sozinhos (sem criado_por_admin)
+        pendentes_aprovacao: usuarios.filter(u => 
+          u.tipo_colaborador === 'estagiario' && 
+          !u.aprovado_admin && 
+          !u.criado_por_admin
+        ).length,
+        nao_verificados: usuarios.filter(u => !u.email_verificado).length,
+        admins: usuarios.filter(u => u.tipo_usuario === 'admin').length,
+        coordenadores: usuarios.filter(u => u.is_coordenador === true).length,
+        clt_associados: usuarios.filter(u => 
+          u.tipo_colaborador === 'clt_associado' && u.email_verificado === true
+        ).length,
+        estagiarios: usuarios.filter(u => 
+          u.tipo_colaborador === 'estagiario' && 
+          u.aprovado_admin === true && 
+          u.email_verificado === true
+        ).length,
+        revogados: usuarios.filter(u => u.ativo === false).length
+      }
     });
 
   } catch (error) {
@@ -2048,15 +3648,15 @@ app.post('/api/admin/reenviar-codigo/:userId', adminMiddleware, async (req, res)
     const user = userResult.rows[0];
     const emailLogin = user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email;
 
-    // Gerar novo código
-    const codigoVerificacao = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiraEm = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
-    // Invalidar códigos anteriores
+    // ✅ CORREÇÃO: Invalidar códigos anteriores PRIMEIRO
     await client.query(
       'UPDATE verificacoes_email SET usado_em = NOW() WHERE usuario_id = $1 AND usado_em IS NULL',
       [userId]
     );
+
+    // Gerar novo código
+    const codigoVerificacao = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiraEm = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     // Criar novo código
     await client.query(
@@ -2098,26 +3698,70 @@ app.post('/api/admin/reenviar-codigo/:userId', adminMiddleware, async (req, res)
 
 // PROMOVER USUÁRIO A COORDENADOR
 app.patch('/api/admin/usuarios/:userId/promover', adminMiddleware, async (req, res) => {
+  const client = await pool.connect();
+  
   try {
+    await client.query('BEGIN');
+    
     const { userId } = req.params;
 
-    const result = await pool.query(
+    // Buscar dados do usuário que será promovido
+    const userResult = await client.query(
+      'SELECT id, nome, setor FROM v_usuarios_completo WHERE id = $1',
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const user = userResult.rows[0];
+
+    // Verificar se já existe coordenador no setor
+    const coordenadorExistente = await client.query(
+      'SELECT id, nome FROM v_usuarios_completo WHERE setor = $1 AND is_coordenador = true AND id != $2',
+      [user.setor, userId]
+    );
+
+    let coordenadorSubstituido = null;
+
+    // Se existe coordenador, remover coordenação dele primeiro
+    if (coordenadorExistente.rows.length > 0) {
+      coordenadorSubstituido = coordenadorExistente.rows[0];
+      
+      await client.query(
+        'UPDATE usuarios SET is_coordenador = FALSE WHERE id = $1',
+        [coordenadorSubstituido.id]
+      );
+      
+      console.log(`👤 ADMIN: Coordenação removida de ${coordenadorSubstituido.nome} (${user.setor})`);
+    }
+
+    // Promover o novo coordenador
+    const result = await client.query(
       'UPDATE usuarios SET is_coordenador = TRUE WHERE id = $1 RETURNING id, nome, is_coordenador',
       [userId]
     );
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Usuário não encontrado' });
-    }
+    await client.query('COMMIT');
+
+    console.log(`👑 ADMIN: ${user.nome} promovido a coordenador do setor ${user.setor}`);
 
     res.json({
       message: 'Usuário promovido a coordenador com sucesso',
-      usuario: result.rows[0]
+      usuario: result.rows[0],
+      coordenador_substituido: coordenadorSubstituido?.nome || null,
+      setor: user.setor
     });
 
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('❌ Erro ao promover coordenador:', error);
     res.status(500).json({ error: 'Erro ao promover coordenador' });
+  } finally {
+    client.release();
   }
 });
 
@@ -2155,13 +3799,22 @@ app.post('/api/admin/adicionar-usuario', adminMiddleware, async (req, res) => {
     
     const { nome, email, email_pessoal, setor, tipo_colaborador } = req.body;
 
-    // Validações
+    console.log(`👤 ADMIN ADD: Adicionando ${tipo_colaborador} - ${nome} (${email_pessoal})`);
+
+    // Validações básicas
     if (!nome || !email_pessoal || !setor || !tipo_colaborador) {
       await client.query('ROLLBACK');
       client.release();
       return res.status(400).json({ error: 'Campos obrigatórios: nome, email_pessoal, setor, tipo_colaborador' });
     }
 
+    if (!['estagiario', 'clt_associado'].includes(tipo_colaborador)) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).json({ error: 'Tipo de colaborador deve ser estagiario ou clt_associado' });
+    }
+
+    // Validação para CLT/Associado
     if (tipo_colaborador === 'clt_associado' && (!email || !email.endsWith('@resendemh.com.br'))) {
       await client.query('ROLLBACK');
       client.release();
@@ -2183,70 +3836,82 @@ app.post('/api/admin/adicionar-usuario', adminMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Email já cadastrado no sistema' });
     }
 
-    // Gerar senha temporária
+    // Geração obrigatória de senha temporária
     const senhaTemporaria = crypto.randomBytes(8).toString('hex');
     const senhaHash = await bcrypt.hash(senhaTemporaria, 10);
 
-    // Inserir usuário
+    // Inserir usuário na tabela usuarios
     const result = await client.query(
-      `INSERT INTO usuarios (nome, email, email_pessoal, senha, setor, tipo_usuario, tipo_colaborador, email_verificado, aprovado_admin, criado_por_admin) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
+      `INSERT INTO usuarios (nome, email, email_pessoal, senha, setor, tipo_usuario, tipo_colaborador, email_verificado, aprovado_admin) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
        RETURNING id, nome, email, email_pessoal, setor, tipo_colaborador`,
       [
         nome, 
         email || null, 
         email_pessoal, 
-        senhaHash, 
+        senhaHash,
         setor, 
         'usuario', 
         tipo_colaborador, 
-        false, // Email não verificado, precisará ativar
-        tipo_colaborador === 'clt_associado' ? true : null, // CLT aprovado automaticamente
-        req.user.id
+        false, // email_verificado
+        tipo_colaborador === 'clt_associado' ? true : null // aprovado_admin
       ]
     );
 
     const newUser = result.rows[0];
+    console.log(`✅ ADMIN: Usuário criado com ID: ${newUser.id}`);
 
-    // Gerar token de ativação
-    const tokenAtivacao = crypto.randomBytes(32).toString('hex');
+    // ✅ CORREÇÃO: Registrar na tabela usuarios_admin_log
+    await client.query(
+      `INSERT INTO usuarios_admin_log (usuario_id, ativo, criado_por_admin, criado_por_admin_em, ultima_alteracao_por) 
+       VALUES ($1, $2, $3, NOW(), $4)`,
+      [newUser.id, true, req.user.id, req.user.id]
+    );
+
+    // Gerar token de configuração de senha
+    const tokenConfiguracao = crypto.randomBytes(32).toString('hex');
     const expiraEm = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 dias
 
     await client.query(
       `INSERT INTO verificacoes_email (usuario_id, token, tipo_token, expira_em) 
        VALUES ($1, $2, $3, $4)`,
-      [newUser.id, tokenAtivacao, 'ativacao_admin', expiraEm]
+      [newUser.id, tokenConfiguracao, 'configuracao_senha', expiraEm]
     );
 
     await client.query('COMMIT');
+    console.log('✅ ADMIN: Transação commitada com sucesso');
 
     // Enviar email de configuração
-    const linkAtivacao = `${process.env.FRONTEND_URL}/configurar-conta/${tokenAtivacao}`;
+    const linkConfiguracao = `${process.env.API_BASE_URL || 'http://localhost:3001'}/configurar-conta/${tokenConfiguracao}`;
     
     try {
       await resend.emails.send({
         from: 'andre.macedo@resendemh.com.br',
         to: [email_pessoal],
-        subject: '🔐 Configure sua conta - Dashboards RMH',
-        html: await gerarTemplateConfiguracaoConta(nome, linkAtivacao, emailLogin, tipo_colaborador)
+        subject: '🔐 Configure sua senha - Dashboards RMH',
+        html: await gerarTemplateConfigurarSenha(nome, linkConfiguracao, emailLogin)
       });
 
-      console.log(`✅ ADMIN: Usuário ${nome} adicionado e email enviado para ${email_pessoal}`);
+      console.log(`✅ ADMIN: Email de configuração enviado para ${email_pessoal}`);
     } catch (emailError) {
-      console.error('❌ Erro ao enviar email de configuração:', emailError);
+      console.error('❌ ADMIN: Erro ao enviar email (não crítico):', emailError);
     }
 
     res.status(201).json({
       message: 'Usuário adicionado com sucesso',
       usuario: newUser,
       email_enviado: true,
-      email_enviado_para: email_pessoal
+      email_enviado_para: email_pessoal,
+      link_configuracao: linkConfiguracao // Para debug
     });
 
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('❌ Erro ao adicionar usuário:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    console.error('❌ ADMIN: Erro ao adicionar usuário:', error);
+    res.status(500).json({ 
+      error: 'Erro interno do servidor',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   } finally {
     client.release();
   }
@@ -2292,27 +3957,52 @@ app.put('/api/admin/editar-usuario/:userId', adminMiddleware, async (req, res) =
 
 // ROTA: Revogar acesso (Admin)
 app.patch('/api/admin/revogar-acesso/:userId', adminMiddleware, async (req, res) => {
+  const client = await pool.connect();
+  
   try {
+    await client.query('BEGIN');
+    
     const { userId } = req.params;
 
     // Verificar se usuário existe
-    const userResult = await pool.query(
-      'SELECT nome, email_login FROM usuarios WHERE id = $1',
+    const userResult = await client.query(
+      'SELECT nome FROM usuarios WHERE id = $1',
       [userId]
     );
 
     if (userResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      client.release();
       return res.status(404).json({ error: 'Usuário não encontrado' });
     }
 
     const user = userResult.rows[0];
 
-    // Revogar acesso (soft delete)
-    await pool.query(
-      'UPDATE usuarios SET ativo = false, revogado_em = NOW(), revogado_por = $1 WHERE id = $2',
-      [req.user.id, userId]
+    // ✅ CORREÇÃO: Verificar se já existe registro no usuarios_admin_log
+    const logResult = await client.query(
+      'SELECT id FROM usuarios_admin_log WHERE usuario_id = $1',
+      [userId]
     );
 
+    if (logResult.rows.length === 0) {
+      // Criar registro inicial no usuarios_admin_log
+      await client.query(
+        `INSERT INTO usuarios_admin_log (usuario_id, ativo, revogado_por, revogado_em, motivo_revogacao, ultima_alteracao_por) 
+         VALUES ($1, $2, $3, NOW(), $4, $5)`,
+        [userId, false, req.user.id, 'Acesso revogado pelo administrador', req.user.id]
+      );
+    } else {
+      // Atualizar registro existente
+      await client.query(
+        `UPDATE usuarios_admin_log 
+         SET ativo = false, revogado_por = $1, revogado_em = NOW(), 
+             motivo_revogacao = $2, ultima_alteracao_por = $3, atualizado_em = NOW()
+         WHERE usuario_id = $4`,
+        [req.user.id, 'Acesso revogado pelo administrador', req.user.id, userId]
+      );
+    }
+
+    await client.query('COMMIT');
     console.log(`🚫 ADMIN: Acesso revogado para ${user.nome} por ${req.user.nome}`);
 
     res.json({
@@ -2321,8 +4011,11 @@ app.patch('/api/admin/revogar-acesso/:userId', adminMiddleware, async (req, res)
     });
 
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('❌ Erro ao revogar acesso:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
+  } finally {
+    client.release();
   }
 });
 
@@ -2540,6 +4233,20 @@ app.get('*', (req, res) => {
   console.log(`🎯 CATCH-ALL: Redirecionando ${req.path} para index.html`);
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
+
+const limparTokensExpirados = async () => {
+  try {
+    const result = await pool.query(
+      'DELETE FROM verificacoes_email WHERE expira_em < NOW() AND usado_em IS NULL'
+    );
+    console.log(`🧹 LIMPEZA: ${result.rowCount} tokens expirados removidos`);
+  } catch (error) {
+    console.error('❌ Erro na limpeza de tokens:', error);
+  }
+};
+
+// Executar limpeza a cada hora
+setInterval(limparTokensExpirados, 60 * 60 * 1000);
 
 // ===============================================
 // INICIALIZAÇÃO DO SERVIDOR
