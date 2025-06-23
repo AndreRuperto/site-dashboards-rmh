@@ -7,6 +7,7 @@ import { Calendar, User, Eye, Edit, Trash2, ExternalLink, Loader2, Shield, Alert
 import { Dashboard } from '@/contexts/DashboardContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
+import { useConfirmation } from '@/hooks/useConfirmation';
 
 // ✅ IMPORTAÇÃO DA BIBLIOTECA OFICIAL DO POWER BI
 import { service, factories, models, Report, Embed } from 'powerbi-client';
@@ -41,6 +42,9 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
   const [tokenError, setTokenError] = useState<string | null>(null);
   const [powerbiReport, setPowerbiReport] = useState<PowerBIEmbed | null>(null);
   
+  // ✅ Hook do modal de confirmação
+  const { ConfirmationComponent, confirm } = useConfirmation();
+  
   // ✅ Refs para containers de embed
   const dialogRef = useRef<HTMLDivElement>(null);
   const reportContainerRef = useRef<HTMLDivElement>(null);
@@ -60,6 +64,22 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
   };
 
   const canEdit = user?.tipo_usuario === 'admin' || dashboard.criado_por === user?.id;
+
+  // ✅ HANDLER PARA EXCLUSÃO COM MODAL CUSTOMIZADO
+  const handleDelete = async () => {
+    const confirmed = await confirm({
+      title: 'Excluir Dashboard',
+      description: `Tem certeza que deseja excluir o dashboard "${dashboard.titulo}"? Esta ação não pode ser desfeita.`,
+      confirmText: 'Sim, Excluir',
+      cancelText: 'Cancelar',
+      variant: 'destructive',
+      icon: <Trash2 className="h-6 w-6 text-red-600" />
+    });
+
+    if (confirmed && onDelete) {
+      onDelete(dashboard.id);
+    }
+  };
 
   // ✅ FUNÇÃO PARA OBTER TOKEN DE EMBED SEGURO
   const getEmbedToken = async (): Promise<PowerBIEmbedToken | null> => {
@@ -301,9 +321,6 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
             <div className="space-y-1 flex-1">
               <CardTitle className="text-lg font-heading font-semibold text-corporate-blue line-clamp-1 flex items-center gap-2">
                 {dashboard.titulo}
-                {isSecureDashboard && (
-                  <Shield className="h-4 w-4 text-green-600"/>
-                )}
               </CardTitle>
               <CardDescription className="text-sm text-corporate-gray line-clamp-2">
                 {dashboard.descricao || 'Sem descrição'}
@@ -315,17 +332,6 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
             <Badge variant="secondary" className="bg-corporate-lightGray text-corporate-blue">
               {dashboard.setor}
             </Badge>
-            {isSecureDashboard && (
-              <Badge variant="default" className="bg-green-100 text-green-700 border-green-300">
-                <Shield className="h-3 w-3 mr-1" />
-                Embed Seguro
-              </Badge>
-            )}
-            {dashboard.tipo_visibilidade && (
-              <Badge variant="outline" className="text-xs">
-                {dashboard.tipo_visibilidade}
-              </Badge>
-            )}
           </div>
         </CardHeader>
 
@@ -335,10 +341,6 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
               <div className="flex items-center space-x-1">
                 <Calendar className="h-3 w-3" />
                 <span>Atualizado em {formatDate(dashboard.atualizado_em)}</span>
-              </div>
-              <div className="flex items-center space-x-1">
-                <User className="h-3 w-3" />
-                <span>Por: {dashboard.criado_por_nome || dashboard.criado_por || 'Sistema'}</span>
               </div>
             </div>
 
@@ -368,7 +370,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => onDelete(dashboard.id)}
+                      onClick={handleDelete}
                       className="border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -513,6 +515,9 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ✅ MODAL DE CONFIRMAÇÃO CUSTOMIZADO */}
+      <ConfirmationComponent />
     </>
   );
 };

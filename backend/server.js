@@ -2428,6 +2428,7 @@ app.get('/api/auth/validar-token-configuracao-senha/:token', async (req, res) =>
 app.get('/api/dashboards', authMiddleware, async (req, res) => {
   try {
     console.log(`📊 DASHBOARDS: Listando para usuário ${req.user.id} (${req.user.tipo_colaborador}, ${req.user.tipo_usuario})`);
+    console.log(`🔍 DEBUG: is_coordenador = ${req.user.is_coordenador}`);
     
     let query;
     let params = [];
@@ -2450,6 +2451,8 @@ app.get('/api/dashboards', authMiddleware, async (req, res) => {
     } else {
       // USUÁRIOS NORMAIS: baseado no tipo_visibilidade
       console.log(`👤 USUÁRIO: Buscando dashboards para setor: ${req.user.setor}`);
+      console.log(`👑 COORDENADOR: ${req.user.is_coordenador ? 'SIM' : 'NÃO'}`);
+      
       query = `
         SELECT 
           d.id, d.titulo, d.descricao, d.setor, d.url_iframe, 
@@ -2460,19 +2463,25 @@ app.get('/api/dashboards', authMiddleware, async (req, res) => {
         FROM dashboards d
         LEFT JOIN usuarios u ON d.criado_por = u.id
         WHERE d.ativo = true 
+          AND d.setor = $1
           AND (
-            d.tipo_visibilidade = 'geral'  -- Dashboards gerais para todos
-            OR (d.tipo_visibilidade = 'restrito' AND d.setor = $1)  -- Restritos do mesmo setor
+            d.tipo_visibilidade = 'geral'
+            OR (d.tipo_visibilidade = 'coordenadores' AND $2 = true)
           )
         ORDER BY d.criado_em DESC
       `;
-      params = [req.user.setor];
+      params = [req.user.setor, req.user.is_coordenador];
     }
 
     const result = await pool.query(query, params);
     const dashboards = result.rows;
 
-    console.log(`📊 DASHBOARDS: Encontrados ${dashboards.length} dashboards`);
+    console.log(`📊 DASHBOARDS: Encontrados ${dashboards.length} dashboards para setor ${req.user.setor}`);
+    console.log(`🔍 DASHBOARDS DEBUG:`, dashboards.map(d => ({
+      titulo: d.titulo,
+      setor: d.setor,
+      tipo_visibilidade: d.tipo_visibilidade
+    })));
     
     // ✅ DEBUG: Log de dashboards com Power BI
     const dashboardsComPowerBI = dashboards.filter(d => d.powerbi_report_id && d.powerbi_group_id);
@@ -2497,6 +2506,7 @@ app.get('/api/dashboards', authMiddleware, async (req, res) => {
         tipo_colaborador: req.user.tipo_colaborador,
         tipo_usuario: req.user.tipo_usuario,
         setor: req.user.setor,
+        is_coordenador: req.user.is_coordenador, // ✅ ADICIONAR PARA DEBUG
         total_dashboards: dashboards.length,
         dashboards_seguros: dashboardsComPowerBI.length,
         is_admin: req.user.tipo_usuario === 'admin'
@@ -2511,6 +2521,7 @@ app.get('/api/dashboards', authMiddleware, async (req, res) => {
     });
   }
 });
+
 // CRIAR NOVO DASHBOARD (só para admins)
 app.post('/api/dashboards', authMiddleware, async (req, res) => {
   try {

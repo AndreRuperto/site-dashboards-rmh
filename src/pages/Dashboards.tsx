@@ -1,4 +1,5 @@
-// src/pages/Dashboards.tsx - VERSÃO MELHORADA
+// src/pages/Dashboards.tsx - VERSÃO CORRIGIDA
+
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Plus, LayoutDashboard } from 'lucide-react';
@@ -9,6 +10,7 @@ import DashboardForm from '@/components/DashboardForm';
 import { useDashboard, type Dashboard, type DashboardFilters as FilterType } from '@/contexts/DashboardContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+
 
 const Dashboards: React.FC = () => {
   // Estados para filtros
@@ -22,8 +24,24 @@ const Dashboards: React.FC = () => {
   const [editingDashboard, setEditingDashboard] = useState<Dashboard | null>(null);
 
   const { user } = useAuth();
-  const { getFilteredDashboards, deleteDashboard } = useDashboard();
+  const { dashboards, setores, getFilteredDashboards, deleteDashboard } = useDashboard();
   const { toast } = useToast();
+
+  // Extrair criadores únicos dos dashboards
+  const criadores = React.useMemo(() => {
+    const uniqueCreators = Array.from(
+      new Set(
+        dashboards
+          .map(d => d.criado_por_nome)
+          .filter(Boolean)
+      )
+    ).sort();
+
+    return uniqueCreators.map(nome => ({
+      id: nome, // Usando o nome como ID por simplicidade
+      nome: nome
+    }));
+  }, [dashboards]);
 
   // Aplicar filtros
   const filteredDashboards = getFilteredDashboards({
@@ -45,12 +63,20 @@ const Dashboards: React.FC = () => {
     setIsFormOpen(true);
   };
 
-  const handleDeleteDashboard = (id: string) => {
-    if (window.confirm('Tem certeza que deseja excluir este dashboard?')) {
-      deleteDashboard(id);
+  const handleDeleteDashboard = async (id: string) => {
+    try {
+      await deleteDashboard(id);
+      const dashboard = dashboards.find(d => d.id === id);
       toast({
-        title: "Sucesso",
-        description: "Dashboard excluído com sucesso"
+        title: "Dashboard Excluído",
+        description: `O dashboard "${dashboard?.titulo}" foi excluído com sucesso.`,
+        variant: "default"
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao Excluir",
+        description: "Não foi possível excluir o dashboard. Tente novamente.",
+        variant: "destructive"
       });
     }
   };
@@ -73,7 +99,7 @@ const Dashboards: React.FC = () => {
                 Dashboards Corporativos
               </h1>
               <p className="text-corporate-gray mt-1">
-                Visualize e analise os dados da sua empresa em tempo real
+                Visualize e analise os dados do seu setor em tempo real
               </p>
             </div>
             
@@ -90,15 +116,17 @@ const Dashboards: React.FC = () => {
 
           {/* Filtros Melhorados */}
           <DashboardFilters
-            selectedSetor={selectedSetor}
-            selectedPeriodo={selectedPeriodo}
-            selectedCriador={selectedCriador}
             searchTerm={searchTerm}
-            onSetorChange={setSelectedSetor}
-            onPeriodoChange={setSelectedPeriodo}
-            onCriadorChange={setSelectedCriador}
             onSearchChange={setSearchTerm}
+            selectedSetor={selectedSetor}
+            onSetorChange={setSelectedSetor}
+            selectedPeriodo={selectedPeriodo}
+            onPeriodoChange={setSelectedPeriodo}
+            selectedCriador={selectedCriador}
+            onCriadorChange={setSelectedCriador}
             onClearFilters={handleClearFilters}
+            setores={setores}
+            criadores={criadores}
           />
 
           {/* Dashboards Grid */}

@@ -1194,19 +1194,19 @@ const AdminUserControl: React.FC = () => {
                             {/* Estatísticas rápidas do setor */}
                             <div className="flex space-x-4 text-sm">
                               <div className="text-center">
-                                <p className="text-2xl font-bold text-green-600">
+                                <p className="text-2xl font-bold text-rmh-primary">
                                   {usuariosDoSetor.filter(u => u.tipo_colaborador === 'estagiario' && !isPendenteAprovacao(u) && !isPendenteVerificacao(u)).length}
                                 </p>
                                 <p className="text-gray-500">Estagiários</p>
                               </div>
                               <div className="text-center">
-                                <p className="text-2xl font-bold text-blue-600">
+                                <p className="text-2xl font-bold text-rmh-primary">
                                   {usuariosDoSetor.filter(u => u.tipo_colaborador === 'clt_associado' && !isPendenteVerificacao(u)).length}
                                 </p>
                                 <p className="text-gray-500">CLT</p>
                               </div>
                               <div className="text-center">
-                                <p className="text-2xl font-bold text-yellow-600">
+                                <p className="text-2xl font-bold text-rmh-primary">
                                   {usuariosDoSetor.filter(u => u.is_coordenador).length}
                                 </p>
                                 <p className="text-gray-500">Coordenador</p>
