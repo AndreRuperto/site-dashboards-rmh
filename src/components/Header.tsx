@@ -1,7 +1,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
-import { LogOut, User as UserIcon, Shield, Users, Settings, ChevronDown } from 'lucide-react';
+import { LogOut, Shield, Users, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   DropdownMenu,
@@ -31,6 +31,10 @@ const Header = () => {
     navigate('/admin/usuarios');
   };
 
+  const goToHome = () => {
+    navigate('/');
+  };
+
   const goToDashboards = () => {
     navigate('/dashboards');
   };
@@ -40,6 +44,9 @@ const Header = () => {
     if (!user) return '';
     return user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email;
   };
+
+  // Verificar se o usuário pode ver dashboards (coordenador ou admin)
+  const canViewDashboards = user?.tipo_usuario === 'admin' || user?.is_coordenador;
 
   return (
     <header className="bg-primary border-b border-rmh-lightGray shadow-sm">
@@ -52,11 +59,20 @@ const Header = () => {
             <nav className="hidden lg:flex items-center space-x-2">
               <Button
                 variant="ghost"
-                onClick={goToDashboards}
+                onClick={goToHome}
                 className="text-rmh-white hover:text-white hover:bg-rmh-lightGreen/20"
               >
-                Dashboards
+                Inicío
               </Button>
+              {canViewDashboards && (
+                <Button
+                  variant="ghost"
+                  onClick={goToDashboards}
+                  className="text-rmh-white hover:text-white hover:bg-rmh-lightGreen/20"
+                >
+                  Dashboards
+                </Button>
+              )}
             </nav>
           </div>
 
@@ -95,6 +111,11 @@ const Header = () => {
                       {user?.tipo_usuario === 'admin' && (
                         <span className="text-xs bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">
                           Admin
+                        </span>
+                      )}
+                      {user?.is_coordenador && (
+                        <span className="text-xs bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded">
+                          Coordenador
                         </span>
                       )}
                     </div>

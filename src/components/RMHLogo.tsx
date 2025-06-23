@@ -6,11 +6,11 @@ interface RMHLogoProps {
 }
 
 const RMHLogo: React.FC<RMHLogoProps> = ({ 
-  size = 'md', 
+  size = 'sm', 
   className = '' 
 }) => {
   const sizeClasses = {
-    sm: 'h-8 w-auto',
+    sm: 'h-10 w-auto',
     md: 'h-12 w-auto',
     lg: 'h-16 w-auto'
   };

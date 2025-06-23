@@ -1,4 +1,4 @@
-// src/types/index.ts - ATUALIZADO com base no backend real
+// src/types/index.ts - ATUALIZADO com interface User unificada
 export type UserRole = 'usuario' | 'coordenador' | 'admin';
 export type TipoColaborador = 'estagiario' | 'clt_associado';
 export type TipoVisibilidade = 'geral' | 'coordenadores' | 'admin';
@@ -12,32 +12,22 @@ export interface User {
   tipo_usuario: UserRole;
   tipo_colaborador: TipoColaborador;
   email_verificado: boolean;
-  aprovado_admin?: boolean; // 🆕 ADICIONADO: Para controle de aprovação de estagiários
+  aprovado_admin?: boolean; // Para controle de aprovação de estagiários
   criado_em: string;
   atualizado_em: string;
   ultimo_login?: string;
-  email_login: string; // 🆕 ADICIONADO: Email usado para login (calculado)
-  status: string; // 🆕 ADICIONADO: Status do usuário (pendente_aprovacao, ativo, etc)
-  codigo_ativo?: boolean; // 🆕 ADICIONADO: Se há código de verificação ativo
+  email_login: string; // Email usado para login (calculado)
+  status: string; // Status do usuário (pendente_aprovacao, ativo, etc)
+  codigo_ativo?: boolean; // Se há código de verificação ativo
+  is_coordenador?: boolean; // 🆕 ADICIONADO: Campo para indicar se é coordenador
+  ativo?: boolean; // 🆕 ADICIONADO: Status ativo/inativo
+  criado_por_admin?: string | null; // 🆕 ADICIONADO: ID do admin que criou
+  criado_por_admin_em?: string | null; // 🆕 ADICIONADO: Data de criação pelo admin
+  criado_por_admin_nome?: string | null; // 🆕 ADICIONADO: Nome do admin que criou
 }
 
-// 🆕 INTERFACE ESPECÍFICA PARA ADMIN
-export interface Usuario {
-  id: string;
-  nome: string;
-  email?: string;
-  email_pessoal?: string;
-  setor: string;
-  tipo_colaborador: TipoColaborador;
-  tipo_usuario: UserRole;
-  is_coordenador: boolean;
-  email_verificado: boolean;
-  aprovado_admin?: boolean;
-  criado_em: string;
-  email_login: string;
-  status: string;
-  codigo_ativo?: boolean;
-}
+// 🆕 ALIAS para compatibilidade (pode ser removido gradualmente)
+export type Usuario = User;
 
 export interface Dashboard {
   id: string;
@@ -66,7 +56,7 @@ export interface VerificacaoEmail {
 }
 
 export const podeVisualizarDashboard = (
-  usuario: Usuario,
+  usuario: User,
   dashboard: Dashboard
 ): boolean => {
   if (!usuario.tipo_usuario) return false;
@@ -76,7 +66,7 @@ export const podeVisualizarDashboard = (
     case 'geral':
       return true;
     case 'coordenadores':
-      return usuario.is_coordenador;
+      return usuario.is_coordenador || false;
     case 'admin':
       return usuario.tipo_usuario === 'admin';
     default:
@@ -101,6 +91,10 @@ export interface UsuariosStats {
   pendentes_aprovacao: number;
   nao_verificados: number;
   admins: number;
+  coordenadores?: number;
+  clt_associados?: number;
+  estagiarios?: number;
+  revogados?: number;
 }
 
 export interface RegistrationResult {
@@ -165,11 +159,12 @@ export interface ApiError {
 
 // 🆕 TIPOS PARA ADMIN
 export interface UsuariosResponse {
-  usuarios: Usuario[];
+  usuarios: User[];
   total?: number;
   pendentes_aprovacao?: number;
   nao_verificados?: number;
   admins?: number;
+  setores?: string[];
 }
 
 export interface AprovarUsuarioRequest {
@@ -206,8 +201,12 @@ export const isAdmin = (user: User): boolean => {
   return user.tipo_usuario === 'admin';
 };
 
+export const isCoordenador = (user: User): boolean => {
+  return user.is_coordenador || false;
+};
+
 // 🆕 UTILITÁRIOS PARA STATUS
-export const getUserStatus = (usuario: Usuario): string => {
+export const getUserStatus = (usuario: User): string => {
   if (usuario.tipo_usuario === 'admin') return 'admin';
   
   if (usuario.tipo_colaborador === 'estagiario') {
@@ -233,12 +232,12 @@ export const getUserStatus = (usuario: Usuario): string => {
   return 'indefinido';
 };
 
-export const isPendenteAprovacao = (usuario: Usuario): boolean => {
+export const isPendenteAprovacao = (usuario: User): boolean => {
   return usuario.tipo_colaborador === 'estagiario' && 
          (usuario.status === 'pendente_aprovacao' || !usuario.aprovado_admin);
 };
 
-export const isAguardandoVerificacao = (usuario: Usuario): boolean => {
+export const isAguardandoVerificacao = (usuario: User): boolean => {
   return !usuario.email_verificado && 
          (usuario.tipo_colaborador === 'clt_associado' || 
           (usuario.tipo_colaborador === 'estagiario' && usuario.aprovado_admin));

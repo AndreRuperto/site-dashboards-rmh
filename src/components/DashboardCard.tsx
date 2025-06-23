@@ -361,7 +361,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
                       variant="outline"
                       size="sm"
                       onClick={() => onEdit(dashboard)}
-                      className="border-corporate-blue text-corporate-blue hover:bg-corporate-blue hover:text-white"
+                      className="border-corporate-blue text-corporate-blue hover:bg-rmh-primary hover:text-white"
                     >
                       <Edit className="h-4 w-4" />
                     </Button>

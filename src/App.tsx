@@ -8,12 +8,40 @@ import { AuthProvider, useAuth, ProtectedRoute } from "@/contexts/AuthContext";
 import { DashboardProvider } from "@/contexts/DashboardContext";
 import { setupAPIInterceptor } from "@/utils/apiInterceptor";
 import AuthSystem from "@/components/AuthSystem";
+import Home from "@/pages/Home"; // ✅ NOVA PÁGINA INICIAL
 import DashboardsPage from "@/pages/Dashboards";
 import NotFound from "./pages/NotFound";
 import AdminUserControl from '@/pages/AdminUserControl';
 import ConfigurarConta from '@/pages/ConfigurarConta';
 
 const queryClient = new QueryClient();
+
+// ✅ Componente wrapper para proteger página de dashboards
+const DashboardsPageProtected = () => {
+  const { user } = useAuth();
+  
+  // Verificar se é coordenador ou admin
+  if (user?.tipo_usuario === 'usuario') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center p-8">
+          <h1 className="text-2xl font-bold text-red-600 mb-4">🚫 Acesso Restrito</h1>
+          <p className="text-gray-600 mb-4">
+            A página de dashboards é exclusiva para coordenadores e administradores.
+          </p>
+          <button 
+            onClick={() => window.location.href = '/'}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+          >
+            Voltar para Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+  
+  return <DashboardsPage />;
+};
 
 const AppContent = () => {
   const { user, isLoading } = useAuth();
@@ -36,19 +64,22 @@ const AppContent = () => {
   return (
     <DashboardProvider>
       <Routes>
+        {/* ✅ PÁGINA INICIAL - Dashboard Principal */}
         <Route 
           path="/" 
           element={
             <ProtectedRoute>
-              <DashboardsPage />
+              <Home />
             </ProtectedRoute>
           } 
         />
+        
+        {/* ✅ PÁGINA DE DASHBOARDS - Controle manual por tipo de usuário */}
         <Route 
           path="/dashboards" 
           element={
             <ProtectedRoute>
-              <DashboardsPage />
+              <DashboardsPageProtected />
             </ProtectedRoute>
           } 
         />
@@ -80,27 +111,12 @@ const AppContent = () => {
         <Route path="/admin" element={<Navigate to="/admin/usuarios" replace />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="/dashboard" element={<Navigate to="/" replace />} />
+        <Route path="/home" element={<Navigate to="/" replace />} />
         
         {/* 404 - NOT FOUND */}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </DashboardProvider>
-  );
-};
-
-const PublicRoutes = () => {
-  return (
-    <Routes>
-      {/* ROTA PÚBLICA - Configurar Conta */}
-      <Route path="/configurar-conta/:token" element={<ConfigurarConta />} />
-      
-      {/* ROTA DE LOGIN */}
-      <Route path="/" element={<AuthSystem />} />
-      <Route path="/login" element={<AuthSystem />} />
-      
-      {/* REDIRECIONAMENTOS */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
   );
 };
 

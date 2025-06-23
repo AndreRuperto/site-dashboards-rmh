@@ -1869,7 +1869,8 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 
     // Buscar usuário por email (corporativo ou pessoal dependendo do tipo)
     const result = await pool.query(
-      `SELECT id, nome, email, email_pessoal, senha, setor, tipo_usuario, tipo_colaborador, email_verificado 
+      `SELECT id, nome, email, email_pessoal, senha, setor, tipo_usuario, tipo_colaborador, 
+              email_verificado, COALESCE(is_coordenador, false) as is_coordenador
        FROM usuarios 
        WHERE (tipo_colaborador = 'estagiario' AND email_pessoal = $1) 
           OR (tipo_colaborador = 'clt_associado' AND email = $1)`,
@@ -1882,7 +1883,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     }
 
     const user = result.rows[0];
-    console.log(`🔍 LOGIN: Usuário encontrado - Tipo: ${user.tipo_colaborador}`);
+    console.log(`🔍 LOGIN: Usuário encontrado - Tipo: ${user.tipo_colaborador}, Coordenador: ${user.is_coordenador}`);
 
     // Verificar senha
     const senhaValida = await bcrypt.compare(senha, user.senha);
@@ -1922,7 +1923,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 
     console.log(`✅ LOGIN: Sucesso para usuário ID: ${user.id}`);
 
-        res.json({
+    res.json({
       message: 'Login realizado com sucesso',
       token,
       user: {
@@ -1932,7 +1933,8 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
         email_pessoal: user.email_pessoal,
         setor: user.setor,
         tipo_usuario: user.tipo_usuario,
-        tipo_colaborador: user.tipo_colaborador
+        tipo_colaborador: user.tipo_colaborador,
+        is_coordenador: user.is_coordenador // ✅ ADICIONADO
       }
     });
 
@@ -2341,20 +2343,21 @@ app.get('/api/auth/validar-token-configuracao/:token', async (req, res) => {
 
 // PERFIL DO USUÁRIO ATUALIZADO
 app.get('/api/auth/profile', authMiddleware, (req, res) => {
-  console.log('🔐 PERFIL: Acesso autorizado para usuário:', req.user.id);
-  
-  res.json({
-    user: {
-      id: req.user.id,
-      nome: req.user.nome,
-      email: req.user.email,
-      email_pessoal: req.user.email_pessoal,
-      setor: req.user.setor,
-      tipo_usuario: req.user.tipo_usuario,
-      tipo_colaborador: req.user.tipo_colaborador,
-      email_verificado: req.user.email_verificado
-    }
-  });
+ console.log('🔐 PERFIL: Acesso autorizado para usuário:', req.user.id);
+ 
+ res.json({
+   user: {
+     id: req.user.id,
+     nome: req.user.nome,
+     email: req.user.email,
+     email_pessoal: req.user.email_pessoal,
+     setor: req.user.setor,
+     tipo_usuario: req.user.tipo_usuario,
+     tipo_colaborador: req.user.tipo_colaborador,
+     email_verificado: req.user.email_verificado,
+     is_coordenador: req.user.is_coordenador // ✅ ADICIONADO
+   }
+ });
 });
 
 // LOGOUT (opcional - apenas limpa token no frontend)
@@ -3115,6 +3118,65 @@ app.post('/api/powerbi/embed-token', authMiddleware, async (req, res) => {
     }
     
     res.status(500).json(errorResponse);
+  }
+});
+
+app.get('/api/main-dashboard', authMiddleware, async (req, res) => {
+  try {
+    console.log(`🏠 DASHBOARD PRINCIPAL: Buscando para usuário ${req.user.id}`);
+    
+    // Buscar O dashboard com tipo_visibilidade = 'geral' (deve ser único)
+    const query = `
+      SELECT 
+        d.id, d.titulo, d.descricao, d.url_iframe,
+        d.embed_type, d.powerbi_report_id, d.powerbi_group_id,
+        d.criado_em, d.atualizado_em, d.setor
+      FROM dashboards d
+      WHERE d.ativo = true 
+        AND d.tipo_visibilidade = 'geral'
+    `;
+
+    const result = await pool.query(query);
+
+    if (result.rows.length === 0) {
+      console.log('❌ DASHBOARD PRINCIPAL: Nenhum dashboard geral encontrado');
+      return res.status(404).json({ 
+        error: 'Nenhum dashboard principal configurado',
+        suggestion: 'Configure um dashboard com visibilidade "geral" para exibir na página inicial'
+      });
+    }
+
+    const dashboard = result.rows[0];
+    
+    console.log(`✅ DASHBOARD PRINCIPAL: "${dashboard.titulo}" encontrado (${dashboard.embed_type || 'public'})`);
+
+    res.json({
+      dashboard: {
+        id: dashboard.id,
+        titulo: dashboard.titulo,
+        descricao: dashboard.descricao,
+        url_iframe: dashboard.url_iframe,
+        embed_type: dashboard.embed_type || 'public',
+        powerbi_report_id: dashboard.powerbi_report_id,
+        powerbi_group_id: dashboard.powerbi_group_id,
+        setor: dashboard.setor
+      },
+      meta: {
+        carregado_em: new Date().toISOString(),
+        usuario: {
+          id: req.user.id,
+          nome: req.user.nome,
+          setor: req.user.setor
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar dashboard principal:', error);
+    res.status(500).json({ 
+      error: 'Erro interno do servidor',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 

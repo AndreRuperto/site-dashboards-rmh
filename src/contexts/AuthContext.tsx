@@ -203,11 +203,13 @@ export const usePermissions = () => {
   const { user } = useAuth();
   
   const isAdmin = user?.tipo_usuario === 'admin';
+  const isCoordenador = user?.is_coordenador || false;
   const canEditDashboard = (createdBy: string) => isAdmin || user?.id === createdBy;
   const canDeleteDashboard = (createdBy: string) => isAdmin || user?.id === createdBy;
   
   return {
     isAdmin,
+    isCoordenador,
     canEditDashboard,
     canDeleteDashboard,
     user
