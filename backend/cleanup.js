@@ -1,37 +1,25 @@
-// cleanup.js - Script de limpeza para Railway Cron - VERSÃO CORRIGIDA
+// cleanup.js - Script de limpeza MELHORADO (sem alterar estrutura do banco)
 require('dotenv').config();
 const { Pool } = require('pg');
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  max: 2, // Menos conexões para o job de limpeza
+  max: 2,
   idleTimeoutMillis: 10000,
   connectionTimeoutMillis: 5000,
   query_timeout: 30000,
   statement_timeout: 30000,
 });
 
-// Event listeners para debug da conexão
-pool.on('connect', () => {
-  console.log('🔌 Conexão estabelecida com PostgreSQL para limpeza');
-});
-
-pool.on('error', (err) => {
-  console.error('❌ Erro inesperado no pool de conexões da limpeza:', err);
-});
-
 async function executarLimpeza() {
   const client = await pool.connect();
   
   try {
-    console.log('🧹 INICIANDO LIMPEZA AUTOMÁTICA');
+    console.log('🧹 INICIANDO LIMPEZA AUTOMÁTICA MELHORADA');
     console.log('📅 Data/Hora:', new Date().toISOString());
-    console.log('🌍 Timezone:', Intl.DateTimeFormat().resolvedOptions().timeZone);
-    console.log('🔌 Conectado ao banco:', process.env.DATABASE_URL ? 'SIM' : 'NÃO');
     
     await client.query('BEGIN');
-    console.log('🔄 Transação iniciada');
 
     // ===============================================
     // 1. LIMPAR CÓDIGOS DE VERIFICAÇÃO EXPIRADOS
@@ -46,109 +34,191 @@ async function executarLimpeza() {
     
     if (codigosExpirados.rowCount > 0) {
       console.log(`✅ ${codigosExpirados.rowCount} códigos expirados removidos`);
-      console.log('📋 Primeiros 3 códigos removidos:', 
-        codigosExpirados.rows.slice(0, 3).map(row => ({
-          id: row.id,
-          tipo: row.tipo_token,
-          criado_em: row.criado_em
-        }))
-      );
     } else {
       console.log('ℹ️ Nenhum código expirado encontrado');
     }
 
     // ===============================================
-    // 2. LIMPAR CÓDIGOS MUITO ANTIGOS (MESMO QUE NÃO EXPIRADOS)
+    // 2. IDENTIFICAR USUÁRIOS COM PROBLEMAS DE TOKEN
     // ===============================================
     
-    console.log('🔍 Limpando códigos antigos (+7 dias)...');
-    const codigosAntigos = await client.query(
-      `DELETE FROM verificacoes_email 
-       WHERE criado_em < NOW() - INTERVAL '7 days' 
-         AND tipo_token = 'verificacao_email'
-         AND usado_em IS NULL
-       RETURNING id, usuario_id, criado_em`
-    );
+    console.log('🔍 Identificando usuários com tokens expirados/perdidos...');
     
-    if (codigosAntigos.rowCount > 0) {
-      console.log(`✅ ${codigosAntigos.rowCount} códigos antigos removidos`);
+    // Usuários não verificados há mais de 7 dias SEM token ativo
+    const usuariosTokenExpirado = await client.query(`
+      SELECT 
+        u.id,
+        u.nome,
+        CASE 
+          WHEN u.tipo_colaborador = 'estagiario' THEN u.email_pessoal 
+          ELSE u.email 
+        END as email_login,
+        u.tipo_colaborador,
+        u.criado_em,
+        u.email_verificado,
+        u.aprovado_admin,
+        -- Verificar se tem token ativo
+        CASE 
+          WHEN EXISTS (
+            SELECT 1 FROM verificacoes_email v 
+            WHERE v.usuario_id = u.id 
+              AND v.tipo_token = 'verificacao_email'
+              AND v.usado_em IS NULL 
+              AND v.expira_em > NOW()
+          ) THEN false
+          ELSE true
+        END as sem_token_ativo,
+        -- Dias desde criação
+        EXTRACT(DAYS FROM (NOW() - u.criado_em)) as dias_desde_criacao
+      FROM usuarios u
+      WHERE u.email_verificado = false
+        AND u.criado_em < NOW() - INTERVAL '7 days'
+        AND (
+          u.tipo_colaborador = 'clt_associado' 
+          OR (u.tipo_colaborador = 'estagiario' AND u.aprovado_admin = true)
+        )
+      ORDER BY u.criado_em ASC
+    `);
+    
+    console.log(`📊 Análise de usuários com problemas:`, {
+      total_nao_verificados_antigos: usuariosTokenExpirado.rowCount,
+      usuarios_sem_token: usuariosTokenExpirado.rows.filter(u => u.sem_token_ativo).length,
+      usuarios_com_token_expirado: usuariosTokenExpirado.rows.filter(u => !u.sem_token_ativo).length
+    });
+
+    // ===============================================
+    // 3. MARCAR USUÁRIOS ÓRFÃOS NO LOG (ao invés de excluir)
+    // ===============================================
+    
+    if (usuariosTokenExpirado.rowCount > 0) {
+      console.log(`⚠️ ${usuariosTokenExpirado.rowCount} usuários com problemas de token encontrados:`);
+      
+      for (const user of usuariosTokenExpirado.rows) {
+        const diasAtras = Math.floor(user.dias_desde_criacao);
+        console.log(`   - ${user.nome} (${user.email_login}) - ${user.tipo_colaborador} - ${diasAtras} dias atrás`);
+        
+        // Se usuário tem mais de 30 dias sem verificar, marcar como "problema"
+        if (diasAtras > 30) {
+          // Verificar se já existe registro no log
+          const logExists = await client.query(
+            'SELECT id FROM usuarios_admin_log WHERE usuario_id = $1',
+            [user.id]
+          );
+          
+          if (logExists.rows.length === 0) {
+            // Criar registro marcando como problema
+            await client.query(
+              `INSERT INTO usuarios_admin_log 
+               (usuario_id, ativo, observacoes, criado_em, atualizado_em) 
+               VALUES ($1, true, $2, NOW(), NOW())`,
+              [
+                user.id, 
+                `Token expirado há ${diasAtras} dias. Usuário nunca se verificou.`
+              ]
+            );
+            console.log(`   📝 Log criado para ${user.nome} (${diasAtras} dias)`);
+          } else {
+            // Atualizar observações do registro existente
+            await client.query(
+              `UPDATE usuarios_admin_log 
+               SET observacoes = $1, atualizado_em = NOW()
+               WHERE usuario_id = $2`,
+              [
+                `Token expirado há ${diasAtras} dias. Usuário nunca se verificou. (Atualizado automaticamente)`,
+                user.id
+              ]
+            );
+            console.log(`   📝 Log atualizado para ${user.nome} (${diasAtras} dias)`);
+          }
+        }
+      }
     } else {
-      console.log('ℹ️ Nenhum código antigo encontrado');
+      console.log('ℹ️ Nenhum usuário com problema de token');
     }
 
     // ===============================================
-    // 3. VERIFICAR USUÁRIOS NÃO VERIFICADOS PARA REMOÇÃO
+    // 4. LIMPEZA DEFINITIVA (APENAS APÓS 45 DIAS)
     // ===============================================
     
-    console.log('🔍 Verificando usuários não verificados há mais de 7 dias...');
-    const usuariosParaRemover = await client.query(`
+    console.log('🔍 Verificando usuários para limpeza definitiva (+45 dias)...');
+    const usuariosParaExcluir = await client.query(`
       SELECT 
-        id, 
-        nome, 
+        u.id, 
+        u.nome,
         CASE 
-          WHEN tipo_colaborador = 'estagiario' THEN email_pessoal 
-          ELSE email 
+          WHEN u.tipo_colaborador = 'estagiario' THEN u.email_pessoal 
+          ELSE u.email 
         END as email_login,
-        tipo_colaborador,
-        criado_em,
-        email_verificado,
-        aprovado_admin
-      FROM usuarios 
-      WHERE email_verificado = false 
-        AND criado_em < NOW() - INTERVAL '7 days'
+        u.tipo_colaborador, 
+        u.criado_em,
+        EXTRACT(DAYS FROM (NOW() - u.criado_em)) as dias_desde_criacao
+      FROM usuarios u
+      WHERE u.email_verificado = false 
+        AND u.criado_em < NOW() - INTERVAL '45 days'  -- 45 dias ao invés de 7
         AND (
-          tipo_colaborador = 'clt_associado' 
-          OR (tipo_colaborador = 'estagiario' AND aprovado_admin IS NULL)
+          u.tipo_colaborador = 'clt_associado' 
+          OR (u.tipo_colaborador = 'estagiario' AND u.aprovado_admin = true)
         )
-      ORDER BY criado_em ASC
+      ORDER BY u.criado_em ASC
     `);
     
-    if (usuariosParaRemover.rowCount > 0) {
-      console.log(`⚠️ ${usuariosParaRemover.rowCount} usuários serão removidos:`);
-      usuariosParaRemover.rows.forEach((user, index) => {
-        const diasAtras = Math.floor((Date.now() - new Date(user.criado_em).getTime()) / (1000 * 60 * 60 * 24));
-        console.log(`   ${index + 1}. ${user.nome} (${user.email_login}) - ${user.tipo_colaborador} - ${diasAtras} dias atrás`);
-      });
-
-      // ===============================================
-      // 4. REMOVER USUÁRIOS NÃO VERIFICADOS
-      // ===============================================
+    if (usuariosParaExcluir.rowCount > 0) {
+      console.log(`🗑️ ${usuariosParaExcluir.rowCount} usuários antigos serão excluídos definitivamente (+45 dias):`);
       
-      console.log('🗑️ Removendo usuários não verificados...');
+      for (const user of usuariosParaExcluir.rows) {
+        console.log(`   - ${user.nome} (${user.email_login}) - ${Math.floor(user.dias_desde_criacao)} dias`);
+      }
       
-      // Primeiro, remover tokens relacionados
+      // Remover tokens primeiro
       const tokensRemovidos = await client.query(`
         DELETE FROM verificacoes_email 
         WHERE usuario_id IN (
           SELECT id FROM usuarios 
           WHERE email_verificado = false 
-            AND criado_em < NOW() - INTERVAL '7 days'
+            AND criado_em < NOW() - INTERVAL '45 days'
             AND (
               tipo_colaborador = 'clt_associado' 
-              OR (tipo_colaborador = 'estagiario' AND aprovado_admin IS NULL)
+              OR (tipo_colaborador = 'estagiario' AND aprovado_admin = true)
             )
         )
         RETURNING id
       `);
       
-      console.log(`🗑️ ${tokensRemovidos.rowCount} tokens de usuários removidos`);
+      // Remover logs administrativos
+      const logsRemovidos = await client.query(`
+        DELETE FROM usuarios_admin_log 
+        WHERE usuario_id IN (
+          SELECT id FROM usuarios 
+          WHERE email_verificado = false 
+            AND criado_em < NOW() - INTERVAL '45 days'
+            AND (
+              tipo_colaborador = 'clt_associado' 
+              OR (tipo_colaborador = 'estagiario' AND aprovado_admin = true)
+            )
+        )
+        RETURNING id
+      `);
       
-      // Depois, remover usuários
+      // Remover usuários
       const usuariosRemovidos = await client.query(`
         DELETE FROM usuarios 
         WHERE email_verificado = false 
-          AND criado_em < NOW() - INTERVAL '7 days'
+          AND criado_em < NOW() - INTERVAL '45 days'
           AND (
             tipo_colaborador = 'clt_associado' 
-            OR (tipo_colaborador = 'estagiario' AND aprovado_admin IS NULL)
+            OR (tipo_colaborador = 'estagiario' AND aprovado_admin = true)
           )
-        RETURNING id, nome, tipo_colaborador
+        RETURNING id, nome
       `);
       
-      console.log(`✅ ${usuariosRemovidos.rowCount} usuários não verificados removidos`);
+      console.log(`✅ Limpeza definitiva realizada:`, {
+        tokens_removidos: tokensRemovidos.rowCount,
+        logs_removidos: logsRemovidos.rowCount,
+        usuarios_removidos: usuariosRemovidos.rowCount
+      });
       
     } else {
-      console.log('ℹ️ Nenhum usuário não verificado para remoção');
+      console.log('ℹ️ Nenhum usuário antigo para exclusão definitiva');
     }
 
     // ===============================================
@@ -160,8 +230,7 @@ async function executarLimpeza() {
       SELECT 
         usuario_id,
         COUNT(*) as total_tokens,
-        STRING_AGG(id::text, ', ') as token_ids,
-        STRING_AGG(token, ', ') as tokens
+        STRING_AGG(id::text, ', ') as token_ids
       FROM verificacoes_email 
       WHERE usado_em IS NULL 
         AND tipo_token = 'verificacao_email'
@@ -175,7 +244,7 @@ async function executarLimpeza() {
       console.log(`⚠️ ${tokensDuplicados.rowCount} usuários com tokens duplicados encontrados`);
       
       for (const duplicata of tokensDuplicados.rows) {
-        // Manter apenas o token mais recente, invalidar os outros
+        // Manter apenas o token mais recente
         const tokenMaisRecente = await client.query(`
           SELECT id FROM verificacoes_email 
           WHERE usuario_id = $1 
@@ -207,7 +276,7 @@ async function executarLimpeza() {
     }
 
     // ===============================================
-    // 6. ESTATÍSTICAS FINAIS
+    // 6. ESTATÍSTICAS FINAIS DETALHADAS
     // ===============================================
     
     console.log('📊 Coletando estatísticas finais...');
@@ -218,7 +287,9 @@ async function executarLimpeza() {
         COUNT(*) FILTER (WHERE email_verificado = false) as usuarios_nao_verificados,
         COUNT(*) FILTER (WHERE tipo_colaborador = 'estagiario') as total_estagiarios,
         COUNT(*) FILTER (WHERE tipo_colaborador = 'clt_associado') as total_clt_associados,
-        COUNT(*) FILTER (WHERE tipo_colaborador = 'estagiario' AND aprovado_admin IS NULL) as estagiarios_pendentes
+        COUNT(*) FILTER (WHERE tipo_colaborador = 'estagiario' AND aprovado_admin IS NULL) as estagiarios_pendentes,
+        COUNT(*) FILTER (WHERE email_verificado = false AND criado_em < NOW() - INTERVAL '7 days') as usuarios_token_problemas,
+        COUNT(*) FILTER (WHERE email_verificado = false AND criado_em < NOW() - INTERVAL '30 days') as usuarios_muito_antigos
       FROM usuarios
     `);
 
@@ -233,13 +304,24 @@ async function executarLimpeza() {
       WHERE tipo_token = 'verificacao_email'
     `);
 
+    // Estatísticas dos logs administrativos
+    const estatisticasLogs = await client.query(`
+      SELECT 
+        COUNT(*) as total_logs,
+        COUNT(*) FILTER (WHERE ativo = true) as usuarios_ativos,
+        COUNT(*) FILTER (WHERE ativo = false) as usuarios_revogados,
+        COUNT(*) FILTER (WHERE observacoes LIKE '%Token expirado%') as usuarios_com_problema_token
+      FROM usuarios_admin_log
+    `);
+
     await client.query('COMMIT');
     console.log('✅ Transação commitada com sucesso');
 
     const stats = estatisticas.rows[0];
     const tokenStats = estatisticasTokens.rows[0];
+    const logStats = estatisticasLogs.rows[0];
 
-    console.log(`📊 ESTATÍSTICAS APÓS LIMPEZA:
+    console.log(`📊 ESTATÍSTICAS COMPLETAS APÓS LIMPEZA:
     
 👥 USUÁRIOS:
   - Total: ${stats.total_usuarios}
@@ -248,6 +330,8 @@ async function executarLimpeza() {
   - Estagiários: ${stats.total_estagiarios}
   - CLT/Associados: ${stats.total_clt_associados}
   - Estagiários pendentes aprovação: ${stats.estagiarios_pendentes}
+  - Com problemas de token (+7 dias): ${stats.usuarios_token_problemas}
+  - Muito antigos (+30 dias): ${stats.usuarios_muito_antigos}
 
 🎫 TOKENS:
   - Total: ${tokenStats.total_tokens}
@@ -255,13 +339,18 @@ async function executarLimpeza() {
   - Expirados: ${tokenStats.tokens_expirados}
   - Usados: ${tokenStats.tokens_usados}
   - Usuários com tokens ativos: ${tokenStats.usuarios_com_tokens_ativos}
+
+📋 LOGS ADMINISTRATIVOS:
+  - Total de registros: ${logStats.total_logs}
+  - Usuários ativos: ${logStats.usuarios_ativos}
+  - Usuários revogados: ${logStats.usuarios_revogados}
+  - Usuários com problema de token: ${logStats.usuarios_com_problema_token}
     `);
     
-    console.log('✅ LIMPEZA CONCLUÍDA COM SUCESSO!');
+    console.log('✅ LIMPEZA MELHORADA CONCLUÍDA COM SUCESSO!');
     console.log('📅 Finalizado em:', new Date().toISOString());
     
   } catch (error) {
-    // Rollback em caso de erro
     try {
       await client.query('ROLLBACK');
       console.log('🔄 Rollback executado devido ao erro');
@@ -271,65 +360,22 @@ async function executarLimpeza() {
     
     console.error('❌ ERRO NA LIMPEZA:', error.message);
     console.error('📍 Stack trace:', error.stack);
-    
-    // Log adicional para debug
-    console.error('🔧 Informações de debug:', {
-      error_name: error.name,
-      error_code: error.code,
-      error_detail: error.detail,
-      error_hint: error.hint,
-      database_url_exists: !!process.env.DATABASE_URL,
-      node_env: process.env.NODE_ENV
-    });
-    
-    process.exit(1); // Exit com erro para o Railway detectar falha
+    process.exit(1);
     
   } finally {
-    // Sempre liberar a conexão
     client.release();
     console.log('🔌 Conexão de transação liberada');
   }
 }
 
-// ===============================================
-// FUNÇÃO DE TESTE DE CONEXÃO
-// ===============================================
-
-async function testarConexao() {
-  try {
-    console.log('🔍 Testando conexão com o banco...');
-    const result = await pool.query('SELECT NOW() as agora, version() as versao');
-    console.log('✅ Conexão testada com sucesso!');
-    console.log('⏰ Hora do banco:', result.rows[0].agora);
-    console.log('📊 Versão do PostgreSQL:', result.rows[0].versao.split(' ')[0]);
-    return true;
-  } catch (error) {
-    console.error('❌ Erro no teste de conexão:', error.message);
-    return false;
-  }
-}
-
-// ===============================================
-// EXECUÇÃO PRINCIPAL
-// ===============================================
-
+// Execução principal (igual ao anterior)
 async function main() {
-  console.log('🚀 INICIANDO SCRIPT DE LIMPEZA');
+  console.log('🚀 INICIANDO SCRIPT DE LIMPEZA MELHORADO');
   console.log('📦 Versão Node.js:', process.version);
   console.log('🌐 Ambiente:', process.env.NODE_ENV || 'development');
   
-  // Testar conexão primeiro
-  const conexaoOk = await testarConexao();
-  
-  if (!conexaoOk) {
-    console.error('❌ Falha na conexão. Abortando limpeza.');
-    process.exit(1);
-  }
-  
-  // Executar limpeza
   await executarLimpeza();
   
-  // Fechar pool de conexões
   try {
     await pool.end();
     console.log('🔌 Pool de conexões encerrado');
@@ -341,33 +387,6 @@ async function main() {
   process.exit(0);
 }
 
-// Capturar sinais de interrupção
-process.on('SIGINT', () => {
-  console.log('🛑 SIGINT recebido. Encerrando graciosamente...');
-  pool.end(() => {
-    process.exit(0);
-  });
-});
-
-process.on('SIGTERM', () => {
-  console.log('🛑 SIGTERM recebido. Encerrando graciosamente...');
-  pool.end(() => {
-    process.exit(0);
-  });
-});
-
-// Capturar erros não tratados
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-  process.exit(1);
-});
-
-process.on('uncaughtException', (error) => {
-  console.error('❌ Uncaught Exception:', error);
-  process.exit(1);
-});
-
-// Executar script principal
 main().catch((error) => {
   console.error('❌ Erro fatal no script principal:', error);
   process.exit(1);

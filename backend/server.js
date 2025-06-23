@@ -3783,9 +3783,160 @@ app.post('/api/admin/reenviar-codigo/:userId', adminMiddleware, async (req, res)
   }
 });
 
+app.post('/api/admin/reenviar-codigo-problema/:userId', adminMiddleware, async (req, res) => {
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    const { userId } = req.params;
+
+    console.log(`📧 ADMIN: Reenviando código para usuário com problema ${userId}`);
+
+    // Buscar usuário
+    const userResult = await client.query(
+      'SELECT * FROM usuarios WHERE id = $1',
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const user = userResult.rows[0];
+
+    if (user.email_verificado) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Usuário já está verificado' });
+    }
+
+    // Verificar se pode reenviar
+    if (user.tipo_colaborador === 'estagiario' && !user.aprovado_admin) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Estagiário ainda não foi aprovado pelo admin' });
+    }
+
+    // Contar tentativas de reenvio nas últimas 24h
+    const tentativasRecentes = await client.query(
+      `SELECT COUNT(*) as total 
+       FROM verificacoes_email 
+       WHERE usuario_id = $1 
+         AND tipo_token = 'verificacao_email'
+         AND criado_em > NOW() - INTERVAL '24 hours'`,
+      [userId]
+    );
+
+    if (parseInt(tentativasRecentes.rows[0].total) >= 5) {
+      await client.query('ROLLBACK');
+      return res.status(429).json({ 
+        error: 'Limite de reenvios atingido (5 por dia). Aguarde 24 horas.' 
+      });
+    }
+
+    // Invalidar tokens anteriores
+    await client.query(
+      'UPDATE verificacoes_email SET usado_em = NOW() WHERE usuario_id = $1 AND usado_em IS NULL',
+      [userId]
+    );
+
+    // Gerar novo token/código baseado no tipo
+    const emailDestino = user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email;
+    let novoToken, tipoToken, assunto, templateHtml;
+    const expiraEm = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 dias
+
+    if (user.tipo_colaborador === 'estagiario') {
+      // Estagiários: gerar link de validação
+      novoToken = require('crypto').randomBytes(32).toString('hex');
+      tipoToken = 'verificacao_email';
+      assunto = '🔗 Novo link de verificação - Dashboards RMH';
+      const linkValidacao = `${process.env.API_BASE_URL}/api/auth/validar-email/${novoToken}`;
+      templateHtml = await gerarTemplateValidacaoEstagiario(user.nome, linkValidacao, emailDestino);
+    } else {
+      // CLT: gerar código numérico
+      novoToken = Math.floor(100000 + Math.random() * 900000).toString();
+      tipoToken = 'verificacao_email';
+      assunto = '🔐 Novo código de verificação - Dashboards RMH';
+      templateHtml = await gerarTemplateVerificacao(user.nome, novoToken, emailDestino, user.tipo_colaborador);
+    }
+
+    // Criar novo token/código
+    await client.query(
+      `INSERT INTO verificacoes_email (usuario_id, token, tipo_token, expira_em) 
+       VALUES ($1, $2, $3, $4)`,
+      [userId, novoToken, tipoToken, expiraEm]
+    );
+
+    // Atualizar log administrativo se existir
+    const logResult = await client.query(
+      'SELECT id FROM usuarios_admin_log WHERE usuario_id = $1',
+      [userId]
+    );
+
+    if (logResult.rows.length > 0) {
+      await client.query(
+        `UPDATE usuarios_admin_log 
+         SET observacoes = $1, atualizado_em = NOW()
+         WHERE usuario_id = $2`,
+        [
+          `Novo ${user.tipo_colaborador === 'estagiario' ? 'link' : 'código'} reenviado pelo admin ${req.user.nome} em ${new Date().toLocaleString('pt-BR')}`,
+          userId
+        ]
+      );
+    } else {
+      await client.query(
+        `INSERT INTO usuarios_admin_log (usuario_id, ativo, observacoes, criado_em, atualizado_em) 
+         VALUES ($1, true, $2, NOW(), NOW())`,
+        [
+          userId,
+          `Primeiro reenvio pelo admin ${req.user.nome} em ${new Date().toLocaleString('pt-BR')}`
+        ]
+      );
+    }
+
+    await client.query('COMMIT');
+
+    // Enviar email
+    try {
+      const { Resend } = require('resend');
+      const resend = new Resend(process.env.RESEND_API_KEY);
+
+      await resend.emails.send({
+        from: 'andre.macedo@resendemh.com.br',
+        to: [emailDestino],
+        subject: assunto,
+        html: templateHtml
+      });
+
+      console.log(`✅ ADMIN: ${user.tipo_colaborador === 'estagiario' ? 'Link' : 'Código'} reenviado para ${emailDestino} pelo admin ${req.user.nome}`);
+
+    } catch (emailError) {
+      console.error('❌ Erro ao enviar email:', emailError);
+      return res.status(500).json({ error: 'Erro ao enviar email' });
+    }
+
+    res.json({
+      message: user.tipo_colaborador === 'estagiario' 
+        ? 'Novo link de verificação enviado com sucesso'
+        : 'Novo código de verificação enviado com sucesso',
+      email_enviado_para: emailDestino,
+      tipo_colaborador: user.tipo_colaborador,
+      tipo_envio: user.tipo_colaborador === 'estagiario' ? 'link' : 'codigo',
+      tentativas_hoje: parseInt(tentativasRecentes.rows[0].total) + 1
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('❌ Erro ao reenviar código:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  } finally {
+    client.release();
+  }
+});
+
 app.get('/api/admin/usuarios-tokens-expirados', adminMiddleware, async (req, res) => {
   try {
-    console.log('⏰ ADMIN: Listando usuários com tokens expirados');
+    console.log('📋 ADMIN: Listando usuários com problemas de token');
 
     const result = await pool.query(`
       SELECT 
@@ -3798,49 +3949,119 @@ app.get('/api/admin/usuarios-tokens-expirados', adminMiddleware, async (req, res
         u.email_verificado,
         u.aprovado_admin,
         u.criado_em,
+        
+        -- Email de login
+        CASE 
+          WHEN u.tipo_colaborador = 'estagiario' THEN u.email_pessoal 
+          ELSE u.email 
+        END as email_login,
+        
+        -- Informações do token ativo (se existir)
         v.token as codigo_verificacao,
         v.expira_em as codigo_expira_em,
         v.criado_em as codigo_criado_em,
-        EXTRACT(EPOCH FROM (NOW() - v.expira_em))/3600 as horas_expirado,
-        EXTRACT(EPOCH FROM (NOW() - u.criado_em))/3600 as horas_desde_criacao
+        
+        -- Status detalhado do token
+        CASE 
+          WHEN v.token IS NULL THEN 'sem_codigo'
+          WHEN v.expira_em < NOW() THEN 'codigo_expirado' 
+          WHEN v.usado_em IS NOT NULL THEN 'codigo_usado'
+          ELSE 'codigo_ativo'
+        END as status_token,
+        
+        -- Tempo desde criação do usuário
+        EXTRACT(DAYS FROM (NOW() - u.criado_em)) as dias_desde_criacao,
+        
+        -- Tempo desde/até expiração do token
+        CASE 
+          WHEN v.expira_em IS NOT NULL THEN 
+            EXTRACT(EPOCH FROM (NOW() - v.expira_em))/3600
+          ELSE NULL
+        END as horas_desde_expiracao,
+        
+        -- Observações do log administrativo
+        ual.observacoes,
+        ual.ativo as usuario_ativo,
+        
+        -- Classificação do problema
+        CASE 
+          WHEN u.criado_em < NOW() - INTERVAL '45 days' AND u.email_verificado = false THEN 'muito_antigo'
+          WHEN u.criado_em < NOW() - INTERVAL '30 days' AND u.email_verificado = false THEN 'antigo'
+          WHEN u.criado_em < NOW() - INTERVAL '7 days' AND u.email_verificado = false AND v.token IS NULL THEN 'sem_token'
+          WHEN v.expira_em < NOW() THEN 'token_expirado'
+          ELSE 'normal'
+        END as categoria_problema
+        
       FROM usuarios u
       LEFT JOIN verificacoes_email v ON u.id = v.usuario_id 
         AND v.tipo_token = 'verificacao_email' 
         AND v.usado_em IS NULL
+      LEFT JOIN usuarios_admin_log ual ON u.id = ual.usuario_id
       WHERE 
         u.email_verificado = false
         AND (
-          -- CLT com código expirado
-          (u.tipo_colaborador = 'clt_associado' AND v.expira_em < NOW())
+          -- CLT não verificado há mais de 1 dia
+          (u.tipo_colaborador = 'clt_associado' AND u.criado_em < NOW() - INTERVAL '1 day')
           OR
-          -- Estagiário aprovado com link expirado
-          (u.tipo_colaborador = 'estagiario' AND u.aprovado_admin = true AND v.expira_em < NOW())
+          -- Estagiário aprovado não verificado há mais de 1 dia
+          (u.tipo_colaborador = 'estagiario' AND u.aprovado_admin = true AND u.criado_em < NOW() - INTERVAL '1 day')
           OR
-          -- Usuários sem nenhum código/link gerado há mais de 1 hora
-          (v.token IS NULL AND u.criado_em < NOW() - INTERVAL '1 hour')
+          -- Qualquer usuário com token expirado
+          (v.expira_em < NOW())
+          OR
+          -- Usuários antigos sem token
+          (v.token IS NULL AND u.criado_em < NOW() - INTERVAL '2 days')
         )
-      ORDER BY v.expira_em ASC NULLS LAST, u.criado_em DESC
+      ORDER BY 
+        CASE 
+          WHEN u.criado_em < NOW() - INTERVAL '45 days' THEN 1  -- Muito antigos primeiro
+          WHEN v.expira_em < NOW() THEN 2                        -- Tokens expirados
+          WHEN v.token IS NULL THEN 3                            -- Sem token
+          ELSE 4                                                 -- Outros
+        END,
+        u.criado_em ASC
     `);
 
     const usuarios = result.rows.map(user => ({
       ...user,
-      email_login: user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email,
-      status_token: user.codigo_verificacao 
-        ? (user.codigo_expira_em < new Date() ? 'expirado' : 'ativo')
-        : 'sem_codigo',
+      dias_expirado: user.horas_desde_expiracao > 0 ? Math.floor(user.horas_desde_expiracao / 24) : 0,
       pode_reenviar: user.tipo_colaborador === 'clt_associado' || 
-                     (user.tipo_colaborador === 'estagiario' && user.aprovado_admin)
+                     (user.tipo_colaborador === 'estagiario' && user.aprovado_admin),
+      prioridade: (() => {
+        if (user.categoria_problema === 'muito_antigo') return 'alta';
+        if (user.categoria_problema === 'antigo') return 'media';
+        if (user.categoria_problema === 'token_expirado') return 'media';
+        return 'baixa';
+      })()
     }));
+
+    // Agrupar por categoria
+    const categorias = {
+      muito_antigos: usuarios.filter(u => u.categoria_problema === 'muito_antigo'),
+      antigos: usuarios.filter(u => u.categoria_problema === 'antigo'),
+      tokens_expirados: usuarios.filter(u => u.categoria_problema === 'token_expirado'),
+      sem_token: usuarios.filter(u => u.categoria_problema === 'sem_token'),
+      outros: usuarios.filter(u => !['muito_antigo', 'antigo', 'token_expirado', 'sem_token'].includes(u.categoria_problema))
+    };
 
     res.json({
       usuarios,
       total: usuarios.length,
-      com_codigo_expirado: usuarios.filter(u => u.status_token === 'expirado').length,
-      sem_codigo: usuarios.filter(u => u.status_token === 'sem_codigo').length
+      categorias,
+      estatisticas: {
+        total_com_problemas: usuarios.length,
+        muito_antigos: categorias.muito_antigos.length,
+        antigos: categorias.antigos.length,
+        tokens_expirados: categorias.tokens_expirados.length,
+        sem_token: categorias.sem_token.length,
+        alta_prioridade: usuarios.filter(u => u.prioridade === 'alta').length,
+        media_prioridade: usuarios.filter(u => u.prioridade === 'media').length,
+        baixa_prioridade: usuarios.filter(u => u.prioridade === 'baixa').length
+      }
     });
 
   } catch (error) {
-    console.error('❌ Erro ao listar tokens expirados:', error);
+    console.error('❌ Erro ao listar usuários com problemas de token:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
@@ -4236,6 +4457,286 @@ app.get('/api/admin/usuario/:userId', adminMiddleware, async (req, res) => {
 
   } catch (error) {
     console.error('❌ Erro ao buscar usuário:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+app.delete('/api/admin/excluir-usuario-problema/:userId', adminMiddleware, async (req, res) => {
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    const { userId } = req.params;
+    const { motivo = 'Token expirado há muito tempo' } = req.body;
+
+    console.log(`🗑️ ADMIN: Excluindo usuário ${userId} com problema de token`);
+
+    // Verificar se usuário existe e tem problemas
+    const userResult = await client.query(
+      `SELECT 
+         u.nome, 
+         u.email, 
+         u.email_pessoal, 
+         u.tipo_colaborador,
+         u.email_verificado,
+         EXTRACT(DAYS FROM (NOW() - u.criado_em)) as dias_desde_criacao
+       FROM usuarios u 
+       WHERE u.id = $1 AND u.email_verificado = false`,
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Usuário não encontrado ou já verificado' });
+    }
+
+    const user = userResult.rows[0];
+    const emailLogin = user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email;
+
+    // Log da exclusão
+    console.log(`🗑️ Excluindo usuário: ${user.nome} (${emailLogin}) - ${Math.floor(user.dias_desde_criacao)} dias de conta`);
+
+    // Remover tokens relacionados
+    await client.query('DELETE FROM verificacoes_email WHERE usuario_id = $1', [userId]);
+
+    // Remover logs administrativos
+    await client.query('DELETE FROM usuarios_admin_log WHERE usuario_id = $1', [userId]);
+
+    // Remover usuário
+    await client.query('DELETE FROM usuarios WHERE id = $1', [userId]);
+
+    await client.query('COMMIT');
+
+    console.log(`✅ ADMIN: Usuário ${user.nome} excluído definitivamente por ${req.user.nome}`);
+
+    res.json({
+      message: 'Usuário excluído com sucesso',
+      usuario_excluido: {
+        nome: user.nome,
+        email: emailLogin,
+        tipo_colaborador: user.tipo_colaborador,
+        dias_desde_criacao: Math.floor(user.dias_desde_criacao)
+      },
+      motivo
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('❌ Erro ao excluir usuário:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  } finally {
+    client.release();
+  }
+});
+
+// AÇÃO EM LOTE: REENVIAR PARA MÚLTIPLOS USUÁRIOS
+app.post('/api/admin/reenviar-lote-problemas', adminMiddleware, async (req, res) => {
+  const { userIds } = req.body;
+
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    return res.status(400).json({ error: 'Lista de IDs de usuários inválida' });
+  }
+
+  if (userIds.length > 10) {
+    return res.status(400).json({ error: 'Máximo de 10 usuários por vez' });
+  }
+
+  const resultados = {
+    sucessos: [],
+    erros: [],
+    total_processados: 0
+  };
+
+  console.log(`📧 ADMIN: Reenvio em lote para ${userIds.length} usuários por ${req.user.nome}`);
+
+  for (const userId of userIds) {
+    try {
+      const response = await fetch(`${process.env.API_BASE_URL}/api/admin/reenviar-codigo-problema/${userId}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': req.headers.authorization,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        resultados.sucessos.push({
+          userId,
+          email: data.email_enviado_para,
+          tipo: data.tipo_envio
+        });
+      } else {
+        resultados.erros.push({
+          userId,
+          erro: data.error || 'Erro desconhecido'
+        });
+      }
+
+    } catch (error) {
+      resultados.erros.push({
+        userId,
+        erro: 'Erro de conexão'
+      });
+    }
+
+    resultados.total_processados++;
+  }
+
+  console.log(`✅ ADMIN: Reenvio em lote finalizado - ${resultados.sucessos.length} sucessos, ${resultados.erros.length} erros`);
+
+  res.json({
+    message: `Processamento concluído: ${resultados.sucessos.length} sucessos, ${resultados.erros.length} erros`,
+    resultados
+  });
+});
+
+// AÇÃO EM LOTE: EXCLUIR MÚLTIPLOS USUÁRIOS
+app.post('/api/admin/excluir-lote-problemas', adminMiddleware, async (req, res) => {
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    const { userIds, motivo = 'Limpeza administrativa de usuários com problemas de token' } = req.body;
+
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Lista de IDs de usuários inválida' });
+    }
+
+    if (userIds.length > 20) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Máximo de 20 usuários por vez' });
+    }
+
+    console.log(`🗑️ ADMIN: Exclusão em lote de ${userIds.length} usuários por ${req.user.nome}`);
+
+    // Verificar usuários válidos
+    const usersResult = await client.query(
+      'SELECT id, nome, email, email_pessoal, tipo_colaborador FROM usuarios WHERE id = ANY($1) AND email_verificado = false',
+      [userIds]
+    );
+
+    if (usersResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Nenhum usuário válido encontrado' });
+    }
+
+    const validUserIds = usersResult.rows.map(u => u.id);
+    const usuariosParaExcluir = usersResult.rows;
+
+    // Remover tokens
+    const tokensResult = await client.query(
+      'DELETE FROM verificacoes_email WHERE usuario_id = ANY($1) RETURNING id',
+      [validUserIds]
+    );
+
+    // Remover logs
+    const logsResult = await client.query(
+      'DELETE FROM usuarios_admin_log WHERE usuario_id = ANY($1) RETURNING id',
+      [validUserIds]
+    );
+
+    // Remover usuários
+    const usuariosResult = await client.query(
+      'DELETE FROM usuarios WHERE id = ANY($1) RETURNING nome',
+      [validUserIds]
+    );
+
+    await client.query('COMMIT');
+
+    console.log(`✅ ADMIN: ${usuariosResult.rowCount} usuários excluídos em lote por ${req.user.nome}`);
+
+    res.json({
+      message: 'Usuários excluídos com sucesso',
+      usuarios_excluidos: usuariosResult.rowCount,
+      tokens_removidos: tokensResult.rowCount,
+      logs_removidos: logsResult.rowCount,
+      detalhes: usuariosParaExcluir.map(u => ({
+        nome: u.nome,
+        email: u.tipo_colaborador === 'estagiario' ? u.email_pessoal : u.email,
+        tipo: u.tipo_colaborador
+      })),
+      motivo
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('❌ Erro na exclusão em lote:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  } finally {
+    client.release();
+  }
+});
+
+// ESTATÍSTICAS DETALHADAS DE PROBLEMAS DE TOKEN
+app.get('/api/admin/estatisticas-tokens', adminMiddleware, async (req, res) => {
+  try {
+    const stats = await pool.query(`
+      SELECT 
+        -- Usuários com problemas por tempo
+        COUNT(*) FILTER (
+          WHERE email_verificado = false 
+          AND criado_em < NOW() - INTERVAL '45 days'
+        ) as muito_antigos,
+        
+        COUNT(*) FILTER (
+          WHERE email_verificado = false 
+          AND criado_em < NOW() - INTERVAL '30 days'
+          AND criado_em >= NOW() - INTERVAL '45 days'
+        ) as antigos,
+        
+        COUNT(*) FILTER (
+          WHERE email_verificado = false 
+          AND criado_em < NOW() - INTERVAL '7 days'
+          AND criado_em >= NOW() - INTERVAL '30 days'
+        ) as moderados,
+        
+        -- Usuários por tipo
+        COUNT(*) FILTER (
+          WHERE email_verificado = false 
+          AND tipo_colaborador = 'clt_associado'
+          AND criado_em < NOW() - INTERVAL '1 day'
+        ) as clt_nao_verificados,
+        
+        COUNT(*) FILTER (
+          WHERE email_verificado = false 
+          AND tipo_colaborador = 'estagiario'
+          AND aprovado_admin = true
+          AND criado_em < NOW() - INTERVAL '1 day'
+        ) as estagiarios_nao_verificados,
+        
+        -- Total geral
+        COUNT(*) FILTER (WHERE email_verificado = false) as total_nao_verificados
+      FROM usuarios
+    `);
+
+    const tokenStats = await pool.query(`
+      SELECT 
+        COUNT(*) as total_tokens,
+        COUNT(*) FILTER (WHERE expira_em < NOW()) as tokens_expirados,
+        COUNT(*) FILTER (WHERE expira_em > NOW() AND usado_em IS NULL) as tokens_ativos,
+        COUNT(*) FILTER (WHERE usado_em IS NOT NULL) as tokens_usados,
+        COUNT(DISTINCT usuario_id) as usuarios_com_tokens
+      FROM verificacoes_email 
+      WHERE tipo_token = 'verificacao_email'
+    `);
+
+    res.json({
+      usuarios: stats.rows[0],
+      tokens: tokenStats.rows[0],
+      recomendacoes: {
+        acao_necessaria: parseInt(stats.rows[0].muito_antigos) > 0,
+        usuarios_criticos: parseInt(stats.rows[0].muito_antigos),
+        usuarios_atenção: parseInt(stats.rows[0].antigos)
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar estatísticas de tokens:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });

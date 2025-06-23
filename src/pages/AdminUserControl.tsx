@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { TokensExpiradosTab } from './TokensExpiradosTab';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -900,11 +901,6 @@ const AdminUserControl: React.FC = () => {
           <TabsTrigger value="verificacoes" className="relative">
             <Clock className="h-4 w-4 mr-2" />
             Verificações & Tokens
-            {(stats.pendentes_aprovacao + stats.nao_verificados) > 0 && (
-              <Badge variant="destructive" className="ml-2 h-5 w-5 p-0 text-xs">
-                {stats.pendentes_aprovacao + stats.nao_verificados}
-              </Badge>
-            )}
           </TabsTrigger>
         </TabsList>
 
@@ -1326,10 +1322,9 @@ const AdminUserControl: React.FC = () => {
 
         {/* 🆕 ABA 2: VERIFICAÇÕES & TOKENS */}
         <TabsContent value="verificacoes" className="space-y-6">
-          <TokensExpiradosSection 
-            activeTab={activeTab}
+          <TokensExpiradosTab 
+            API_BASE_URL={API_BASE_URL}
             fetchWithAuth={fetchWithAuth}
-            toast={toast}
           />
         </TabsContent>
       </Tabs>

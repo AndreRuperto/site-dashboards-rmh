@@ -1,0 +1,649 @@
+// TokensExpiradosTab.tsx - Versão melhorada usando estrutura existente
+import React, { useState, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { 
+  Clock, 
+  RefreshCw, 
+  Trash2, 
+  Mail, 
+  AlertTriangle,
+  CheckSquare,
+  Square,
+  Users,
+  Calendar,
+  Timer,
+  AlertCircle,
+  Send,
+  UserX
+} from 'lucide-react';
+
+interface UsuarioComProblema {
+  id: string;
+  nome: string;
+  email: string;
+  email_pessoal: string;
+  email_login: string;
+  setor: string;
+  tipo_colaborador: 'estagiario' | 'clt_associado';
+  criado_em: string;
+  status_token: 'sem_codigo' | 'codigo_expirado' | 'codigo_ativo' | 'codigo_usado';
+  categoria_problema: 'muito_antigo' | 'antigo' | 'token_expirado' | 'sem_token' | 'normal';
+  dias_desde_criacao: number;
+  dias_expirado: number;
+  pode_reenviar: boolean;
+  prioridade: 'alta' | 'media' | 'baixa';
+  observacoes?: string;
+}
+
+interface TokensExpiradosProps {
+  API_BASE_URL: string;
+  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
+}
+
+export const TokensExpiradosTab: React.FC<TokensExpiradosProps> = ({ 
+  API_BASE_URL, 
+  fetchWithAuth 
+}) => {
+  const [usuarios, setUsuarios] = useState<UsuarioComProblema[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [actionLoading, setActionLoading] = useState<Set<string>>(new Set());
+  const [filtroCategoria, setFiltroCategoria] = useState<string>('todos');
+  const [estatisticas, setEstatisticas] = useState<any>({});
+  const { toast } = useToast();
+
+  // Buscar usuários com problemas de token
+  const fetchUsuariosComProblemas = async () => {
+    try {
+      setLoading(true);
+      
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/admin/usuarios-tokens-expirados`);
+      
+      if (!response.ok) {
+        throw new Error('Erro ao carregar usuários com problemas');
+      }
+
+      const data = await response.json();
+      setUsuarios(data.usuarios || []);
+      setEstatisticas(data.estatisticas || {});
+      
+    } catch (error) {
+      console.error('❌ Erro ao carregar usuários com problemas:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar usuários com problemas de token",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchUsuariosComProblemas();
+  }, []);
+
+  // Reenviar código para um usuário
+  const reenviarCodigo = async (userId: string) => {
+    setActionLoading(prev => new Set(prev).add(userId));
+    
+    try {
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/admin/reenviar-codigo-problema/${userId}`, {
+        method: 'POST'
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro ao reenviar código');
+      }
+
+      const data = await response.json();
+      
+      toast({
+        title: "✅ Código reenviado!",
+        description: `${data.tipo_envio === 'link' ? 'Link' : 'Código'} enviado para ${data.email_enviado_para}`,
+        variant: "default"
+      });
+
+      // Recarregar lista
+      await fetchUsuariosComProblemas();
+      
+    } catch (error) {
+      console.error('❌ Erro ao reenviar código:', error);
+      toast({
+        title: "Erro",
+        description: error instanceof Error ? error.message : "Não foi possível reenviar o código",
+        variant: "destructive"
+      });
+    } finally {
+      setActionLoading(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(userId);
+        return newSet;
+      });
+    }
+  };
+
+  // Excluir um usuário
+  const excluirUsuario = async (userId: string) => {
+    if (!confirm('Tem certeza que deseja excluir este usuário definitivamente?')) return;
+    
+    setActionLoading(prev => new Set(prev).add(userId));
+    
+    try {
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/admin/excluir-usuario-problema/${userId}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ motivo: 'Exclusão manual via painel admin' })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro ao excluir usuário');
+      }
+
+      toast({
+        title: "✅ Usuário excluído!",
+        description: "Usuário removido definitivamente do sistema",
+        variant: "default"
+      });
+
+      // Recarregar lista
+      await fetchUsuariosComProblemas();
+      
+    } catch (error) {
+      console.error('❌ Erro ao excluir usuário:', error);
+      toast({
+        title: "Erro",
+        description: error instanceof Error ? error.message : "Não foi possível excluir o usuário",
+        variant: "destructive"
+      });
+    } finally {
+      setActionLoading(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(userId);
+        return newSet;
+      });
+    }
+  };
+
+  // Ações em lote
+  const reenviarSelecionados = async () => {
+    if (selecionados.size === 0) return;
+    
+    setLoading(true);
+    
+    try {
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/admin/reenviar-lote-problemas`, {
+        method: 'POST',
+        body: JSON.stringify({ userIds: Array.from(selecionados) })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro no reenvio em lote');
+      }
+
+      const data = await response.json();
+      
+      toast({
+        title: "✅ Reenvio em lote concluído!",
+        description: `${data.resultados.sucessos.length} sucessos, ${data.resultados.erros.length} erros`,
+        variant: "default"
+      });
+
+      setSelecionados(new Set());
+      await fetchUsuariosComProblemas();
+      
+    } catch (error) {
+      console.error('❌ Erro no reenvio em lote:', error);
+      toast({
+        title: "Erro",
+        description: error instanceof Error ? error.message : "Erro no reenvio em lote",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const excluirSelecionados = async () => {
+    if (selecionados.size === 0) return;
+    
+    if (!confirm(`Tem certeza que deseja excluir ${selecionados.size} usuários definitivamente?`)) return;
+    
+    setLoading(true);
+    
+    try {
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/admin/excluir-lote-problemas`, {
+        method: 'POST',
+        body: JSON.stringify({ 
+          userIds: Array.from(selecionados),
+          motivo: 'Exclusão em lote via painel admin'
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro na exclusão em lote');
+      }
+
+      const data = await response.json();
+      
+      toast({
+        title: "✅ Exclusão em lote concluída!",
+        description: `${data.usuarios_excluidos} usuários removidos definitivamente`,
+        variant: "default"
+      });
+
+      setSelecionados(new Set());
+      await fetchUsuariosComProblemas();
+      
+    } catch (error) {
+      console.error('❌ Erro na exclusão em lote:', error);
+      toast({
+        title: "Erro",
+        description: error instanceof Error ? error.message : "Erro na exclusão em lote",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Seleção
+  const toggleSelecionado = (userId: string) => {
+    setSelecionados(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(userId)) {
+        newSet.delete(userId);
+      } else {
+        newSet.add(userId);
+      }
+      return newSet;
+    });
+  };
+
+  const selecionarTodos = () => {
+    if (selecionados.size === usuariosFiltrados.length) {
+      setSelecionados(new Set());
+    } else {
+      setSelecionados(new Set(usuariosFiltrados.map(u => u.id)));
+    }
+  };
+
+  // Filtros
+  const usuariosFiltrados = usuarios.filter(usuario => {
+    if (filtroCategoria === 'todos') return true;
+    return usuario.categoria_problema === filtroCategoria;
+  });
+
+  // Função para obter cor baseada na prioridade
+  const getCorPrioridade = (prioridade: string) => {
+    switch (prioridade) {
+      case 'alta': return 'text-red-600 border-red-200 bg-red-50';
+      case 'media': return 'text-orange-600 border-orange-200 bg-orange-50';
+      case 'baixa': return 'text-blue-600 border-blue-200 bg-blue-50';
+      default: return 'text-gray-600 border-gray-200 bg-gray-50';
+    }
+  };
+
+  // Função para obter badge da categoria
+  const getCategoraBadge = (categoria: string) => {
+    switch (categoria) {
+      case 'muito_antigo':
+        return <Badge variant="destructive" className="bg-red-800">🔥 Muito Antigo</Badge>;
+      case 'antigo':
+        return <Badge variant="destructive">⚠️ Antigo</Badge>;
+      case 'token_expirado':
+        return <Badge variant="secondary" className="bg-orange-600">⏰ Token Expirado</Badge>;
+      case 'sem_token':
+        return <Badge variant="outline">📭 Sem Token</Badge>;
+      default:
+        return <Badge variant="outline">ℹ️ Normal</Badge>;
+    }
+  };
+
+  // Loading state
+  if (loading && usuarios.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <RefreshCw className="h-6 w-6 animate-spin mr-2" />
+        <span>Carregando usuários com problemas...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header com estatísticas */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <AlertTriangle className="h-5 w-5 text-red-600" />
+              <div>
+                <p className="text-sm font-medium text-gray-600">Alta Prioridade</p>
+                <p className="text-2xl font-bold text-red-600">{estatisticas.alta_prioridade || 0}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <Timer className="h-5 w-5 text-orange-600" />
+              <div>
+                <p className="text-sm font-medium text-gray-600">Média Prioridade</p>
+                <p className="text-2xl font-bold text-orange-600">{estatisticas.media_prioridade || 0}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <Clock className="h-5 w-5 text-blue-600" />
+              <div>
+                <p className="text-sm font-medium text-gray-600">Baixa Prioridade</p>
+                <p className="text-2xl font-bold text-blue-600">{estatisticas.baixa_prioridade || 0}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <Users className="h-5 w-5 text-gray-600" />
+              <div>
+                <p className="text-sm font-medium text-gray-600">Total</p>
+                <p className="text-2xl font-bold">{estatisticas.total_com_problemas || 0}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Alerta se há problemas críticos */}
+      {estatisticas.alta_prioridade > 0 && (
+        <Alert className="border-red-200 bg-red-50">
+          <AlertCircle className="h-4 w-4 text-red-600" />
+          <AlertDescription className="text-red-800">
+            <strong>Atenção!</strong> Há {estatisticas.alta_prioridade} usuário(s) com problemas críticos que precisam de ação imediata.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Filtros */}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant={filtroCategoria === 'todos' ? 'default' : 'outline'}
+          onClick={() => setFiltroCategoria('todos')}
+          size="sm"
+        >
+          Todos ({usuarios.length})
+        </Button>
+        <Button
+          variant={filtroCategoria === 'muito_antigo' ? 'default' : 'outline'}
+          onClick={() => setFiltroCategoria('muito_antigo')}
+          size="sm"
+          className="text-red-600"
+        >
+          Muito Antigos ({usuarios.filter(u => u.categoria_problema === 'muito_antigo').length})
+        </Button>
+        <Button
+          variant={filtroCategoria === 'antigo' ? 'default' : 'outline'}
+          onClick={() => setFiltroCategoria('antigo')}
+          size="sm"
+          className="text-orange-600"
+        >
+          Antigos ({usuarios.filter(u => u.categoria_problema === 'antigo').length})
+        </Button>
+        <Button
+          variant={filtroCategoria === 'token_expirado' ? 'default' : 'outline'}
+          onClick={() => setFiltroCategoria('token_expirado')}
+          size="sm"
+          className="text-yellow-600"
+        >
+          Token Expirado ({usuarios.filter(u => u.categoria_problema === 'token_expirado').length})
+        </Button>
+        <Button
+          variant={filtroCategoria === 'sem_token' ? 'default' : 'outline'}
+          onClick={() => setFiltroCategoria('sem_token')}
+          size="sm"
+          className="text-blue-600"
+        >
+          Sem Token ({usuarios.filter(u => u.categoria_problema === 'sem_token').length})
+        </Button>
+      </div>
+
+      {/* Ações em lote */}
+      {usuariosFiltrados.length > 0 && (
+        <div className="flex items-center justify-between bg-gray-50 p-4 rounded-lg">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={selecionarTodos}
+              className="flex items-center gap-2"
+            >
+              {selecionados.size === usuariosFiltrados.length ? (
+                <CheckSquare className="h-4 w-4" />
+              ) : (
+                <Square className="h-4 w-4" />
+              )}
+              {selecionados.size === usuariosFiltrados.length ? 'Desmarcar todos' : 'Selecionar todos'}
+            </Button>
+            
+            {selecionados.size > 0 && (
+              <span className="text-sm text-gray-600">
+                {selecionados.size} selecionado(s)
+              </span>
+            )}
+          </div>
+
+          {selecionados.size > 0 && (
+            <div className="flex gap-2">
+              <Button
+                onClick={reenviarSelecionados}
+                variant="outline"
+                size="sm"
+                disabled={loading}
+                className="flex items-center gap-2 text-blue-600 hover:text-blue-700"
+              >
+                <Send className="h-4 w-4" />
+                Reenviar Selecionados
+              </Button>
+              
+              <Button
+                onClick={excluirSelecionados}
+                variant="destructive"
+                size="sm"
+                disabled={loading}
+                className="flex items-center gap-2"
+              >
+                <Trash2 className="h-4 w-4" />
+                Excluir Selecionados ({selecionados.size})
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Lista de usuários */}
+      {usuariosFiltrados.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <Clock className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              {filtroCategoria === 'todos' 
+                ? 'Nenhum problema encontrado!' 
+                : 'Nenhum usuário nesta categoria'
+              }
+            </h3>
+            <p className="text-gray-600">
+              {filtroCategoria === 'todos'
+                ? 'Todos os usuários têm tokens válidos ou já foram verificados'
+                : 'Tente selecionar outra categoria de problemas'
+              }
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {usuariosFiltrados.map((usuario) => (
+            <Card 
+              key={usuario.id} 
+              className={`transition-colors ${getCorPrioridade(usuario.prioridade)}`}
+            >
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start gap-3">
+                    {/* Checkbox */}
+                    <button
+                      onClick={() => toggleSelecionado(usuario.id)}
+                      className="mt-1"
+                    >
+                      {selecionados.has(usuario.id) ? (
+                        <CheckSquare className="h-4 w-4 text-blue-600" />
+                      ) : (
+                        <Square className="h-4 w-4 text-gray-400" />
+                      )}
+                    </button>
+
+                    {/* Informações do usuário */}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <h4 className="font-medium text-gray-900">{usuario.nome}</h4>
+                        {getCategoraBadge(usuario.categoria_problema)}
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          usuario.tipo_colaborador === 'estagiario' 
+                            ? 'bg-blue-100 text-blue-800' 
+                            : 'bg-green-100 text-green-800'
+                        }`}>
+                          {usuario.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}
+                        </span>
+                      </div>
+                      
+                      <div className="text-sm text-gray-600 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Mail className="h-3 w-3" />
+                          <span>{usuario.email_login}</span>
+                        </div>
+                        
+                        <div className="flex items-center gap-4">
+                          <div className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            <span>Criado há {Math.floor(usuario.dias_desde_criacao)} dia(s)</span>
+                          </div>
+                          <span>🏢 {usuario.setor}</span>
+                        </div>
+                        
+                        {/* Status específico do token */}
+                        <div className="flex items-center gap-4">
+                          <span className={`text-xs px-2 py-1 rounded ${
+                            usuario.status_token === 'codigo_expirado' ? 'bg-red-100 text-red-700' :
+                            usuario.status_token === 'sem_codigo' ? 'bg-gray-100 text-gray-700' :
+                            usuario.status_token === 'codigo_ativo' ? 'bg-green-100 text-green-700' :
+                            'bg-yellow-100 text-yellow-700'
+                          }`}>
+                            {usuario.status_token === 'codigo_expirado' && '⏰ Token Expirado'}
+                            {usuario.status_token === 'sem_codigo' && '📭 Sem Código'}
+                            {usuario.status_token === 'codigo_ativo' && '✅ Código Ativo'}
+                            {usuario.status_token === 'codigo_usado' && '✅ Código Usado'}
+                          </span>
+                          
+                          {usuario.dias_expirado > 0 && (
+                            <span className="text-red-600 text-xs">
+                              Expirou há {usuario.dias_expirado} dia(s)
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Observações do log administrativo */}
+                        {usuario.observacoes && (
+                          <div className="mt-2 p-2 bg-blue-50 rounded text-xs text-blue-700">
+                            📝 {usuario.observacoes}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Alertas baseados na categoria */}
+                      {usuario.categoria_problema === 'muito_antigo' && (
+                        <div className="mt-2 flex items-center gap-2 text-red-600 text-sm">
+                          <AlertTriangle className="h-4 w-4" />
+                          <span>⚠️ Usuário inativo há mais de 45 dias - considere excluir</span>
+                        </div>
+                      )}
+                      
+                      {usuario.categoria_problema === 'antigo' && (
+                        <div className="mt-2 flex items-center gap-2 text-orange-600 text-sm">
+                          <Timer className="h-4 w-4" />
+                          <span>⚠️ Usuário inativo há mais de 30 dias</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Ações */}
+                  <div className="flex gap-2">
+                    {usuario.pode_reenviar && (
+                      <Button
+                        onClick={() => reenviarCodigo(usuario.id)}
+                        disabled={actionLoading.has(usuario.id)}
+                        variant="outline"
+                        size="sm"
+                        className="flex items-center gap-2 text-blue-600 hover:text-blue-700"
+                      >
+                        {actionLoading.has(usuario.id) ? (
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Send className="h-4 w-4" />
+                        )}
+                        Reenviar
+                      </Button>
+                    )}
+                    
+                    <Button
+                      onClick={() => excluirUsuario(usuario.id)}
+                      disabled={actionLoading.has(usuario.id)}
+                      variant="destructive"
+                      size="sm"
+                      className="flex items-center gap-2"
+                    >
+                      {actionLoading.has(usuario.id) ? (
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                      Excluir
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Botão de atualizar */}
+      <div className="flex justify-center">
+        <Button
+          onClick={fetchUsuariosComProblemas}
+          variant="outline"
+          disabled={loading}
+          className="flex items-center gap-2"
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          Atualizar Lista
+        </Button>
+      </div>
+    </div>
+  );
+};
