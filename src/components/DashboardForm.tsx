@@ -202,7 +202,9 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
               </Label>
               <Select 
                 value={formData.tipo_visibilidade} 
-                onValueChange={(value) => setFormData(prev => ({ ...prev, tipo_visibilidade: value as any }))}
+                onValueChange={(value: 'geral' | 'coordenadores' | 'admin') =>
+                  setFormData(prev => ({ ...prev, tipo_visibilidade: value }))
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione a visibilidade" />
