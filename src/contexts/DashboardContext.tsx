@@ -16,9 +16,7 @@ export interface Dashboard {
   criado_por_nome?: string;
   criado_em: string;
   atualizado_em: string;
-  
-  // ✅ Campos que existem no banco de dados
-  tipo_visibilidade?: string; // 'geral', 'restrito', etc.
+  tipo_visibilidade?: 'geral' | 'coordenadores' | 'admin';
   powerbi_report_id?: string;
   powerbi_group_id?: string;
   powerbi_workspace_id?: string; // Se estiver sendo usado
