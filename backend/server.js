@@ -163,18 +163,13 @@ let allowedOrigins;
 
 if (isProduction || isRailway) {
   allowedOrigins = [
-    'https://sistema.resendemh.com.br',      // Railway original
-    'https://sistema.resendemh.com.br',      // Novo domínio personalizado
-    'http://sistema.resendemh.com.br',       // HTTP version (se necessário)
+    'https://sistema.resendemh.com.br',      // Domínio principal
   ];
 } else {
   allowedOrigins = [
     'http://localhost:3001',
     'http://localhost:5173',
     'http://localhost:8080',
-    'http://127.0.0.1:3001',
-    'http://127.0.0.1:5173',
-    'http://127.0.0.1:8080'
   ];
 }
 
@@ -183,18 +178,25 @@ console.log(`📍 Origins permitidas:`, allowedOrigins);
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
+    console.log(`🌐 Request from origin: ${origin || 'same-origin'}`);
+    
+    // ✅ Permitir requisições do mesmo domínio (sem origin header)
+    if (!origin) {
+      console.log('✅ CORS: Same-origin request permitida');
+      return callback(null, true);
+    }
     
     if (allowedOrigins.includes(origin)) {
+      console.log(`✅ CORS: Origin ${origin} permitida`);
       callback(null, true);
     } else {
       console.log(`❌ CORS BLOCKED: Origin ${origin} não permitida`);
-      callback(new Error('Não permitido pelo CORS'));
+      callback(new Error(`CORS: Origin ${origin} não permitida`));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
 // Rate limiting melhorado para Railway
