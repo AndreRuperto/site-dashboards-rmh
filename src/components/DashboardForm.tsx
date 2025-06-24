@@ -215,10 +215,6 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
                         <div className="flex items-center gap-2">
                           <Icon className="h-4 w-4" />
                           <span>{option.label}</span>
-                          <Badge className={`text-xs ${option.color}`}>
-                            {option.value === 'geral' ? 'Público' : 
-                             option.value === 'coordenadores' ? 'Restrito' : 'Privado'}
-                          </Badge>
                         </div>
                       </SelectItem>
                     );
