@@ -101,19 +101,42 @@ app.use(
 );
 
 // CORS configurado corretamente
+const isProduction = process.env.NODE_ENV === 'production';
+const isRailway = process.env.RAILWAY_ENVIRONMENT;
+
+let allowedOrigins;
+
+if (isProduction || isRailway) {
+  allowedOrigins = [
+    'https://resendemh.up.railway.app',
+    // Adicionar outros domínios se necessário futuramente
+  ];
+} else {
+  allowedOrigins = [
+    'http://localhost:3001',   // Backend local
+    'http://localhost:5173',   // Vite dev server  
+    'http://localhost:8080',   // Frontend local alternativo
+    'http://127.0.0.1:3001',   // Variação do localhost
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:8080'
+  ];
+}
+
+console.log(`🔒 CORS: Ambiente ${isProduction ? 'PRODUÇÃO' : 'DESENVOLVIMENTO'}`);
+console.log(`📍 Origins permitidas:`, allowedOrigins);
+
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? [
-        'https://resendemh.up.railway.app',
-        'https://railway.com',
-        process.env.API_BASE_URL,
-        'http://localhost:3001'
-      ]
-    : [
-        'http://localhost:3001', 
-        'http://localhost:5173', 
-        'http://localhost:8080'
-      ],
+  origin: (origin, callback) => {
+    // Permitir requisições sem origin (ex: Postman, apps móveis)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log(`❌ CORS BLOCKED: Origin ${origin} não permitida`);
+      callback(new Error('Não permitido pelo CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
