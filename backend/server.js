@@ -104,7 +104,7 @@ app.use(
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
     ? [
-        'https://rmh.up.railway.app',
+        'https://resendemh.up.railway.app',
         'https://railway.com',
         process.env.API_BASE_URL,
         'http://localhost:3001'
@@ -420,7 +420,7 @@ async function gerarTemplateVerificacao(nome, codigo, email, tipo_colaborador) {
   <body>
     <div class="container">
       <div class="header">
-        <img src="https://rmh.up.railway.app/logo-rmh.ico" alt="Logo RMH" style="height: 50px; margin-bottom: 20px;" />
+        <img src="https://resendemh.up.railway.app/logo-rmh.ico" alt="Logo RMH" style="height: 50px; margin-bottom: 20px;" />
         <h1>Confirme seu email</h1>
       </div>
       <div class="content">
@@ -559,7 +559,7 @@ async function gerarTemplateValidacaoEstagiario(nome, linkValidacao, email) {
     <body>
       <div class="container">
         <div class="header">
-          <img src="https://rmh.up.railway.app/logo-rmh.ico" alt="Logo RMH" style="height: 50px; margin-bottom: 20px;" />
+          <img src="https://resendemh.up.railway.app/logo-rmh.ico" alt="Logo RMH" style="height: 50px; margin-bottom: 20px;" />
           <h1>Cadastro Aprovado</h1>
         </div>
         <div class="content">
@@ -689,7 +689,7 @@ async function gerarTemplateEstagiarioAdicionadoPorAdmin(nome, linkValidacao, em
     <body>
       <div class="container">
         <div class="header">
-          <img src="https://rmh.up.railway.app/logo-rmh.ico" alt="Logo RMH" style="height: 50px; margin-bottom: 20px;" />
+          <img src="https://resendemh.up.railway.app/logo-rmh.ico" alt="Logo RMH" style="height: 50px; margin-bottom: 20px;" />
           <h1>🎉 Conta Criada</h1>
         </div>
         <div class="content">
@@ -838,7 +838,7 @@ async function gerarTemplateConfiguracaoConta(nome, linkAtivacao, emailLogin, ti
     <body>
       <div class="container">
         <div class="header">
-          <img src="https://rmh.up.railway.app/logo-rmh.ico" alt="Logo RMH" style="height: 50px; margin-bottom: 20px;" />
+          <img src="https://resendemh.up.railway.app/logo-rmh.ico" alt="Logo RMH" style="height: 50px; margin-bottom: 20px;" />
           <h1>Configure sua Conta</h1>
         </div>
         <div class="content">
@@ -988,7 +988,7 @@ async function gerarTemplateConfigurarSenha(nome, linkConfiguracao, email) {
     <body>
       <div class="container">
         <div class="header">
-          <img src="https://rmh.up.railway.app/logo-rmh.ico" alt="Logo RMH" style="height: 50px; margin-bottom: 20px;" />
+          <img src="https://resendemh.up.railway.app/logo-rmh.ico" alt="Logo RMH" style="height: 50px; margin-bottom: 20px;" />
           <h1>Configure sua Senha</h1>
         </div>
         <div class="content">

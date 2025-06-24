@@ -52,7 +52,7 @@ const Home: React.FC = () => {
       setError(null);
 
       const API_BASE_URL = process.env.NODE_ENV === 'production' 
-        ? 'https://rmh.up.railway.app'
+        ? 'https://resendemh.up.railway.app'
         : 'http://localhost:3001';
 
       const response = await fetch(`${API_BASE_URL}/api/main-dashboard`, {
@@ -92,7 +92,7 @@ const Home: React.FC = () => {
   const getEmbedToken = async (dashboardData: MainDashboard) => {
     try {
       const API_BASE_URL = process.env.NODE_ENV === 'production' 
-        ? 'https://rmh.up.railway.app'
+        ? 'https://resendemh.up.railway.app'
         : 'http://localhost:3001';
 
       const response = await fetch(`${API_BASE_URL}/api/powerbi/embed-token`, {
