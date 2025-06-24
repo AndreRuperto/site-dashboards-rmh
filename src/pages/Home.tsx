@@ -51,9 +51,7 @@ const Home: React.FC = () => {
       setIsLoading(true);
       setError(null);
 
-      const API_BASE_URL = process.env.NODE_ENV === 'production' 
-        ? 'https://resendemh.up.railway.app'
-        : 'http://localhost:3001';
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
       const response = await fetch(`${API_BASE_URL}/api/main-dashboard`, {
         headers: {
@@ -91,10 +89,8 @@ const Home: React.FC = () => {
   // ✅ OBTER TOKEN PARA DASHBOARDS SEGUROS
   const getEmbedToken = async (dashboardData: MainDashboard) => {
     try {
-      const API_BASE_URL = process.env.NODE_ENV === 'production' 
-        ? 'https://resendemh.up.railway.app'
-        : 'http://localhost:3001';
-
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+      
       const response = await fetch(`${API_BASE_URL}/api/powerbi/embed-token`, {
         method: 'POST',
         headers: {

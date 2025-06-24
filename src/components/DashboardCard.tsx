@@ -86,9 +86,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
     try {
       console.log('🔐 Obtendo token de embed seguro...');
       
-      const API_BASE_URL = process.env.NODE_ENV === 'production' 
-        ? 'https://resendemh.up.railway.app'
-        : 'http://localhost:3001';
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
       
       const response = await fetch(`${API_BASE_URL}/api/powerbi/embed-token`, {
         method: 'POST',

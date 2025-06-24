@@ -3,9 +3,7 @@
 import type { User, Dashboard, RegisterRequest } from '@/types';
 
 // Configuração da API
-const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://resendemh.up.railway.app'
-  : 'http://localhost:3001'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
 // Hook para requisições autenticadas
 export const useAuthenticatedFetch = () => {
