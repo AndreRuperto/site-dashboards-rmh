@@ -212,10 +212,7 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
                     const Icon = option.icon;
                     return (
                       <SelectItem key={option.value} value={option.value}>
-                        <div className="flex items-center gap-2">
-                          <Icon className="h-4 w-4" />
-                          <span>{option.label}</span>
-                        </div>
+                        {option.label}
                       </SelectItem>
                     );
                   })}
