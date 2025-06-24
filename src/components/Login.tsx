@@ -162,7 +162,7 @@ const Login: React.FC<LoginProps> = ({
         <CardHeader className="text-center space-y-4">
           <div className="flex items-center justify-center mb-2">
             <img 
-              src="https://resendemh.up.railway.app/logo-rmh.ico" 
+              src="https://sistema.resendemh.com.br/logo-rmh.ico" 
               alt="RMH Logo" 
               className="h-10 w-auto"
             />
