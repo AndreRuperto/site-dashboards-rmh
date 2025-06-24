@@ -5120,12 +5120,12 @@ async function iniciarServidor() {
   try {
     console.log('🚀 Iniciando servidor RMH Dashboards...');
     console.log(`📍 Ambiente: ${process.env.NODE_ENV || 'development'}`);
-    
+
     // Testar conexão com banco
     await testarConexao();
-    
+
     // Iniciar servidor
-    const server = app.listen(PORT, '0.0.0.0', () => {
+    const server = app.listen(PORT, '0.0.0.0', async () => {
       const isProduction = process.env.NODE_ENV === 'production';
       const isRailway = process.env.RAILWAY_ENVIRONMENT;
       const railwayUrl = process.env.RAILWAY_PUBLIC_DOMAIN;
@@ -5141,7 +5141,7 @@ async function iniciarServidor() {
       console.log('\n🚀 =====================================');
       console.log('   RMH DASHBOARDS - SERVIDOR ONLINE');
       console.log('=====================================');
-      
+
       console.log(`📍 Ambiente: ${ambiente}`);
       console.log(`🔧 Porta: ${PORT}`);
       console.log(`🕐 Iniciado em: ${new Date().toLocaleString('pt-BR')}`);
@@ -5170,7 +5170,7 @@ async function iniciarServidor() {
       // Informações do banco
       const dbUrl = process.env.DATABASE_URL;
       if (dbUrl) {
-        const dbHost = dbUrl.includes('railway') ? 'Railway PostgreSQL' : 
+        const dbHost = dbUrl.includes('railway') ? 'Railway PostgreSQL' :
                        dbUrl.includes('localhost') ? 'Local PostgreSQL' : 'PostgreSQL';
         console.log(`\n💾 Banco de dados: ${dbHost}`);
       }
@@ -5180,10 +5180,10 @@ async function iniciarServidor() {
         console.log(`\n🎯 Frontend: Servido estaticamente da pasta dist/`);
         console.log(`📦 Build: Produção otimizada`);
 
-        // ✅ Mostrar arquivos .js da pasta dist/assets
+        // Mostrar arquivos .js da pasta dist/assets usando fs.promises
         const assetsPath = path.join(__dirname, 'dist', 'assets');
         try {
-          const files = fs.readdirSync(assetsPath);
+          const files = await fs.readdir(assetsPath);
           const jsFiles = files.filter(file => file.endsWith('.js'));
           console.log('\n📦 Arquivos .js em dist/assets:');
           jsFiles.forEach(file => console.log(`   - ${file}`));
@@ -5234,7 +5234,6 @@ async function iniciarServidor() {
     process.exit(1);
   }
 }
-
 
 // Iniciar servidor
 iniciarServidor();
