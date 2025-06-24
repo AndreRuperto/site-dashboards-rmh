@@ -14,6 +14,7 @@
     "preview": "vite preview",
     "start": "serve -s dist -l $PORT",
     "deploy:local": "npm run build:backend && cd backend && npm start",
+    "deploy:prod": "npm run build:backend && git add backend/dist && git commit -m 'Build para produção' && git push",
     "deploy:clean": "npm run clean && npm run build:backend && cd backend && npm start",
     "backend:start": "cd backend && npm start",
     "backend:dev": "cd backend && npm run dev"
