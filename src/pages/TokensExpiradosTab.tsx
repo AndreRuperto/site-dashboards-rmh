@@ -348,26 +348,12 @@ export const TokensExpiradosTab: React.FC<TokensExpiradosProps> = ({
                             <Calendar className="h-3 w-3" />
                             <span>Criado há {Math.floor(usuario.dias_desde_criacao)} dia(s)</span>
                           </div>
-                          <span>🏢 {usuario.setor}</span>
+                          <span>{usuario.setor}</span>
                         </div>
                         
                         {usuario.dias_expirado > 0 && (
                           <div className="text-red-600 text-xs">
-                            ⏰ Token expirou há {usuario.dias_expirado} dia(s)
-                          </div>
-                        )}
-
-                        {/* Explicação do estado */}
-                        {usuario.explicacao_estado && (
-                          <div className="text-xs text-gray-500 italic">
-                            💡 {usuario.explicacao_estado}
-                          </div>
-                        )}
-
-                        {/* Observações do log administrativo */}
-                        {usuario.observacoes && (
-                          <div className="mt-2 p-2 bg-blue-50 rounded text-xs text-blue-700">
-                            📝 {usuario.observacoes}
+                            Token expirou há {usuario.dias_expirado} dia(s)
                           </div>
                         )}
                       </div>
@@ -414,19 +400,6 @@ export const TokensExpiradosTab: React.FC<TokensExpiradosProps> = ({
           ))}
         </div>
       )}
-
-      {/* Botão de atualizar */}
-      <div className="flex justify-center">
-        <Button
-          onClick={fetchUsuariosComProblemas}
-          variant="outline"
-          disabled={loading}
-          className="flex items-center gap-2"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          Atualizar Lista
-        </Button>
-      </div>
     </div>
   );
 };

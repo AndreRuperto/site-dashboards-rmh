@@ -160,8 +160,12 @@ const Login: React.FC<LoginProps> = ({
     <div className="min-h-screen bg-primary flex items-center justify-center p-4">
       <Card className="w-full max-w-md shadow-2xl">
         <CardHeader className="text-center space-y-4">
-          <div className="flex items-center justify-center">
-            <div className="text-4xl font-bold text-corporate-blue">RMH</div>
+          <div className="flex items-center justify-center mb-2">
+            <img 
+              src="/logo-rmh.ico" 
+              alt="RMH Logo" 
+              className="h-10 w-auto"
+            />
           </div>
           <CardTitle className="text-2xl font-heading font-bold text-corporate-blue">
             Resende Mori Hutchison
@@ -282,7 +286,6 @@ const Login: React.FC<LoginProps> = ({
           </div>
 
           <div className="text-center text-sm text-gray-600 mt-4">
-            <p>💡 <strong>Dica:</strong></p>
             <p className="text-xs">
               • <strong>CLT/Associado:</strong> Use seu email corporativo (@resendemh.com.br)<br/>
               • <strong>Estagiário:</strong> Use seu email pessoal cadastrado

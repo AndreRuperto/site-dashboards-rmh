@@ -329,7 +329,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
           </div>
 
           <div className="flex flex-wrap gap-2 mt-3">
-            <Badge variant="secondary" className="bg-corporate-lightGray text-corporate-blue">
+            <Badge variant="secondary" className="bg-corporate-lightGray text-corporate-blue border border-rmh-primary hover:bg-rmh-primary hover:text-white">
               {dashboard.setor}
             </Badge>
           </div>

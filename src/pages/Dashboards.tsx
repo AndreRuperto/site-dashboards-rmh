@@ -49,7 +49,7 @@ const Dashboards: React.FC = () => {
     periodo: selectedPeriodo === 'all' ? undefined : selectedPeriodo,
     criador: selectedCriador === 'all' ? undefined : selectedCriador,
     searchTerm: searchTerm
-  });
+  }).filter(dashboard => dashboard.tipo_visibilidade !== 'geral');
 
   const handleClearFilters = () => {
     setSelectedSetor('all');

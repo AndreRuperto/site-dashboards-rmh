@@ -774,7 +774,7 @@ const AdminUserControl: React.FC = () => {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-[1300px] mx-auto">
+    <div className="p-6 space-y-6 max-w-[1350px] mx-auto">
       {/* Header */}
       <div className="space-y-4">
         <Button
@@ -824,7 +824,7 @@ const AdminUserControl: React.FC = () => {
               <Clock className="h-5 w-5 text-yellow-600" />
               <div>
                 <p className="text-sm font-medium text-gray-600">Pendentes</p>
-                <p className="text-2xl font-bold text-yellow-600">{stats.pendentes_aprovacao}</p>
+                <p className="text-2xl font-bold text-yellow-600">{stats.pendentes_aprovacao + stats.nao_verificados}</p>
               </div>
             </div>
           </CardContent>
@@ -943,7 +943,7 @@ const AdminUserControl: React.FC = () => {
               </div>
             </div>
             {/* Filtros por tipo */}
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 justify-between">
               <Button
                 variant={filter === 'pendentes_aprovacao' ? 'default' : 'outline'}
                 onClick={() => setFilter('pendentes_aprovacao')}
