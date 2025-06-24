@@ -225,17 +225,6 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
                   })}
                 </SelectContent>
               </Select>
-              
-              {/* Preview da seleção */}
-              {selectedVisibility && (
-                <div className="p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center gap-2 text-sm text-gray-700">
-                    <selectedVisibility.icon className="h-4 w-4" />
-                    <span className="font-medium">{selectedVisibility.label}:</span>
-                    <span className="text-gray-600">{selectedVisibility.description}</span>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 
