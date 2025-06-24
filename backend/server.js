@@ -14,6 +14,61 @@ const path = require('path');
 const fs = require('fs/promises');
 
 const app = express();
+
+// ✅ Corrige MIME types para arquivos estáticos
+express.static.mime.define({
+  'text/css': ['css'],
+  'application/javascript': ['js'],
+  'application/json': ['json'],
+  'text/html': ['html'],
+  'image/png': ['png'],
+  'image/jpg': ['jpg'],
+  'image/jpeg': ['jpeg'],
+  'image/gif': ['gif'],
+  'image/svg+xml': ['svg'],
+  'image/x-icon': ['ico'],
+  'text/plain': ['txt']
+});
+
+// ✅ Serve os arquivos da pasta dist com headers corretos
+if (process.env.NODE_ENV === 'production') {
+  console.log('🎨 Servindo frontend estático da pasta dist/');
+
+  app.use(express.static(path.join(__dirname, 'dist'), {
+    maxAge: '1y',
+    etag: false,
+    setHeaders: (res, filePath) => {
+      const ext = path.extname(filePath).toLowerCase();
+
+      switch (ext) {
+        case '.css':
+          res.setHeader('Content-Type', 'text/css; charset=utf-8');
+          break;
+        case '.js':
+          res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+          break;
+        case '.json':
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          break;
+        case '.html':
+          res.setHeader('Content-Type', 'text/html; charset=utf-8');
+          break;
+        case '.png':
+          res.setHeader('Content-Type', 'image/png');
+          break;
+        case '.ico':
+          res.setHeader('Content-Type', 'image/x-icon');
+          break;
+        case '.svg':
+          res.setHeader('Content-Type', 'image/svg+xml');
+          break;
+      }
+
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+    }
+  }));
+}
+
 const PORT = process.env.PORT || 3001;
 
 // Configurar trust proxy para Railway
@@ -108,15 +163,16 @@ let allowedOrigins;
 
 if (isProduction || isRailway) {
   allowedOrigins = [
-    'https://resendemh.up.railway.app',
-    // Adicionar outros domínios se necessário futuramente
+    'https://resendemh.up.railway.app',      // Railway original
+    'https://sistema.resendemh.com.br',      // Novo domínio personalizado
+    'http://sistema.resendemh.com.br',       // HTTP version (se necessário)
   ];
 } else {
   allowedOrigins = [
-    'http://localhost:3001',   // Backend local
-    'http://localhost:5173',   // Vite dev server  
-    'http://localhost:8080',   // Frontend local alternativo
-    'http://127.0.0.1:3001',   // Variação do localhost
+    'http://localhost:3001',
+    'http://localhost:5173',
+    'http://localhost:8080',
+    'http://127.0.0.1:3001',
     'http://127.0.0.1:5173',
     'http://127.0.0.1:8080'
   ];
@@ -127,7 +183,6 @@ console.log(`📍 Origins permitidas:`, allowedOrigins);
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Permitir requisições sem origin (ex: Postman, apps móveis)
     if (!origin) return callback(null, true);
     
     if (allowedOrigins.includes(origin)) {
