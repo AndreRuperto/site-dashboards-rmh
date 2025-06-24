@@ -5046,17 +5046,77 @@ async function iniciarServidor() {
     
     // Iniciar servidor
     const server = app.listen(PORT, '0.0.0.0', () => {
-      console.log(`✅ Servidor rodando na porta ${PORT}`);
-      console.log(`🌐 URL: http://localhost:${PORT}`);
-      console.log(`📊 API Base: http://localhost:${PORT}/api`);
-      console.log(`🔐 Health Check: http://localhost:${PORT}/health`);
-      console.log(`📝 Logs: Ativados para todas as rotas`);
-      
-      if (process.env.NODE_ENV === 'production') {
-        console.log(`🎯 Frontend: Servido estaticamente da pasta dist/`);
-      }
-    });
+    const isProduction = process.env.NODE_ENV === 'production';
+    const isRailway = process.env.RAILWAY_ENVIRONMENT;
+    const railwayUrl = process.env.RAILWAY_PUBLIC_DOMAIN;
+    
+    // Detectar ambiente
+    let ambiente = 'development';
+    if (isRailway) {
+      ambiente = 'Railway (production)';
+    } else if (isProduction) {
+      ambiente = 'production';
+    }
 
+    console.log('\n🚀 =====================================');
+    console.log('   RMH DASHBOARDS - SERVIDOR ONLINE');
+    console.log('=====================================');
+    
+    console.log(`📍 Ambiente: ${ambiente}`);
+    console.log(`🔧 Porta: ${PORT}`);
+    console.log(`🕐 Iniciado em: ${new Date().toLocaleString('pt-BR')}`);
+    
+    // URLs baseadas no ambiente
+    if (isRailway && railwayUrl) {
+      // Railway - usar a URL pública
+      console.log(`\n🌐 URLs de Acesso:`);
+      console.log(`   📱 Aplicação: https://${railwayUrl}`);
+      console.log(`   📊 API Base: https://${railwayUrl}/api`);
+      console.log(`   🔐 Health Check: https://${railwayUrl}/health`);
+      console.log(`   📈 Ping: https://${railwayUrl}/ping`);
+    } else if (isProduction) {
+      // Produção genérica
+      const baseUrl = process.env.API_BASE_URL || process.env.FRONTEND_URL || `http://localhost:${PORT}`;
+      console.log(`\n🌐 URLs de Acesso:`);
+      console.log(`   📱 Aplicação: ${baseUrl}`);
+      console.log(`   📊 API Base: ${baseUrl}/api`);
+      console.log(`   🔐 Health Check: ${baseUrl}/health`);
+    } else {
+      // Desenvolvimento local
+      console.log(`\n🌐 URLs de Acesso (Local):`);
+      console.log(`   📱 Aplicação: http://localhost:${PORT}`);
+      console.log(`   📊 API Base: http://localhost:${PORT}/api`);
+      console.log(`   🔐 Health Check: http://localhost:${PORT}/health`);
+      console.log(`   📈 Ping: http://localhost:${PORT}/ping`);
+    }
+
+    // Informações do banco
+    const dbUrl = process.env.DATABASE_URL;
+    if (dbUrl) {
+      const dbHost = dbUrl.includes('railway') ? 'Railway PostgreSQL' : 
+                    dbUrl.includes('localhost') ? 'Local PostgreSQL' : 'PostgreSQL';
+      console.log(`\n💾 Banco de dados: ${dbHost}`);
+    }
+
+    // Status do frontend
+    if (isProduction) {
+      console.log(`\n🎯 Frontend: Servido estaticamente da pasta dist/`);
+      console.log(`📦 Build: Produção otimizada`);
+    } else {
+      console.log(`\n🛠️ Frontend: Modo desenvolvimento`);
+      console.log(`📦 Build: Vite dev server (porta 8080)`);
+    }
+
+    // Configurações importantes
+    console.log(`\n⚙️ Configurações:`);
+    console.log(`   🔒 CORS: ${isProduction ? 'Restrito (Railway)' : 'Liberado (Local)'}`);
+    console.log(`   📧 Email: ${process.env.RESEND_API_KEY ? 'Configurado' : 'Não configurado'}`);
+    console.log(`   🔑 JWT: ${process.env.JWT_SECRET ? 'Configurado' : 'Não configurado'}`);
+    console.log(`   📊 Power BI: ${process.env.POWERBI_CLIENT_ID ? 'Configurado' : 'Não configurado'}`);
+
+    console.log('\n✅ Servidor pronto para receber requisições!');
+    console.log('=====================================\n');
+  });
     // Graceful shutdown
     process.on('SIGTERM', () => {
       console.log('🔄 Recebido SIGTERM. Fechando servidor graciosamente...');

@@ -7,7 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, Eye, EyeOff, UserPlus, Building, Users, Mail } from 'lucide-react';
 
 // API Configuration
-const API_BASE_URL = 'http://localhost:3001';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
 interface LoginProps {
   onSwitchToRegister: (tipoPreSelecionado?: 'estagiario' | 'clt_associado') => void;
