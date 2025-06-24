@@ -21,7 +21,7 @@ const DashboardsPageProtected = () => {
   const { user } = useAuth();
   
   // Verificar se é coordenador ou admin
-  if (user?.tipo_usuario === 'usuario') {
+  if (user?.tipo_usuario === 'usuario' && !user?.is_coordenador) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center p-8">
