@@ -52,7 +52,6 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
 
   // ✅ NOVO: FUNÇÃO PARA OCULTAR BANNER DO POWER BI
   const hidePowerBIBanner = () => {
-    console.log('🔍 EXECUTANDO hidePowerBIBanner...');
     try {
       // Lista de seletores para diferentes tipos de banners/notificações
       const selectors = [
@@ -138,38 +137,169 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
     }
   };
 
-  // ✅ NOVO: useEffect para monitorar e ocultar banners automaticamente
+  // ✅ SOLUÇÃO DEFINITIVA: useEffect para injetar CSS e monitorar
   useEffect(() => {
     if (!isViewerOpen) return;
 
-    // Executa imediatamente
-    hidePowerBIBanner();
+    console.log('🎯 Iniciando solução anti-banner Power BI...');
 
-    // Executa periodicamente para pegar banners que aparecem depois
-    const bannerInterval = setInterval(() => {
-      hidePowerBIBanner();
-    }, 2000); // Verifica a cada 2 segundos
+    // ✅ 1. Injetar CSS global para ocultar banners
+    const injectBannerHidingCSS = () => {
+      const cssId = 'powerbi-banner-hider';
+      
+      if (!document.getElementById(cssId)) {
+        const style = document.createElement('style');
+        style.id = cssId;
+        style.textContent = `
+          /* Power BI Banner Hider - Injected CSS */
+          .notification-bar,
+          .teaching-bubble,
+          .teaching-tooltip,
+          .teaching-callout,
+          .banner-container,
+          .notification-container,
+          [class*="notification"],
+          [class*="banner"], 
+          [class*="teaching"],
+          [data-automation-id*="notification"],
+          [data-automation-id*="banner"],
+          .pbi-glyph-close {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            height: 0 !important;
+            overflow: hidden !important;
+          }
+          
+          /* Overlay para cobrir área de banners */
+          body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 50px;
+            background: transparent;
+            z-index: 10000;
+            pointer-events: none;
+          }
+        `;
+        
+        document.head.appendChild(style);
+        console.log('🎨 CSS anti-banner injetado globalmente');
+      }
+    };
 
-    // Observer para mudanças no DOM (quando novos elementos aparecem)
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.addedNodes.length > 0) {
-          // Aguarda um pouco para o elemento estar completamente renderizado
-          setTimeout(hidePowerBIBanner, 500);
+    // ✅ 2. Função otimizada para ocultar banners
+    const hidePowerBIBannerOptimized = () => {
+      try {
+        const selectors = [
+          '.notification-bar',
+          '.teaching-bubble', 
+          '.teaching-tooltip',
+          '.banner-container',
+          '[class*="notification"]',
+          '[class*="banner"]',
+          '[class*="teaching"]'
+        ];
+        
+        let found = 0;
+        
+        // Verificar página principal
+        selectors.forEach(selector => {
+          const elements = document.querySelectorAll(selector);
+          elements.forEach(el => {
+            const htmlElement = el as HTMLElement;
+            if (htmlElement && htmlElement.style.display !== 'none') {
+              htmlElement.style.display = 'none';
+              found++;
+            }
+          });
+        });
+        
+        if (found > 0) {
+          console.log(`🔕 ${found} banner(s) ocultado(s) na página principal`);
         }
-      });
+
+        // ✅ 3. Tentar manipular Power BI via postMessage
+        const powerbiIframes = document.querySelectorAll('iframe[src*="powerbi.com"], iframe[src*="fabric.microsoft.com"]');
+        
+        powerbiIframes.forEach(iframe => {
+          try {
+            const iframeWindow = (iframe as HTMLIFrameElement).contentWindow;
+            
+            if (iframeWindow) {
+              // Tentar enviar comando para ocultar elementos
+              iframeWindow.postMessage({
+                type: 'hideBanners',
+                selectors: selectors
+              }, '*');
+              
+              console.log('📤 Comando postMessage enviado para iframe Power BI');
+            }
+          } catch (error) {
+            // Cross-origin expected
+          }
+        });
+
+        return found;
+      } catch (error) {
+        console.warn('⚠️ Erro na função hidePowerBIBanner:', error);
+        return 0;
+      }
+    };
+
+    // ✅ 4. Listener para postMessage responses
+    const handlePostMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'bannersHidden') {
+        console.log('✅ Power BI respondeu: banners ocultados');
+      }
+    };
+
+    // ✅ 5. Executar soluções
+    injectBannerHidingCSS();
+    hidePowerBIBannerOptimized();
+    
+    window.addEventListener('message', handlePostMessage);
+
+    // ✅ 6. Monitoramento reduzido (não spam logs)
+    let attempts = 0;
+    const maxAttempts = 10;
+    
+    const bannerInterval = setInterval(() => {
+      attempts++;
+      const found = hidePowerBIBannerOptimized();
+      
+      if (attempts >= maxAttempts) {
+        console.log('🏁 Monitoramento de banner finalizado após 10 tentativas');
+        clearInterval(bannerInterval);
+      }
+    }, 3000); // A cada 3 segundos, menos spam
+
+    // ✅ 7. Observer otimizado
+    const observer = new MutationObserver((mutations) => {
+      const hasNewNodes = mutations.some(m => m.addedNodes.length > 0);
+      if (hasNewNodes) {
+        setTimeout(hidePowerBIBannerOptimized, 1000);
+      }
     });
 
-    // Observa mudanças no corpo do documento
     observer.observe(document.body, { 
       childList: true, 
       subtree: true 
     });
 
-    // Cleanup
+    // ✅ 8. Cleanup
     return () => {
       clearInterval(bannerInterval);
       observer.disconnect();
+      window.removeEventListener('message', handlePostMessage);
+      
+      // Remover CSS injetado
+      const cssElement = document.getElementById('powerbi-banner-hider');
+      if (cssElement) {
+        cssElement.remove();
+      }
     };
   }, [isViewerOpen]);
 
@@ -314,8 +444,75 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
         setTokenError(null);
         
         // ✅ NOVO: Ocultar banners após carregar
-        setTimeout(hidePowerBIBanner, 1000);
-        setTimeout(hidePowerBIBanner, 3000); // Segunda tentativa para elementos tardios
+        setTimeout(() => {
+          const hidePowerBIBannerOptimized = () => {
+            try {
+              const selectors = [
+                '.notification-bar',
+                '.teaching-bubble', 
+                '.teaching-tooltip',
+                '.banner-container',
+                '[class*="notification"]',
+                '[class*="banner"]',
+                '[class*="teaching"]'
+              ];
+              
+              let found = 0;
+              selectors.forEach(selector => {
+                const elements = document.querySelectorAll(selector);
+                elements.forEach(el => {
+                  const htmlElement = el as HTMLElement;
+                  if (htmlElement && htmlElement.style.display !== 'none') {
+                    htmlElement.style.display = 'none';
+                    found++;
+                  }
+                });
+              });
+              
+              if (found > 0) {
+                console.log(`🔕 ${found} banner(s) ocultado(s) após carregar Power BI`);
+              }
+            } catch (error) {
+              console.warn('⚠️ Erro ao ocultar banner:', error);
+            }
+          };
+          hidePowerBIBannerOptimized();
+        }, 1000);
+        
+        setTimeout(() => {
+          const hidePowerBIBannerOptimized = () => {
+            try {
+              const selectors = [
+                '.notification-bar',
+                '.teaching-bubble', 
+                '.teaching-tooltip',
+                '.banner-container',
+                '[class*="notification"]',
+                '[class*="banner"]',
+                '[class*="teaching"]'
+              ];
+              
+              let found = 0;
+              selectors.forEach(selector => {
+                const elements = document.querySelectorAll(selector);
+                elements.forEach(el => {
+                  const htmlElement = el as HTMLElement;
+                  if (htmlElement && htmlElement.style.display !== 'none') {
+                    htmlElement.style.display = 'none';
+                    found++;
+                  }
+                });
+              });
+              
+              if (found > 0) {
+                console.log(`🔕 ${found} banner(s) ocultado(s) após carregar Power BI (segunda tentativa)`);
+              }
+            } catch (error) {
+              console.warn('⚠️ Erro ao ocultar banner:', error);
+            }
+          };
+          hidePowerBIBannerOptimized();
+        }, 3000); // Segunda tentativa para elementos tardios
       });
 
       report.on('error', (event) => {
@@ -328,7 +525,40 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
         console.log('🎨 Relatório Power BI renderizado!');
         
         // ✅ NOVO: Ocultar banners após renderizar
-        setTimeout(hidePowerBIBanner, 500);
+        setTimeout(() => {
+          const hidePowerBIBannerOptimized = () => {
+            try {
+              const selectors = [
+                '.notification-bar',
+                '.teaching-bubble', 
+                '.teaching-tooltip',
+                '.banner-container',
+                '[class*="notification"]',
+                '[class*="banner"]',
+                '[class*="teaching"]'
+              ];
+              
+              let found = 0;
+              selectors.forEach(selector => {
+                const elements = document.querySelectorAll(selector);
+                elements.forEach(el => {
+                  const htmlElement = el as HTMLElement;
+                  if (htmlElement && htmlElement.style.display !== 'none') {
+                    htmlElement.style.display = 'none';
+                    found++;
+                  }
+                });
+              });
+              
+              if (found > 0) {
+                console.log(`🔕 ${found} banner(s) ocultado(s) após renderizar Power BI`);
+              }
+            } catch (error) {
+              console.warn('⚠️ Erro ao ocultar banner:', error);
+            }
+          };
+          hidePowerBIBannerOptimized();
+        }, 500);
       });
 
     } catch (error) {
@@ -636,8 +866,75 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
                     setIframeLoading(false);
                     
                     // ✅ NOVO: Ocultar banners após carregar iframe público
-                    setTimeout(hidePowerBIBanner, 1000);
-                    setTimeout(hidePowerBIBanner, 3000);
+                    setTimeout(() => {
+                      const hidePowerBIBannerOptimized = () => {
+                        try {
+                          const selectors = [
+                            '.notification-bar',
+                            '.teaching-bubble', 
+                            '.teaching-tooltip',
+                            '.banner-container',
+                            '[class*="notification"]',
+                            '[class*="banner"]',
+                            '[class*="teaching"]'
+                          ];
+                          
+                          let found = 0;
+                          selectors.forEach(selector => {
+                            const elements = document.querySelectorAll(selector);
+                            elements.forEach(el => {
+                              const htmlElement = el as HTMLElement;
+                              if (htmlElement && htmlElement.style.display !== 'none') {
+                                htmlElement.style.display = 'none';
+                                found++;
+                              }
+                            });
+                          });
+                          
+                          if (found > 0) {
+                            console.log(`🔕 ${found} banner(s) ocultado(s) após carregar iframe público`);
+                          }
+                        } catch (error) {
+                          console.warn('⚠️ Erro ao ocultar banner:', error);
+                        }
+                      };
+                      hidePowerBIBannerOptimized();
+                    }, 1000);
+                    
+                    setTimeout(() => {
+                      const hidePowerBIBannerOptimized = () => {
+                        try {
+                          const selectors = [
+                            '.notification-bar',
+                            '.teaching-bubble', 
+                            '.teaching-tooltip',
+                            '.banner-container',
+                            '[class*="notification"]',
+                            '[class*="banner"]',
+                            '[class*="teaching"]'
+                          ];
+                          
+                          let found = 0;
+                          selectors.forEach(selector => {
+                            const elements = document.querySelectorAll(selector);
+                            elements.forEach(el => {
+                              const htmlElement = el as HTMLElement;
+                              if (htmlElement && htmlElement.style.display !== 'none') {
+                                htmlElement.style.display = 'none';
+                                found++;
+                              }
+                            });
+                          });
+                          
+                          if (found > 0) {
+                            console.log(`🔕 ${found} banner(s) ocultado(s) após carregar iframe público (segunda tentativa)`);
+                          }
+                        } catch (error) {
+                          console.warn('⚠️ Erro ao ocultar banner:', error);
+                        }
+                      };
+                      hidePowerBIBannerOptimized();
+                    }, 3000);
                   }}
                   onError={() => {
                     console.error('❌ Erro ao carregar dashboard público');
