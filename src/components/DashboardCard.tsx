@@ -40,7 +40,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
   const [iframeLoading, setIframeLoading] = useState(true);
   const [embedToken, setEmbedToken] = useState<PowerBIEmbedToken | null>(null);
   const [tokenError, setTokenError] = useState<string | null>(null);
-  const [powerbiReport, setPowerbiReport] = useState<PowerBIEmbed | null>(null);
+  const [powerbiReport, setPowerbiReport] = useState<Report | null>(null);
   
   // ✅ Hook do modal de confirmação
   const { ConfirmationComponent, confirm } = useConfirmation();
@@ -50,94 +50,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
   const reportContainerRef = useRef<HTMLDivElement>(null);
   const iframeContainerRef = useRef<HTMLDivElement>(null);
 
-  // ✅ NOVO: FUNÇÃO PARA OCULTAR BANNER DO POWER BI
-  const hidePowerBIBanner = () => {
-    try {
-      // Lista de seletores para diferentes tipos de banners/notificações
-      const selectors = [
-        '.notification-bar.unselectable.teaching',
-        '.notification-bar',
-        '.teaching-bubble',
-        '.teaching-tooltip',
-        '[class*="notification"]',
-        '[class*="banner"]',
-        '[class*="teaching"]',
-        '[data-automation-id*="notification"]',
-        '[data-automation-id*="banner"]',
-        '.pbi-glyph-close', // Botão de fechar banners
-      ];
-      
-      let bannerFound = false;
-      
-      // Procura e oculta elementos na página principal
-      selectors.forEach(selector => {
-        const elements = document.querySelectorAll(selector);
-        elements.forEach(el => {
-          const htmlElement = el as HTMLElement;
-          if (htmlElement && htmlElement.style.display !== 'none') {
-            htmlElement.style.display = 'none';
-            console.log('🔕 Banner Power BI ocultado:', selector);
-            bannerFound = true;
-          }
-        });
-      });
-
-      // Tenta acessar iframe do Power BI para ocultar banners internos
-      const powerbiIframes = document.querySelectorAll('iframe[src*="powerbi.com"], iframe[src*="fabric.microsoft.com"]');
-      
-      powerbiIframes.forEach(iframe => {
-        try {
-          const iframeElement = iframe as HTMLIFrameElement;
-          const iframeDoc = iframeElement.contentDocument || iframeElement.contentWindow?.document;
-          
-          if (iframeDoc) {
-            selectors.forEach(selector => {
-              const elements = iframeDoc.querySelectorAll(selector);
-              elements.forEach(el => {
-                const htmlElement = el as HTMLElement;
-                if (htmlElement && htmlElement.style.display !== 'none') {
-                  htmlElement.style.display = 'none';
-                  console.log('🔕 Banner Power BI ocultado no iframe:', selector);
-                  bannerFound = true;
-                }
-              });
-            });
-
-            // Injeta CSS para ocultar banners que podem aparecer dinamicamente
-            const style = iframeDoc.createElement('style');
-            style.textContent = `
-              .notification-bar,
-              .teaching-bubble,
-              .teaching-tooltip,
-              [class*="notification"],
-              [class*="banner"],
-              [class*="teaching"] {
-                display: none !important;
-                visibility: hidden !important;
-                opacity: 0 !important;
-              }
-            `;
-            
-            if (!iframeDoc.querySelector('#hide-powerbi-banners')) {
-              style.id = 'hide-powerbi-banners';
-              iframeDoc.head.appendChild(style);
-              console.log('🎨 CSS para ocultar banners injetado no iframe');
-            }
-          }
-        } catch (error) {
-          // Cross-origin restriction - normal para iframes externos
-          console.log('⚠️ Não foi possível acessar iframe cross-origin (normal)');
-        }
-      });
-
-      return bannerFound;
-    } catch (error) {
-      console.warn('⚠️ Erro ao ocultar banner Power BI:', error);
-      return false;
-    }
-  };
-
-  // ✅ SOLUÇÃO DEFINITIVA: useEffect para injetar CSS e monitorar
+  // ✅ SOLUÇÃO DEFINITIVA: useEffect para injetar CSS e monitorar banners
   useEffect(() => {
     if (!isViewerOpen) return;
 
@@ -172,16 +85,28 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
           }
           
           /* Overlay para cobrir área de banners */
-          body::after {
+          .powerbi-container::before {
             content: '';
-            position: fixed;
+            position: absolute;
             top: 0;
             left: 0;
             right: 0;
-            height: 50px;
-            background: transparent;
-            z-index: 10000;
+            height: 40px;
+            background: #ffffff;
+            z-index: 10;
             pointer-events: none;
+            border-bottom: 1px solid #e5e7eb;
+          }
+          
+          /* Alternativa: Cortar o topo do iframe */
+          .powerbi-container-clipped {
+            overflow: hidden;
+            position: relative;
+          }
+          
+          .powerbi-container-clipped iframe {
+            margin-top: -40px;
+            height: calc(100% + 40px);
           }
         `;
         
@@ -221,23 +146,18 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
           console.log(`🔕 ${found} banner(s) ocultado(s) na página principal`);
         }
 
-        // ✅ 3. Tentar manipular Power BI via postMessage
-        const powerbiIframes = document.querySelectorAll('iframe[src*="powerbi.com"], iframe[src*="fabric.microsoft.com"]');
-        
-        powerbiIframes.forEach(iframe => {
+        // ✅ 3. Tentar enviar comando para iframes do Power BI
+        document.querySelectorAll('iframe[src*="powerbi.com"], iframe[src*="fabric.microsoft.com"]').forEach(iframe => {
           try {
             const iframeWindow = (iframe as HTMLIFrameElement).contentWindow;
-            
             if (iframeWindow) {
-              // Tentar enviar comando para ocultar elementos
               iframeWindow.postMessage({
                 type: 'hideBanners',
                 selectors: selectors
               }, '*');
-              
               console.log('📤 Comando postMessage enviado para iframe Power BI');
             }
-          } catch (error) {
+          } catch (e) {
             // Cross-origin expected
           }
         });
@@ -249,53 +169,50 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
       }
     };
 
-    // ✅ 4. Listener para postMessage responses
-    const handlePostMessage = (event: MessageEvent) => {
+    // ✅ 4. Listener para respostas dos iframes
+    const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'bannersHidden') {
         console.log('✅ Power BI respondeu: banners ocultados');
       }
     };
 
-    // ✅ 5. Executar soluções
+    // ✅ 5. Executar funções
     injectBannerHidingCSS();
     hidePowerBIBannerOptimized();
-    
-    window.addEventListener('message', handlePostMessage);
+    window.addEventListener('message', handleMessage);
 
-    // ✅ 6. Monitoramento reduzido (não spam logs)
+    // ✅ 6. Monitoramento contínuo (10 tentativas)
     let attempts = 0;
     const maxAttempts = 10;
-    
-    const bannerInterval = setInterval(() => {
+    const monitoringInterval = setInterval(() => {
       attempts++;
-      const found = hidePowerBIBannerOptimized();
+      hidePowerBIBannerOptimized();
       
       if (attempts >= maxAttempts) {
         console.log('🏁 Monitoramento de banner finalizado após 10 tentativas');
-        clearInterval(bannerInterval);
+        clearInterval(monitoringInterval);
       }
-    }, 3000); // A cada 3 segundos, menos spam
+    }, 3000);
 
-    // ✅ 7. Observer otimizado
+    // ✅ 7. Observer para novos elementos
     const observer = new MutationObserver((mutations) => {
-      const hasNewNodes = mutations.some(m => m.addedNodes.length > 0);
+      const hasNewNodes = mutations.some(mutation => mutation.addedNodes.length > 0);
       if (hasNewNodes) {
         setTimeout(hidePowerBIBannerOptimized, 1000);
       }
     });
 
-    observer.observe(document.body, { 
-      childList: true, 
-      subtree: true 
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
     });
 
     // ✅ 8. Cleanup
     return () => {
-      clearInterval(bannerInterval);
+      clearInterval(monitoringInterval);
       observer.disconnect();
-      window.removeEventListener('message', handlePostMessage);
+      window.removeEventListener('message', handleMessage);
       
-      // Remover CSS injetado
       const cssElement = document.getElementById('powerbi-banner-hider');
       if (cssElement) {
         cssElement.remove();
@@ -396,10 +313,10 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
               visible: false
             },
             pageNavigation: {
-              visible: false
+              visible: true
             }
           },
-          background: models.BackgroundType.Transparent,
+          background: models.BackgroundType.Default,
           bars: {
             statusBar: {
               visible: false
@@ -418,8 +335,12 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
           powerbiReport.off('error');
           powerbiReport.off('rendered');
           // ✅ Usar método remove se disponível
-          if (powerbiReport.remove) {
-            powerbiReport.remove();
+          try {
+            if (powerbiReport && 'remove' in powerbiReport) {
+              (powerbiReport as any).remove();
+            }
+          } catch (error) {
+            console.warn('Remove method not available:', error);
           }
         } catch (e) {
           console.warn('⚠️ Aviso ao limpar embed anterior:', e);
@@ -434,7 +355,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
       );
 
       // ✅ Fazer embed usando o serviço
-      const report = powerbiService.embed(reportContainerRef.current, embedConfig) as PowerBIEmbed;
+      const report = powerbiService.embed(reportContainerRef.current, embedConfig) as Report;
       setPowerbiReport(report);
 
       // ✅ Event listeners
@@ -442,6 +363,12 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
         console.log('✅ Relatório Power BI carregado com sucesso!');
         setIframeLoading(false);
         setTokenError(null);
+        report.updateSettings({
+          layoutType: models.LayoutType.Custom,
+          customLayout: {
+            displayOption: models.DisplayOption.FitToPage
+          }
+        });
         
         // ✅ NOVO: Ocultar banners após carregar
         setTimeout(() => {
@@ -478,7 +405,8 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
           };
           hidePowerBIBannerOptimized();
         }, 1000);
-        
+
+        // ✅ Segunda tentativa após 3 segundos
         setTimeout(() => {
           const hidePowerBIBannerOptimized = () => {
             try {
@@ -512,7 +440,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
             }
           };
           hidePowerBIBannerOptimized();
-        }, 3000); // Segunda tentativa para elementos tardios
+        }, 3000);
       });
 
       report.on('error', (event) => {
@@ -581,11 +509,24 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
 
   const enterFullscreen = async () => {
     try {
+      // Aguardar um pouco para o modal estar totalmente renderizado
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       if (document.documentElement.requestFullscreen) {
         await document.documentElement.requestFullscreen();
+        console.log('✅ Fullscreen ativado automaticamente');
+      } else if ((document.documentElement as any).webkitRequestFullscreen) {
+        // Safari
+        await (document.documentElement as any).webkitRequestFullscreen();
+        console.log('✅ Fullscreen ativado (Safari)');
+      } else if ((document.documentElement as any).msRequestFullscreen) {
+        // IE/Edge
+        await (document.documentElement as any).msRequestFullscreen();
+        console.log('✅ Fullscreen ativado (IE/Edge)');
       }
     } catch (error) {
-      console.log('Fullscreen não suportado ou bloqueado:', error);
+      console.log('⚠️ Fullscreen não suportado ou bloqueado pelo navegador:', error);
+      // Não é um erro crítico, continua normalmente
     }
   };
 
@@ -593,9 +534,18 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
     try {
       if (document.fullscreenElement && document.exitFullscreen) {
         await document.exitFullscreen();
+        console.log('✅ Fullscreen desativado');
+      } else if ((document as any).webkitFullscreenElement && (document as any).webkitExitFullscreen) {
+        // Safari
+        await (document as any).webkitExitFullscreen();
+        console.log('✅ Fullscreen desativado (Safari)');
+      } else if ((document as any).msFullscreenElement && (document as any).msExitFullscreen) {
+        // IE/Edge
+        await (document as any).msExitFullscreen();
+        console.log('✅ Fullscreen desativado (IE/Edge)');
       }
     } catch (error) {
-      console.log('Erro ao sair do fullscreen:', error);
+      console.log('⚠️ Erro ao sair do fullscreen:', error);
     }
   };
 
@@ -633,8 +583,12 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
           powerbiReport.off('error');
           powerbiReport.off('rendered');
           // ✅ Usar método remove se disponível
-          if (powerbiReport.remove) {
-            powerbiReport.remove();
+          try {
+            if (powerbiReport && 'remove' in powerbiReport) {
+              (powerbiReport as any).remove();
+            }
+          } catch (error) {
+            console.warn('Remove method not available:', error);
           }
           setPowerbiReport(null);
         } catch (e) {
@@ -649,24 +603,21 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
 
   // ✅ Cleanup no unmount
   useEffect(() => {
-    return () => {
-      if (document.fullscreenElement) {
-        exitFullscreen();
-      }
-      if (powerbiReport) {
-        try {
-          powerbiReport.off('loaded');
-          powerbiReport.off('error');
-          powerbiReport.off('rendered');
-          if (powerbiReport.remove) {
-            powerbiReport.remove();
-          }
-        } catch (e) {
-          console.warn('Cleanup warning:', e);
-        }
+    const handleEscKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && isViewerOpen) {
+        console.log('🚪 ESC pressionado, fechando viewer...');
+        setIsViewerOpen(false);
       }
     };
-  }, [powerbiReport]);
+
+    if (isViewerOpen) {
+      document.addEventListener('keydown', handleEscKey);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscKey);
+    };
+  }, [isViewerOpen]);
 
   // ✅ DETERMINAR SE É DASHBOARD SEGURO OU PÚBLICO
   const isSecureDashboard = dashboard.embed_type === 'secure';
@@ -756,14 +707,9 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
               <div className="min-w-0 flex-1">
                 <DialogTitle className="text-lg font-heading font-semibold text-corporate-blue truncate flex items-center gap-2">
                   {dashboard.titulo}
-                  {isSecureDashboard && (
-                    <Shield className="h-4 w-4 text-green-600"/>
-                  )}
                 </DialogTitle>
                 <p className="text-xs text-corporate-gray mt-0.5 truncate">
                   {dashboard.descricao || 'Sem descrição'} 
-                  {isSecureDashboard && ' • Embed Seguro via Power BI Client'}
-                  <span className="text-green-600 ml-2">• Banner auto-ocultado</span>
                 </p>
               </div>
               <Button
@@ -779,22 +725,6 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
           </DialogHeader>
 
           <div className="flex-1 min-h-0 p-1 relative overflow-hidden">
-            {/* ✅ LOADING STATE */}
-            {iframeLoading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
-                <div className="flex flex-col items-center space-y-3">
-                  <Loader2 className="h-8 w-8 animate-spin text-corporate-blue" />
-                  <p className="text-sm text-corporate-gray">
-                    {isSecureDashboard ? 'Autenticando dashboard seguro...' : 'Carregando dashboard...'}
-                  </p>
-                  {isSecureDashboard && (
-                    <p className="text-xs text-gray-500">Usando Power BI Client oficial</p>
-                  )}
-                  <p className="text-xs text-green-600">Banners serão ocultados automaticamente</p>
-                </div>
-              </div>
-            )}
-
             {/* ✅ ERROR STATE */}
             {tokenError && (
               <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
@@ -823,23 +753,39 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
               </div>
             )}
 
-            {/* ✅ CONTAINER PARA POWER BI EMBED SEGURO */}
+            {/* ✅ CONTAINER PARA POWER BI EMBED SEGURO COM OVERLAY */}
             {isSecureDashboard && !tokenError && (
-              <div 
-                ref={reportContainerRef}
-                className="w-full h-full"
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  height: '100%',
-                  minHeight: '500px'
-                }}
-              />
+              <div className="relative w-full h-full powerbi-container">
+                {/* Overlay para cobrir banner de trial */}
+                <div 
+                  className="absolute top-0 left-0 right-0 z-10 pointer-events-none"
+                  style={{
+                    height: '42px', // Altura do banner
+                    background: '#F0F0F0', // Cor de fundo
+                  }}
+                />
+                
+                {/* Container do Power BI */}
+                <div 
+                  ref={reportContainerRef}
+                  className="w-full h-full"
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    height: '100%',
+                    minHeight: '500px'
+                  }}
+                />
+              </div>
             )}
 
-            {/* ✅ CONTAINER PARA IFRAME PÚBLICO (FALLBACK) */}
+            {/* ✅ CONTAINER PARA IFRAME PÚBLICO (FALLBACK) COM CLIPPING */}
             {!isSecureDashboard && !tokenError && (
-              <div ref={iframeContainerRef} className="w-full h-full">
+              <div
+                ref={iframeContainerRef}
+                className="flex-1 overflow-hidden powerbi-container-clipped"
+                style={{ display: 'block' }}
+              >
                 <iframe
                   src={getOptimizedUrl(dashboard.url_iframe)}
                   title={dashboard.titulo}
@@ -857,85 +803,14 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
                     border: 'none',
                     overflow: 'hidden',
                     width: '100%',
-                    height: '100%',
-                    clipPath: 'inset(40px 0px 0px 0px)',
-                    maxHeight: '100vh',
+                    minHeight: '600px',
+                    // ✅ NOVO: Cortar o topo para ocultar banner
+                    clipPath: 'inset(42px 0px 0px 0px)', // Corta 40px do topo
                     display: 'block'
                   }}
                   onLoad={() => {
                     console.log('🚀 Dashboard público carregado!', dashboard.titulo);
                     setIframeLoading(false);
-                    
-                    // ✅ NOVO: Ocultar banners após carregar iframe público
-                    setTimeout(() => {
-                      const hidePowerBIBannerOptimized = () => {
-                        try {
-                          const selectors = [
-                            '.notification-bar',
-                            '.teaching-bubble', 
-                            '.teaching-tooltip',
-                            '.banner-container',
-                            '[class*="notification"]',
-                            '[class*="banner"]',
-                            '[class*="teaching"]'
-                          ];
-                          
-                          let found = 0;
-                          selectors.forEach(selector => {
-                            const elements = document.querySelectorAll(selector);
-                            elements.forEach(el => {
-                              const htmlElement = el as HTMLElement;
-                              if (htmlElement && htmlElement.style.display !== 'none') {
-                                htmlElement.style.display = 'none';
-                                found++;
-                              }
-                            });
-                          });
-                          
-                          if (found > 0) {
-                            console.log(`🔕 ${found} banner(s) ocultado(s) após carregar iframe público`);
-                          }
-                        } catch (error) {
-                          console.warn('⚠️ Erro ao ocultar banner:', error);
-                        }
-                      };
-                      hidePowerBIBannerOptimized();
-                    }, 1000);
-                    
-                    setTimeout(() => {
-                      const hidePowerBIBannerOptimized = () => {
-                        try {
-                          const selectors = [
-                            '.notification-bar',
-                            '.teaching-bubble', 
-                            '.teaching-tooltip',
-                            '.banner-container',
-                            '[class*="notification"]',
-                            '[class*="banner"]',
-                            '[class*="teaching"]'
-                          ];
-                          
-                          let found = 0;
-                          selectors.forEach(selector => {
-                            const elements = document.querySelectorAll(selector);
-                            elements.forEach(el => {
-                              const htmlElement = el as HTMLElement;
-                              if (htmlElement && htmlElement.style.display !== 'none') {
-                                htmlElement.style.display = 'none';
-                                found++;
-                              }
-                            });
-                          });
-                          
-                          if (found > 0) {
-                            console.log(`🔕 ${found} banner(s) ocultado(s) após carregar iframe público (segunda tentativa)`);
-                          }
-                        } catch (error) {
-                          console.warn('⚠️ Erro ao ocultar banner:', error);
-                        }
-                      };
-                      hidePowerBIBannerOptimized();
-                    }, 3000);
                   }}
                   onError={() => {
                     console.error('❌ Erro ao carregar dashboard público');

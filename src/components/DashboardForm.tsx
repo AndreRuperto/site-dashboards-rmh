@@ -18,8 +18,21 @@ interface DashboardFormProps {
   dashboard?: Dashboard | null;
 }
 
+type Visibilidade = 'geral' | 'coordenadores' | 'admin';
+
+interface DashboardFormData {
+  titulo: string;
+  descricao: string;
+  setor: string;
+  url_iframe: string;
+  ativo: boolean;
+  largura: number;
+  altura: number;
+  tipo_visibilidade: Visibilidade;
+}
+
 const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboard }) => {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<DashboardFormData>({
     titulo: '',
     descricao: '',
     setor: '',
@@ -27,9 +40,8 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
     ativo: true,
     largura: 1200,
     altura: 600,
-    tipo_visibilidade: 'geral' as 'geral' | 'coordenadores' | 'admin'
+    tipo_visibilidade: 'geral'
   });
-
   const { addDashboard, updateDashboard, setores } = useDashboard();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -202,8 +214,8 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
               </Label>
               <Select 
                 value={formData.tipo_visibilidade} 
-                onValueChange={(value: 'geral' | 'coordenadores' | 'admin') =>
-                  setFormData(prev => ({ ...prev, tipo_visibilidade: value }))
+                onValueChange={(value) =>
+                  setFormData(prev => ({ ...prev, tipo_visibilidade: value as Visibilidade }))
                 }
               >
                 <SelectTrigger>
@@ -262,36 +274,14 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
             </div>
           </div>
 
-          {/* Dashboard Ativo */}
-          <div className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg">
-            <Switch
-              id="ativo"
-              checked={formData.ativo}
-              onCheckedChange={(checked) => setFormData(prev => ({ ...prev, ativo: checked }))}
-            />
-            <Label htmlFor="ativo" className="text-sm font-medium text-gray-700 flex items-center gap-2">
-              {formData.ativo ? (
-                <>
-                  <Eye className="h-4 w-4 text-green-600" />
-                  Dashboard ativo
-                </>
-              ) : (
-                <>
-                  <EyeOff className="h-4 w-4 text-gray-400" />
-                  Dashboard inativo
-                </>
-              )}
-            </Label>
-          </div>
-
           {/* Botões */}
-          <div className="flex justify-end space-x-3 pt-4 border-t">
+          <div className="flex justify-end space-x-3 pt-4">
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
             </Button>
             <Button 
               type="submit" 
-              className="bg-corporate-blue hover:bg-corporate-blue/90"
+              className="bg-rmh-lightGreen hover:bg-rmh-primary"
               disabled={!formData.titulo.trim() || !formData.url_iframe.trim() || !formData.setor}
             >
               {dashboard ? 'Atualizar' : 'Criar Dashboard'}

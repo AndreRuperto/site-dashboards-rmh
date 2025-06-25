@@ -117,6 +117,68 @@ async function testarConexao(tentativas = 3) {
 // Inicializar Resend
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+// CORS configurado corretamente
+const isProduction = process.env.NODE_ENV === 'production';
+const isRailway = process.env.RAILWAY_ENVIRONMENT;
+
+let allowedOrigins;
+
+if (isProduction || isRailway) {
+  allowedOrigins = [
+    'https://sistema.resendemh.com.br',
+  ].filter(Boolean); // Remove valores null/undefined
+} else {
+  allowedOrigins = [
+    'http://localhost:3001',   // ✅ Mesmo domínio do backend
+    'http://localhost:5173',   // Vite dev server
+    'http://localhost:8080',   // Build local
+    'http://127.0.0.1:3001',   // ✅ ADICIONAR VARIAÇÃO IP
+    'http://127.0.0.1:5173',   // ✅ ADICIONAR VARIAÇÃO IP
+    'http://127.0.0.1:8080'    // ✅ ADICIONAR VARIAÇÃO IP
+  ];
+}
+
+console.log(`🔒 CORS: Ambiente ${isProduction ? 'PRODUÇÃO' : 'DESENVOLVIMENTO'}`);
+console.log(`📍 Origins permitidas:`, allowedOrigins);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    console.log(`🌐 Request from origin: ${origin || 'same-origin'}`);
+    
+    // ✅ SEMPRE PERMITIR REQUISIÇÕES SEM ORIGIN (same-origin, Postman, etc.)
+    if (!origin) {
+      console.log('✅ CORS: Same-origin request permitida');
+      return callback(null, true);
+    }
+    
+    // ✅ VERIFICAR SE ORIGIN ESTÁ NA LISTA PERMITIDA
+    if (allowedOrigins.includes(origin)) {
+      console.log(`✅ CORS: Origin ${origin} permitida`);
+      return callback(null, true);
+    } 
+    
+    // ✅ EM DESENVOLVIMENTO, SER MAIS PERMISSIVO
+    if (!isProduction && !isRailway) {
+      // Permitir qualquer localhost ou 127.0.0.1
+      if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        console.log(`✅ CORS: Origin localhost ${origin} permitida (desenvolvimento)`);
+        return callback(null, true);
+      }
+    }
+    
+    // ✅ BLOQUEAR APENAS SE REALMENTE NÃO PERMITIDO
+    console.log(`❌ CORS BLOCKED: Origin ${origin} não permitida`);
+    console.log(`📋 Origins permitidas: ${allowedOrigins.join(', ')}`);
+    callback(new Error(`CORS: Origin ${origin} não permitida`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  // ✅ ADICIONAR CONFIGURAÇÕES EXTRAS PARA DEBUGGING
+  optionsSuccessStatus: 200, // Para suportar browsers legados
+  preflightContinue: false
+}));
+
 // Middleware de segurança
 app.use(
   helmet({
@@ -127,14 +189,19 @@ app.use(
         defaultSrc: ["'self'"],
         connectSrc: [
           "'self'",
+          // ✅ ADICIONAR LOCALHOST PARA DESENVOLVIMENTO
+          process.env.NODE_ENV !== 'production' ? "http://localhost:3001" : null,
+          process.env.NODE_ENV !== 'production' ? "http://127.0.0.1:3001" : null,
           "https://*.railway.app",
           "https://api.resend.com",
-          "https://app.fabric.microsoft.com"
-        ],
+          "https://app.fabric.microsoft.com",
+          // ✅ ADICIONAR DOMÍNIO DE PRODUÇÃO
+          "https://sistema.resendemh.com.br"
+        ].filter(Boolean), // Remove valores null
         frameSrc: [
           "'self'",
           "https://app.fabric.microsoft.com",
-          "https://app.powerbi.com",          // ✅ ADICIONAR ESTA LINHA
+          "https://app.powerbi.com",
           "https://msit.powerbi.com" 
         ],
         scriptSrc: [
@@ -154,50 +221,6 @@ app.use(
     }
   })
 );
-
-// CORS configurado corretamente
-const isProduction = process.env.NODE_ENV === 'production';
-const isRailway = process.env.RAILWAY_ENVIRONMENT;
-
-let allowedOrigins;
-
-if (isProduction || isRailway) {
-  allowedOrigins = [
-    'https://sistema.resendemh.com.br',      // Domínio principal
-  ];
-} else {
-  allowedOrigins = [
-    'http://localhost:3001',
-    'http://localhost:5173',
-    'http://localhost:8080',
-  ];
-}
-
-console.log(`🔒 CORS: Ambiente ${isProduction ? 'PRODUÇÃO' : 'DESENVOLVIMENTO'}`);
-console.log(`📍 Origins permitidas:`, allowedOrigins);
-
-app.use(cors({
-  origin: (origin, callback) => {
-    console.log(`🌐 Request from origin: ${origin || 'same-origin'}`);
-    
-    // ✅ Permitir requisições do mesmo domínio (sem origin header)
-    if (!origin) {
-      console.log('✅ CORS: Same-origin request permitida');
-      return callback(null, true);
-    }
-    
-    if (allowedOrigins.includes(origin)) {
-      console.log(`✅ CORS: Origin ${origin} permitida`);
-      callback(null, true);
-    } else {
-      console.log(`❌ CORS BLOCKED: Origin ${origin} não permitida`);
-      callback(new Error(`CORS: Origin ${origin} não permitida`));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
 
 // Rate limiting melhorado para Railway
 const limiter = rateLimit({
@@ -2608,16 +2631,14 @@ app.get('/api/dashboards', authMiddleware, async (req, res) => {
 // CRIAR NOVO DASHBOARD (só para admins)
 app.post('/api/dashboards', authMiddleware, async (req, res) => {
   try {
-    // Verificar se é admin
     if (req.user.tipo_usuario !== 'admin') {
       return res.status(403).json({ 
         error: 'Apenas administradores podem criar dashboards' 
       });
     }
 
-    const { titulo, descricao, setor, url_iframe, largura, altura } = req.body;
+    const { titulo, descricao, setor, url_iframe, largura, altura, tipo_visibilidade } = req.body;
 
-    // Validações
     if (!titulo || !setor || !url_iframe) {
       return res.status(400).json({
         error: 'Título, setor e URL são obrigatórios'
@@ -2625,14 +2646,26 @@ app.post('/api/dashboards', authMiddleware, async (req, res) => {
     }
 
     const result = await pool.query(`
-      INSERT INTO dashboards (titulo, descricao, setor, url_iframe, largura, altura, criado_por, ativo)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO dashboards (
+        titulo, descricao, setor, url_iframe, largura, altura, criado_por, ativo, tipo_visibilidade
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
-    `, [titulo, descricao, setor, url_iframe, largura || 800, altura || 600, req.user.id, true]);
+    `, [
+      titulo,
+      descricao,
+      setor,
+      url_iframe,
+      largura || 800,
+      altura || 600,
+      req.user.id,
+      true,
+      tipo_visibilidade || 'geral' // fallback se não vier nada
+    ]);
 
     const newDashboard = result.rows[0];
 
-    console.log(`✅ DASHBOARD: ${titulo} criado por ${req.user.nome}`);
+    console.log(`✅ DASHBOARD: ${titulo} criado por ${req.user.nome} com visibilidade: ${tipo_visibilidade}`);
 
     res.status(201).json({
       message: 'Dashboard criado com sucesso',
