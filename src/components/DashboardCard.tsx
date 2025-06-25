@@ -52,6 +52,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
 
   // ✅ NOVO: FUNÇÃO PARA OCULTAR BANNER DO POWER BI
   const hidePowerBIBanner = () => {
+    console.log('🔍 EXECUTANDO hidePowerBIBanner...');
     try {
       // Lista de seletores para diferentes tipos de banners/notificações
       const selectors = [
