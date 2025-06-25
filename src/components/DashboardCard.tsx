@@ -858,6 +858,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
                     overflow: 'hidden',
                     width: '100%',
                     height: '100%',
+                    clipPath: 'inset(40px 0px 0px 0px)',
                     maxHeight: '100vh',
                     display: 'block'
                   }}
