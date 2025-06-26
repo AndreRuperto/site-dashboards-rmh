@@ -116,10 +116,7 @@ const isPendenteVerificacao = (usuario: Usuario): boolean => {
   return !usuario.email_verificado;
 };
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 
-  (process.env.NODE_ENV === 'production' 
-    ? 'https://sistema.resendemh.com.br'
-    : 'http://localhost:3001');
+const API_BASE_URL = process.env.REACT_APP_API_URL;
 
 // 🆕 COMPONENTE PARA TOKENS EXPIRADOS (definido FORA do componente principal)
 const TokensExpiradosSection: React.FC<{
