@@ -113,6 +113,7 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
   };
 
   const setoresPredefinidos = [
+    'Diretores',
     'Carteira',
     'Atendimento',
     'Prazos',

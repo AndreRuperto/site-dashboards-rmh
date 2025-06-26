@@ -60,6 +60,7 @@ const Register: React.FC<RegisterProps> = ({
 
   // Setores específicos da RMH - mantidos conforme o contexto
   const setores = [
+    'Diretores',
     'Carteira',
     'Atendimento',
     'Prazos',

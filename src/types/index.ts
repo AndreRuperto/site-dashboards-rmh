@@ -245,6 +245,7 @@ export const isAguardandoVerificacao = (usuario: User): boolean => {
 
 // 🆕 SETORES DISPONÍVEIS
 export const SETORES = [
+  'Diretores',
   'Carteira',
   'Atendimento',
   'Prazos',
