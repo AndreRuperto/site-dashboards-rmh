@@ -91,7 +91,6 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
             top: 0;
             left: 0;
             right: 0;
-            height: 40px;
             background: #ffffff;
             z-index: 10;
             pointer-events: none;
@@ -315,6 +314,15 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
             pageNavigation: {
               visible: true
             }
+          },
+          visualSettings: {
+              visualHeaders: [
+                {
+                  settings: {
+                    visible: false   // oculta TODO o cabeçalho (filtro, reticências etc.) dos visuais
+                  }
+                }
+              ]
           },
           background: models.BackgroundType.Default,
           bars: {
@@ -702,7 +710,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
             Visualização do dashboard {dashboard.titulo}
           </DialogDescription>
 
-          <DialogHeader className="p-2 pr-12 pb-2 flex-shrink-0 border-b border-gray-200">
+          <DialogHeader className="px-2 pt-2 pb-0 pr-12 flex-shrink-0">
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1">
                 <DialogTitle className="text-lg font-heading font-semibold text-corporate-blue truncate flex items-center gap-2">
@@ -724,7 +732,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
             </div>
           </DialogHeader>
 
-          <div className="flex-1 min-h-0 p-1 relative overflow-hidden">
+          <div className="flex-1 min-h-0 relative overflow-hidden">
             {/* ✅ ERROR STATE */}
             {tokenError && (
               <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
@@ -761,7 +769,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
                   className="absolute top-0 left-0 right-0 z-10 pointer-events-none"
                   style={{
                     height: '42px', // Altura do banner
-                    background: '#F0F0F0', // Cor de fundo
+                    background: '#FFFFFF', // Cor de fundo
                   }}
                 />
                 

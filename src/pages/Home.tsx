@@ -490,9 +490,18 @@ const Home: React.FC = () => {
           panes: {
             filters: { visible: false, expanded: false },
             pageNavigation: { 
-              visible: true,
+              visible: false,
               position: models.PageNavigationPosition.Bottom
              }
+          },
+          visualSettings: {
+              visualHeaders: [
+                {
+                  settings: {
+                    visible: false   // oculta TODO o cabeçalho (filtro, reticências etc.) dos visuais
+                  }
+                }
+              ]
           },
           background: models.BackgroundType.Default,
           navContentPaneEnabled: true,
