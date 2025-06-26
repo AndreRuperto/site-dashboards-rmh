@@ -479,15 +479,16 @@ const Home: React.FC = () => {
         id: token.reportId,
         embedUrl: token.embedUrl,
         accessToken: token.accessToken,
+        viewMode: models.ViewMode.View,
         tokenType: models.TokenType.Embed,
-        permissions: models.Permissions.ReadWrite,
+        permissions: models.Permissions.Read,
         settings: {
           layoutType: models.LayoutType.Custom,
           customLayout: {
             displayOption: models.DisplayOption.FitToPage
           },
           panes: {
-            filters: { expanded: false, visible: false },
+            filters: { visible: false, expanded: false },
             pageNavigation: { 
               visible: true,
               position: models.PageNavigationPosition.Bottom
@@ -508,9 +509,6 @@ const Home: React.FC = () => {
           powerbiReport.off('loaded');
           powerbiReport.off('error');
           powerbiReport.off('rendered');
-          if (typeof (powerbiReport as any).remove === 'function') {
-            (powerbiReport as any).remove();
-          }
         } catch (e) {
           console.warn('Cleanup warning:', e);
         }
@@ -630,22 +628,6 @@ const Home: React.FC = () => {
     return `${baseUrl}${separator}${params.toString()}`;
   };
 
-  // ✅ RECARREGAR DASHBOARD
-  const handleRefresh = () => {
-    if (dashboard?.embed_type === 'secure') {
-      fetchMainDashboard();
-    } else if (iframeRef.current) {
-      iframeRef.current.src = iframeRef.current.src;
-    }
-  };
-
-  // ✅ ABRIR EM NOVA ABA
-  const handleOpenInNewTab = () => {
-    if (dashboard) {
-      window.open(dashboard.url_iframe, '_blank');
-    }
-  };
-
   // ✅ INICIALIZAR AO CARREGAR A PÁGINA
   useEffect(() => {
     fetchMainDashboard();
@@ -657,9 +639,6 @@ const Home: React.FC = () => {
           powerbiReport.off('loaded');
           powerbiReport.off('error');
           powerbiReport.off('rendered');
-          if (typeof (powerbiReport as any).remove === 'function') {
-            (powerbiReport as any).remove();
-          }
         } catch (e) {
           console.warn('Cleanup warning:', e);
         }
