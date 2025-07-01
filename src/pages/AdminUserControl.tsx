@@ -9,6 +9,7 @@ import { TokensExpiradosTab } from './TokensExpiradosTab';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import ControleEmailsProcessos from './ControleEmailsProcessos';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -890,10 +891,14 @@ const AdminUserControl: React.FC = () => {
 
       {/* 🆕 SISTEMA DE ABAS */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="geral">
             <Users className="h-4 w-4 mr-2" />
             Usuários Gerais
+          </TabsTrigger>
+          <TabsTrigger value="emails-processos">
+            <Mail className="h-4 w-4 mr-2" />
+            Emails - Processos
           </TabsTrigger>
           <TabsTrigger value="verificacoes" className="relative">
             <Clock className="h-4 w-4 mr-2" />
@@ -1323,6 +1328,10 @@ const AdminUserControl: React.FC = () => {
             API_BASE_URL={API_BASE_URL}
             fetchWithAuth={fetchWithAuth}
           />
+        </TabsContent>
+
+        <TabsContent value="emails-processos" className="space-y-6">
+          <ControleEmailsProcessos />
         </TabsContent>
       </Tabs>
       {/* MODAL: Adicionar Novo Usuário */}

@@ -12,6 +12,7 @@ const crypto = require('crypto');
 const { Pool } = require('pg');
 const path = require('path');
 const fs = require('fs/promises');
+const { google } = require('googleapis');
 
 const app = express();
 
@@ -1159,6 +1160,511 @@ app.get('/health', async (req, res) => {
 
 app.get('/ping', (req, res) => {
   res.status(200).send('pong');
+});
+// ===============================================
+// CONFIGURAÇÃO CORRIGIDA PARA PROCESSOS - server.js
+// ===============================================
+
+// Configurações da Google Sheets API
+const SHEETS_CONFIG = {
+  SPREADSHEET_ID: '1Og951U-NWhx_Hmi3CcKa8hu5sh3RJuCAR37HespiEe0',
+  RANGE: 'Processo Pendentes!A:L', // Ajustado para incluir mais colunas
+  GOOGLE_SERVICE_ACCOUNT_EMAIL: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+  GOOGLE_PRIVATE_KEY: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+};
+
+// Configurar Google Sheets
+const getGoogleSheetsInstance = () => {
+  let auth;
+  
+  // Opção A: Usar arquivo JSON
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    const credentialsPath = path.resolve(process.env.GOOGLE_APPLICATION_CREDENTIALS);
+    auth = new google.auth.GoogleAuth({
+      keyFile: credentialsPath,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
+  } 
+  // Opção B: Usar variáveis de ambiente
+  else if (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
+    auth = new google.auth.GoogleAuth({
+      credentials: {
+        client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+        private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      },
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
+  } else {
+    throw new Error('Credenciais do Google não configuradas');
+  }
+
+  return google.sheets({ version: 'v4', auth });
+};
+
+// ===============================================
+// ROTAS PARA PROCESSOS - ESTRUTURA CORRIGIDA
+// ===============================================
+
+// Buscar dados da planilha com mapeamento correto
+app.get('/api/processos/planilha', authMiddleware, async (req, res) => {
+  try {
+    console.log('📊 PROCESSOS: Buscando dados da planilha...');
+
+    const sheets = getGoogleSheetsInstance();
+    
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
+      range: SHEETS_CONFIG.RANGE,
+    });
+
+    const rows = response.data.values;
+    
+    if (!rows || rows.length === 0) {
+      return res.json({ processos: [] });
+    }
+
+    // Primeira linha são os cabeçalhos
+    const headers = rows[0];
+    const dataRows = rows.slice(1);
+
+    console.log('📋 Cabeçalhos encontrados:', headers);
+
+    // Mapear dados CORRETAMENTE conforme sua planilha
+    const processos = dataRows.map((row, index) => {
+      // Estrutura real da sua planilha:
+      // A: ID do processo, B: Número único, C: CPF, D: Nome, E: Email, F: Telefones
+      // G: ID atendimento, H: Natureza, I: Data autuação, J: Ex-adverso, K: Instância, L: Objeto
+      
+      const processo = {
+        id: index + 1, // ID sequencial para controle interno
+        idProcessoPlanilha: row[0] || '', // A: ID original da planilha
+        numeroProcesso: row[1] || '', // B: Número único do processo
+        cpfAssistido: row[2] || '', // C: CPF do assistido
+        cliente: row[3] || '', // D: Nome do assistido (cliente)
+        emailCliente: row[4] || '', // E: Email
+        telefones: row[5] || '', // F: Telefones
+        idAtendimento: row[6] || '', // G: ID do atendimento vinculado
+        tipoProcesso: row[7] || '', // H: Natureza do processo (tipo)
+        dataAjuizamento: row[8] || '', // I: Data de autuação
+        exAdverso: row[9] || '', // J: Ex-adverso (responsável/réu)
+        instancia: row[10] || '', // K: Instância
+        objetoAtendimento: row[11] || '', // L: Objeto do atendimento
+        observacoes: row[12] || '', // M: Observações (se houver)
+        
+        // Campos de controle de email (não existem na planilha original)
+        emailEnviado: false, // Sempre false inicialmente
+        dataUltimoEmail: null, // Null inicialmente
+        
+        // Campos derivados para compatibilidade com frontend
+        status: definirStatusProcesso(row[7], row[8]), // Baseado no tipo e data
+        ultimoAndamento: row[8] || '', // Usar data de autuação como último andamento
+        responsavel: extrairResponsavel(row[9]) // Extrair nome do responsável
+      };
+
+      return processo;
+    }).filter(processo => processo.numeroProcesso && processo.cliente); // Filtrar linhas válidas
+
+    console.log(`✅ PROCESSOS: ${processos.length} processos carregados da planilha`);
+
+    res.json({
+      processos,
+      total: processos.length,
+      ultimaAtualizacao: new Date().toISOString(),
+      estruturaPlanilha: {
+        colunas: headers,
+        totalLinhas: dataRows.length,
+        processosValidos: processos.length
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar dados da planilha:', error);
+    res.status(500).json({
+      error: 'Erro ao buscar dados da planilha',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+function definirStatusProcesso(natureza, dataAutuacao) {
+  if (!dataAutuacao) return 'Indefinido';
+  
+  try {
+    const hoje = new Date();
+    const dataProcesso = new Date(dataAutuacao.split('/').reverse().join('-')); // Converter DD/MM/YYYY
+    const diasDecorridos = Math.floor((hoje - dataProcesso) / (1000 * 60 * 60 * 24));
+    
+    if (diasDecorridos <= 30) return 'Em Andamento';
+    if (diasDecorridos <= 90) return 'Aguardando';
+    return 'Em Andamento';
+  } catch (error) {
+    return 'Em Andamento'; // Default se houver erro na conversão
+  }
+}
+
+function extrairResponsavel(exAdverso) {
+  if (!exAdverso) return 'Não informado';
+  
+  if (exAdverso.length > 50) {
+    return exAdverso.substring(0, 50) + '...';
+  }
+  
+  return exAdverso;
+}
+
+// Funções auxiliares para processar dados
+function definirStatusProcesso(natureza, dataAutuacao) {
+  if (!dataAutuacao) return 'Indefinido';
+  
+  const hoje = new Date();
+  const dataProcesso = new Date(dataAutuacao.split('/').reverse().join('-')); // Converter DD/MM/YYYY para YYYY-MM-DD
+  const diasDecorridos = Math.floor((hoje - dataProcesso) / (1000 * 60 * 60 * 24));
+  
+  // Lógica simples para definir status baseado no tempo
+  if (diasDecorridos <= 30) return 'Em Andamento';
+  if (diasDecorridos <= 90) return 'Aguardando';
+  return 'Em Andamento'; // Default
+}
+
+function extrairResponsavel(exAdverso) {
+  if (!exAdverso) return 'Não informado';
+  
+  // Se for muito longo, pegar apenas a primeira parte
+  if (exAdverso.length > 50) {
+    return exAdverso.substring(0, 50) + '...';
+  }
+  
+  return exAdverso;
+}
+
+// Atualizar planilha com controle de email (ADICIONAR COLUNAS)
+app.patch('/api/processos/atualizar-email', authMiddleware, async (req, res) => {
+  try {
+    const { processoId, emailEnviado, dataEnvio } = req.body;
+
+    console.log(`📝 PROCESSOS: Atualizando status email - Processo ${processoId}`);
+
+    const sheets = getGoogleSheetsInstance();
+    
+    // Como sua planilha não tem colunas de controle de email, vamos adicionar nas colunas N e O
+    const row = processoId + 1; // +1 por causa do header
+    
+    const updates = [
+      {
+        range: `Processo Pendentes!N${row}`, // Coluna N: Email Enviado
+        values: [[emailEnviado ? 'SIM' : 'NÃO']],
+      },
+      {
+        range: `Processo Pendentes!O${row}`, // Coluna O: Data Último Email
+        values: [[dataEnvio ? new Date(dataEnvio).toLocaleDateString('pt-BR') : '']],
+      }
+    ];
+
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
+      resource: {
+        valueInputOption: 'USER_ENTERED',
+        data: updates,
+      },
+    });
+
+    console.log(`✅ PROCESSOS: Status atualizado na planilha - Processo ${processoId}`);
+
+    res.json({
+      success: true,
+      processoId,
+      emailEnviado,
+      dataEnvio
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao atualizar planilha:', error);
+    res.status(500).json({
+      error: 'Erro ao atualizar planilha',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// Enviar email individual com template adaptado
+app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { numeroProcesso, cliente, emailCliente, tipoProcesso, status, ultimoAndamento, responsavel, observacoes, cpfAssistido, instancia } = req.body;
+
+    console.log(`📧 EMAIL: Enviando para processo ${numeroProcesso} - ${cliente}`);
+
+    // Validar email
+    if (!emailCliente || !emailCliente.includes('@')) {
+      throw new Error('Email do cliente inválido');
+    }
+
+    // Template do email adaptado para processos jurídicos
+    const emailTemplate = `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Atualização do Processo Jurídico</title>
+      <style>
+        body { font-family: 'Arial', sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; background-color: #ffffff; }
+        .header { background-color: #165A5D; color: white; padding: 25px; text-align: center; border-radius: 8px 8px 0 0; }
+        .header h1 { margin: 0; font-size: 24px; font-weight: bold; }
+        .content { padding: 30px; background-color: #f9f9f9; border-radius: 0 0 8px 8px; }
+        .info-box { background-color: #e3f2fd; padding: 20px; margin: 20px 0; border-left: 4px solid #165A5D; border-radius: 4px; }
+        .info-box p { margin: 8px 0; }
+        .highlight { color: #165A5D; font-weight: bold; }
+        .footer { text-align: center; padding: 20px; font-size: 12px; color: #666; background-color: #f5f5f5; margin-top: 20px; border-radius: 4px; }
+        .contact-info { background-color: #fff3cd; padding: 15px; border: 1px solid #ffeaa7; border-radius: 4px; margin: 15px 0; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>📋 Atualização do seu Processo</h1>
+          <p style="margin: 5px 0 0 0; opacity: 0.9;">RMH Advogados Associados</p>
+        </div>
+        
+        <div class="content">
+          <p>Prezado(a) <strong>${cliente}</strong>,</p>
+          
+          <p>Entramos em contato para informar sobre a situação atual do seu processo jurídico:</p>
+          
+          <div class="info-box">
+            <p><strong>📋 Número do Processo:</strong> <span class="highlight">${numeroProcesso}</span></p>
+            <p><strong>⚖️ Tipo de Ação:</strong> ${tipoProcesso}</p>
+            <p><strong>📊 Status Atual:</strong> ${status}</p>
+            <p><strong>📅 Última Movimentação:</strong> ${ultimoAndamento}</p>
+            ${instancia ? `<p><strong>🏛️ Instância:</strong> ${instancia}</p>` : ''}
+            <p><strong>👨‍💼 Parte Contrária:</strong> ${responsavel}</p>
+            ${observacoes ? `<p><strong>📝 Observações:</strong> ${observacoes}</p>` : ''}
+          </div>
+          
+          <div class="contact-info">
+            <p><strong>💬 Precisa de esclarecimentos?</strong></p>
+            <p>Entre em contato conosco através dos nossos canais de atendimento:</p>
+            <p>📧 Email: contato@resendemh.com.br</p>
+            <p>📱 WhatsApp: (61) 9999-9999</p>
+          </div>
+          
+          <p>Continuamos trabalhando para garantir o melhor resultado em seu caso.</p>
+          
+          <p>Atenciosamente,<br><strong>Equipe RMH Advogados Associados</strong></p>
+        </div>
+        
+        <div class="footer">
+          <p>Este é um email automático de acompanhamento processual.</p>
+          <p>Por favor, não responda diretamente a esta mensagem.</p>
+          <p>Para dúvidas, utilize nossos canais oficiais de atendimento.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+    `;
+
+    // Enviar email usando Resend
+    const emailResult = await resend.emails.send({
+      from: 'processos@resendemh.com.br', // Configure o domínio no Resend
+      to: [emailCliente],
+      subject: `📋 Atualização - Processo ${numeroProcesso} | RMH Advogados`,
+      html: emailTemplate
+    });
+
+    console.log(`✅ EMAIL: Enviado com sucesso - ID: ${emailResult.id}`);
+
+    res.json({
+      success: true,
+      emailId: emailResult.id,
+      processoId: id,
+      cliente,
+      numeroProcesso,
+      emailEnviado: true,
+      dataEnvio: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao enviar email:', error);
+    res.status(500).json({
+      error: 'Erro ao enviar email',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// Enviar emails em massa (mantém a lógica anterior)
+app.post('/api/emails/massa', authMiddleware, async (req, res) => {
+  try {
+    const { processos } = req.body;
+
+    console.log(`📧 EMAIL MASSA: Enviando para ${processos.length} processos`);
+
+    let enviados = 0;
+    let erros = 0;
+    const resultados = [];
+
+    // Validar emails antes de enviar
+    const processosValidos = processos.filter(p => p.emailCliente && p.emailCliente.includes('@'));
+    
+    if (processosValidos.length === 0) {
+      return res.status(400).json({
+        error: 'Nenhum processo tem email válido',
+        total: processos.length,
+        validos: 0
+      });
+    }
+
+    // Enviar emails em lotes para evitar sobrecarga
+    const batchSize = 3; // Reduzido para ser mais conservador
+    for (let i = 0; i < processosValidos.length; i += batchSize) {
+      const batch = processosValidos.slice(i, i + batchSize);
+      
+      const batchPromises = batch.map(async (processo) => {
+        try {
+          // Usar mesmo template do email individual
+          const emailTemplate = `[... mesmo template acima ...]`;
+
+          const emailResult = await resend.emails.send({
+            from: 'processos@resendemh.com.br',
+            to: [processo.emailCliente],
+            subject: `📋 Atualização - Processo ${processo.numeroProcesso} | RMH Advogados`,
+            html: emailTemplate.replace(/\$\{cliente\}/g, processo.cliente)
+                              .replace(/\$\{numeroProcesso\}/g, processo.numeroProcesso)
+                              .replace(/\$\{tipoProcesso\}/g, processo.tipoProcesso)
+                              .replace(/\$\{status\}/g, processo.status)
+                              .replace(/\$\{ultimoAndamento\}/g, processo.ultimoAndamento)
+                              .replace(/\$\{responsavel\}/g, processo.responsavel)
+                              .replace(/\$\{observacoes\}/g, processo.observacoes || '')
+          });
+
+          enviados++;
+          return {
+            id: processo.id,
+            cliente: processo.cliente,
+            numeroProcesso: processo.numeroProcesso,
+            success: true,
+            emailId: emailResult.id
+          };
+
+        } catch (error) {
+          erros++;
+          console.error(`❌ Erro ao enviar email para ${processo.cliente}:`, error);
+          return {
+            id: processo.id,
+            cliente: processo.cliente,
+            numeroProcesso: processo.numeroProcesso,
+            success: false,
+            error: error.message
+          };
+        }
+      });
+
+      const batchResults = await Promise.all(batchPromises);
+      resultados.push(...batchResults);
+
+      // Pausa entre lotes para evitar rate limiting
+      if (i + batchSize < processosValidos.length) {
+        await new Promise(resolve => setTimeout(resolve, 2000)); // 2 segundos entre lotes
+      }
+    }
+
+    console.log(`✅ EMAIL MASSA: ${enviados} enviados, ${erros} erros`);
+
+    res.json({
+      success: true,
+      enviados,
+      erros,
+      total: processos.length,
+      processosValidos: processosValidos.length,
+      resultados
+    });
+
+  } catch (error) {
+    console.error('❌ Erro no envio em massa:', error);
+    res.status(500).json({
+      error: 'Erro no envio em massa',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// Rate limiting para envio de emails
+const emailRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 30, // Reduzido para 30 emails por 15 minutos (mais conservador)
+  message: {
+    error: 'Muitos emails enviados. Tente novamente em 15 minutos.',
+    limite: '30 emails por 15 minutos'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Aplicar rate limiting
+app.use('/api/emails', emailRateLimit);
+
+// Middleware de logs
+app.use('/api/processos', (req, res, next) => {
+  console.log(`📊 PROCESSOS API: ${req.method} ${req.path} - User: ${req.user?.nome || 'Unknown'}`);
+  next();
+});
+
+app.use('/api/emails', (req, res, next) => {
+  console.log(`📧 EMAIL API: ${req.method} ${req.path} - User: ${req.user?.nome || 'Unknown'}`);
+  next();
+});
+
+// Função de teste
+app.get('/api/processos/test-connection', authMiddleware, async (req, res) => {
+  try {
+    console.log('🧪 TESTE: Verificando conexão com Google Sheets...');
+
+    const sheets = getGoogleSheetsInstance();
+    
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
+      range: 'Processo Pendentes!A1:L1', // Testar primeira linha completa
+    });
+
+    res.json({
+      success: true,
+      message: 'Conexão com Google Sheets funcionando',
+      cabecalhos: response.data.values?.[0] || [],
+      planilhaId: SHEETS_CONFIG.SPREADSHEET_ID,
+      temCredenciais: !!SHEETS_CONFIG.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+      estruturaDetectada: {
+        totalColunas: response.data.values?.[0]?.length || 0,
+        colunasPrincipais: [
+          'A: ID Processo',
+          'B: Número Único', 
+          'C: CPF',
+          'D: Nome Cliente',
+          'E: Email',
+          'F: Telefones',
+          'G: ID Atendimento',
+          'H: Natureza',
+          'I: Data Autuação',
+          'J: Ex-adverso',
+          'K: Instância',
+          'L: Objeto'
+        ]
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erro no teste de conexão:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro na conexão com Google Sheets',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      dicas: [
+        'Verifique se as credenciais do Google estão corretas',
+        'Confirme se a planilha foi compartilhada com a Service Account',
+        'Verifique se a Google Sheets API está ativada no projeto'
+      ]
+    });
+  }
 });
 
 // ===============================================
