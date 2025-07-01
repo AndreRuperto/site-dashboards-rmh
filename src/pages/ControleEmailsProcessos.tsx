@@ -4,6 +4,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
   Mail, 
   Send, 
@@ -19,13 +20,15 @@ import {
   Check,
   X,
   Download,
-  RefreshCw
+  RefreshCw,
+  Eye,
+  Phone,
+  Building,
+  Scale
 } from 'lucide-react';
 
 // Configurações da API
-const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? "https://sistema.resendemh.com.br" 
-  : "http://localhost:3001"
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 const PLANILHA_ID = "1Og951U-NWhx_Hmi3CcKa8hu5sh3RJuCAR37HespiEe0";
 
 // Interface para os dados dos processos
@@ -65,6 +68,7 @@ const ControleEmailsProcessos = () => {
   const [filtroEmail, setFiltroEmail] = useState('todos');
   const [termoBusca, setTermoBusca] = useState('');
   const [mostrarFiltros, setMostrarFiltros] = useState(false);
+  const [processoDetalhado, setProcessoDetalhado] = useState<ProcessoData | null>(null);
   const { toast } = useToast();
 
   // Função para obter token de autenticação
@@ -121,56 +125,46 @@ const ControleEmailsProcessos = () => {
       // Fallback para dados de demonstração em caso de erro
       const processosDemonstracao: ProcessoData[] = [
         {
-            // ✅ Campos básicos
-            id: 1,
-            idProcessoPlanilha: "235217", // ✅ ADICIONAR
-            numeroProcesso: "5001234-12.2024.4.03.6109",
-            cpfAssistido: "001.141.666-17", // ✅ ADICIONAR
-            cliente: "Maria Silva Santos",
-            emailCliente: "maria.silva@email.com",
-            telefones: "61 9956-4645", // ✅ ADICIONAR
-            idAtendimento: "340765", // ✅ ADICIONAR
-            tipoProcesso: "Aposentadoria por Invalidez",
-            dataAjuizamento: "2024-03-15",
-            exAdverso: "INSS - Instituto Nacional do Seguro Social", // ✅ ADICIONAR
-            instancia: "1ª Instância", // ✅ ADICIONAR
-            objetoAtendimento: "Aposentadoria por Invalidez", // ✅ ADICIONAR
-            observacoes: "Aguardando perícia médica",
-            
-            // ✅ Campos de controle de email
-            emailEnviado: false,
-            dataUltimoEmail: null,
-            
-            // ✅ Campos derivados
-            status: "Em Andamento",
-            ultimoAndamento: "2024-06-20",
-            responsavel: "INSS - Instituto Nacional do Seguro Social"
+          id: 1,
+          idProcessoPlanilha: "235217",
+          numeroProcesso: "5001234-12.2024.4.03.6109",
+          cpfAssistido: "001.141.666-17",
+          cliente: "Maria Silva Santos",
+          emailCliente: "maria.silva@email.com",
+          telefones: "61 9956-4645",
+          idAtendimento: "340765",
+          tipoProcesso: "Aposentadoria por Invalidez",
+          dataAjuizamento: "2024-03-15",
+          exAdverso: "INSS - Instituto Nacional do Seguro Social",
+          instancia: "1ª Instância",
+          objetoAtendimento: "Concessão de aposentadoria por invalidez devido a incapacidade permanente",
+          observacoes: "Aguardando perícia médica. Cliente possui laudo médico favorável.",
+          emailEnviado: false,
+          dataUltimoEmail: null,
+          status: "Em Andamento",
+          ultimoAndamento: "2024-06-20",
+          responsavel: "INSS"
         },
         {
-            // ✅ Campos básicos
-            id: 2,
-            idProcessoPlanilha: "235218", // ✅ ADICIONAR
-            numeroProcesso: "5001235-43.2024.4.03.6109",
-            cpfAssistido: "538.878.321-91", // ✅ ADICIONAR
-            cliente: "José Carlos Oliveira",
-            emailCliente: "jose.carlos@empresa.com",
-            telefones: "61 981123123", // ✅ ADICIONAR
-            idAtendimento: "196839", // ✅ ADICIONAR
-            tipoProcesso: "Auxílio-Doença",
-            dataAjuizamento: "2024-02-10",
-            exAdverso: "INSS - Instituto Nacional do Seguro Social", // ✅ ADICIONAR
-            instancia: "2ª Instância", // ✅ ADICIONAR
-            objetoAtendimento: "Auxílio-Doença", // ✅ ADICIONAR
-            observacoes: "Benefício concedido",
-            
-            // ✅ Campos de controle de email
-            emailEnviado: true,
-            dataUltimoEmail: "2024-06-25",
-            
-            // ✅ Campos derivados
-            status: "Deferido",
-            ultimoAndamento: "2024-06-25",
-            responsavel: "INSS - Instituto Nacional do Seguro Social"
+          id: 2,
+          idProcessoPlanilha: "235218",
+          numeroProcesso: "5001235-43.2024.4.03.6109",
+          cpfAssistido: "538.878.321-91",
+          cliente: "José Carlos Oliveira",
+          emailCliente: "jose.carlos@empresa.com",
+          telefones: "61 981123123",
+          idAtendimento: "196839",
+          tipoProcesso: "Auxílio-Doença",
+          dataAjuizamento: "2024-02-10",
+          exAdverso: "INSS - Instituto Nacional do Seguro Social",
+          instancia: "2ª Instância",
+          objetoAtendimento: "Concessão de auxílio-doença por incapacidade temporária",
+          observacoes: "Benefício concedido em primeira instância",
+          emailEnviado: true,
+          dataUltimoEmail: "2024-06-25",
+          status: "Deferido",
+          ultimoAndamento: "2024-06-25",
+          responsavel: "INSS"
         }
       ];
       
@@ -224,7 +218,7 @@ const ControleEmailsProcessos = () => {
     }
   };
 
-  const toggleSelecionarProcesso = (id) => {
+  const toggleSelecionarProcesso = (id: number) => {
     setProcessosSelecionados(prev => 
       prev.includes(id) 
         ? prev.filter(pid => pid !== id)
@@ -233,193 +227,153 @@ const ControleEmailsProcessos = () => {
   };
 
   // Enviar email individual
-    const enviarEmailIndividual = async (processo: ProcessoData) => {
-        setCarregando(true);
-        try {
-            console.log(`📧 Enviando email para processo ${processo.numeroProcesso}`);
-            
-            const response = await fetchWithAuth(`${API_BASE_URL}/api/emails/processo/${processo.id}`, {
-            method: 'POST',
-            body: JSON.stringify({
-                // ✅ Campos corretos conforme backend atualizado
-                numeroProcesso: processo.numeroProcesso,
-                cliente: processo.cliente,
-                emailCliente: processo.emailCliente,
-                tipoProcesso: processo.tipoProcesso,
-                status: processo.status,
-                ultimoAndamento: processo.ultimoAndamento,
-                responsavel: processo.responsavel,
-                observacoes: processo.observacoes,
-                // ✅ Campos adicionais do backend
-                cpfAssistido: processo.cpfAssistido,
-                instancia: processo.instancia,
-                exAdverso: processo.exAdverso,
-                objetoAtendimento: processo.objetoAtendimento
-            })
-            });
-
-            if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || "Erro ao enviar email");
-            }
-
-            const result = await response.json();
-            
-            // Atualizar processo localmente
-            setProcessos(prev => prev.map(p => 
-            p.id === processo.id 
-                ? { ...p, emailEnviado: true, dataUltimoEmail: new Date().toISOString().split('T')[0] }
-                : p
-            ));
-
-            toast({
-            title: "Email enviado com sucesso!",
-            description: `Email sobre o processo ${processo.numeroProcesso} foi enviado para ${processo.cliente}`,
-            });
-        } catch (error) {
-            console.error("❌ Erro ao enviar email:", error);
-            toast({
-            title: "Erro ao enviar email",
-            description: error instanceof Error ? error.message : "Não foi possível enviar o email. Tente novamente.",
-            variant: "destructive"
-            });
-        } finally {
-            setCarregando(false);
-        }
-        };
-
-  // Enviar emails em massa
-    const validarEmail = (email: string): boolean => {
-        if (!email || !email.includes('@')) return false;
-        
-        // Regex mais rigorosa para emails
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        return emailRegex.test(email);
-    };
-
-    // Usar na função de envio em massa
-    const enviarEmailsEmMassa = async () => {
-        if (processosSelecionados.length === 0) {
-            toast({
-            title: "Nenhum processo selecionado",
-            description: "Selecione pelo menos um processo para enviar emails",
-            variant: "destructive"
-            });
-            return;
-        }
-
-        // ✅ Validar emails antes de enviar
-        const processosParaEnviar = processos.filter(p => processosSelecionados.includes(p.id));
-        const processosComEmailValido = processosParaEnviar.filter(p => validarEmail(p.emailCliente));
-
-        if (processosComEmailValido.length === 0) {
-            toast({
-            title: "Nenhum email válido encontrado",
-            description: "Os processos selecionados não possuem emails válidos",
-            variant: "destructive"
-            });
-            return;
-        }
-
-        if (processosComEmailValido.length < processosParaEnviar.length) {
-            toast({
-            title: "Alguns emails são inválidos",
-            description: `${processosComEmailValido.length} de ${processosParaEnviar.length} processos têm emails válidos`,
-            variant: "destructive"
-            });
-        }
-
-        setCarregando(true);
-        try {
-            console.log(`📧 Enviando emails em massa para ${processosComEmailValido.length} processos`);
-            
-            const response = await fetchWithAuth(`${API_BASE_URL}/api/emails/massa`, {
-            method: 'POST',
-            body: JSON.stringify({
-                processos: processosComEmailValido.map(p => ({
-                id: p.id,
-                numeroProcesso: p.numeroProcesso,
-                cliente: p.cliente,
-                emailCliente: p.emailCliente,
-                tipoProcesso: p.tipoProcesso,
-                status: p.status,
-                ultimoAndamento: p.ultimoAndamento,
-                responsavel: p.responsavel,
-                observacoes: p.observacoes,
-                cpfAssistido: p.cpfAssistido,
-                instancia: p.instancia,
-                exAdverso: p.exAdverso,
-                objetoAtendimento: p.objetoAtendimento
-                }))
-            })
-            });
-
-            if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || "Erro ao enviar emails");
-            }
-
-            const result = await response.json();
-            
-            // Atualizar processos selecionados localmente
-            const dataAtual = new Date().toISOString().split('T')[0];
-            setProcessos(prev => prev.map(p => 
-            processosSelecionados.includes(p.id) && processosComEmailValido.find(pv => pv.id === p.id)
-                ? { ...p, emailEnviado: true, dataUltimoEmail: dataAtual }
-                : p
-            ));
-
-            setProcessosSelecionados([]);
-
-            toast({
-            title: "Emails enviados com sucesso!",
-            description: `${result.enviados || processosComEmailValido.length} email(s) foram enviados. ${result.erros ? `${result.erros} falharam.` : ''}`,
-            });
-        } catch (error) {
-            console.error("❌ Erro ao enviar emails em massa:", error);
-            toast({
-            title: "Erro ao enviar emails",
-            description: error instanceof Error ? error.message : "Não foi possível enviar os emails. Tente novamente.",
-            variant: "destructive"
-            });
-        } finally {
-            setCarregando(false);
-        }
-    };
-
-  // Atualizar status do email na planilha
-  const atualizarStatusEmailNaPlanilha = async (processoId: number, emailEnviado: boolean) => {
+  const enviarEmailIndividual = async (processo: ProcessoData) => {
+    setCarregando(true);
     try {
-      const response = await fetchWithAuth(`${API_BASE_URL}/api/processos/atualizar-email`, {
-        method: 'PATCH',
+      console.log(`📧 Enviando email para processo ${processo.numeroProcesso}`);
+      
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/emails/processo/${processo.id}`, {
+        method: 'POST',
         body: JSON.stringify({
-          processoId,
-          emailEnviado,
-          dataEnvio: emailEnviado ? new Date().toISOString() : null
+          numeroProcesso: processo.numeroProcesso,
+          cliente: processo.cliente,
+          emailCliente: processo.emailCliente,
+          tipoProcesso: processo.tipoProcesso,
+          status: processo.status,
+          ultimoAndamento: processo.ultimoAndamento,
+          responsavel: processo.responsavel,
+          observacoes: processo.observacoes,
+          cpfAssistido: processo.cpfAssistido,
+          instancia: processo.instancia,
+          exAdverso: processo.exAdverso,
+          objetoAtendimento: processo.objetoAtendimento
         })
       });
 
       if (!response.ok) {
-        console.warn(`⚠️ Erro ao atualizar planilha para processo ${processoId}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Erro ao enviar email");
       }
+
+      const result = await response.json();
+      
+      // Atualizar processo localmente
+      setProcessos(prev => prev.map(p => 
+        p.id === processo.id 
+          ? { ...p, emailEnviado: true, dataUltimoEmail: new Date().toISOString().split('T')[0] }
+          : p
+      ));
+
+      toast({
+        title: "Email enviado com sucesso!",
+        description: `Email sobre o processo ${processo.numeroProcesso} foi enviado para ${processo.cliente}`,
+      });
     } catch (error) {
-      console.warn(`⚠️ Erro ao atualizar planilha:`, error);
+      console.error("❌ Erro ao enviar email:", error);
+      toast({
+        title: "Erro ao enviar email",
+        description: error instanceof Error ? error.message : "Não foi possível enviar o email. Tente novamente.",
+        variant: "destructive"
+      });
+    } finally {
+      setCarregando(false);
     }
   };
 
-  // Atualizar dados da planilha
-  const atualizarDados = async () => {
-    setCarregando(true);
-    await carregarProcessos();
-    setCarregando(false);
+  // Validar email
+  const validarEmail = (email: string): boolean => {
+    if (!email || !email.includes('@')) return false;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
   };
 
-  const formatarData = (data) => {
+  // Enviar emails em massa
+  const enviarEmailsEmMassa = async () => {
+    if (processosSelecionados.length === 0) {
+      toast({
+        title: "Nenhum processo selecionado",
+        description: "Selecione pelo menos um processo para enviar emails",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const processosParaEnviar = processos.filter(p => processosSelecionados.includes(p.id));
+    const processosComEmailValido = processosParaEnviar.filter(p => validarEmail(p.emailCliente));
+
+    if (processosComEmailValido.length === 0) {
+      toast({
+        title: "Nenhum email válido encontrado",
+        description: "Os processos selecionados não possuem emails válidos",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setCarregando(true);
+    try {
+      console.log(`📧 Enviando emails em massa para ${processosComEmailValido.length} processos`);
+      
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/emails/massa`, {
+        method: 'POST',
+        body: JSON.stringify({
+          processos: processosComEmailValido.map(p => ({
+            id: p.id,
+            numeroProcesso: p.numeroProcesso,
+            cliente: p.cliente,
+            emailCliente: p.emailCliente,
+            tipoProcesso: p.tipoProcesso,
+            status: p.status,
+            ultimoAndamento: p.ultimoAndamento,
+            responsavel: p.responsavel,
+            observacoes: p.observacoes,
+            cpfAssistido: p.cpfAssistido,
+            instancia: p.instancia,
+            exAdverso: p.exAdverso,
+            objetoAtendimento: p.objetoAtendimento
+          }))
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Erro ao enviar emails");
+      }
+
+      const result = await response.json();
+      
+      // Atualizar processos selecionados localmente
+      const dataAtual = new Date().toISOString().split('T')[0];
+      setProcessos(prev => prev.map(p => 
+        processosSelecionados.includes(p.id) && processosComEmailValido.find(pv => pv.id === p.id)
+          ? { ...p, emailEnviado: true, dataUltimoEmail: dataAtual }
+          : p
+      ));
+
+      setProcessosSelecionados([]);
+
+      toast({
+        title: "Emails enviados com sucesso!",
+        description: `${result.enviados || processosComEmailValido.length} email(s) foram enviados.`,
+      });
+    } catch (error) {
+      console.error("❌ Erro ao enviar emails em massa:", error);
+      toast({
+        title: "Erro ao enviar emails",
+        description: error instanceof Error ? error.message : "Não foi possível enviar os emails. Tente novamente.",
+        variant: "destructive"
+      });
+    } finally {
+      setCarregando(false);
+    }
+  };
+
+  const formatarData = (data: string) => {
     if (!data) return '-';
     return new Date(data).toLocaleDateString('pt-BR');
   };
 
-  const getStatusBadge = (status) => {
+  const getStatusBadge = (status: string) => {
     const colors = {
       'Em Andamento': 'bg-blue-100 text-blue-800',
       'Deferido': 'bg-green-100 text-green-800',
@@ -452,7 +406,7 @@ const ControleEmailsProcessos = () => {
         </div>
         <div className="flex gap-2">
           <Button
-            onClick={atualizarDados}
+            onClick={() => carregarProcessos()}
             variant="outline"
             disabled={carregando}
           >
@@ -612,7 +566,7 @@ const ControleEmailsProcessos = () => {
         </Alert>
       )}
 
-      {/* Lista de processos */}
+      {/* 🆕 LISTA RESUMIDA DE PROCESSOS */}
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center">
@@ -675,41 +629,24 @@ const ControleEmailsProcessos = () => {
                         )}
                       </div>
                       
+                      {/* 🆕 VISÃO RESUMIDA - Apenas campos essenciais */}
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm text-gray-600">
                         <div>
-                            <strong>Processo:</strong> {processo.numeroProcesso}
+                          <strong>Número:</strong> {processo.numeroProcesso}
                         </div>
                         <div>
-                            <strong>Tipo:</strong> {processo.tipoProcesso}
+                          <strong>CPF:</strong> {processo.cpfAssistido}
                         </div>
                         <div>
-                            <strong>Email:</strong> {processo.emailCliente}
+                          <strong>Email:</strong> {processo.emailCliente}
                         </div>
                         <div>
-                            <strong>CPF:</strong> {processo.cpfAssistido}
+                          <strong>Natureza:</strong> {processo.tipoProcesso}
                         </div>
                         <div>
-                            <strong>Telefone:</strong> {processo.telefones}
-                        </div>
-                        <div>
-                            <strong>Instância:</strong> {processo.instancia}
-                        </div>
-                        <div>
-                            <strong>Ajuizamento:</strong> {formatarData(processo.dataAjuizamento)}
-                        </div>
-                        <div>
-                            <strong>Último Andamento:</strong> {formatarData(processo.ultimoAndamento)}
-                        </div>
-                        <div>
-                            <strong>Parte Contrária:</strong> {processo.exAdverso?.substring(0, 30)}...
+                          <strong>Ajuizamento:</strong> {formatarData(processo.dataAjuizamento)}
                         </div>
                       </div>
-                      
-                      {processo.observacoes && (
-                        <div className="mt-2 text-sm text-gray-600">
-                          <strong>Observações:</strong> {processo.observacoes}
-                        </div>
-                      )}
                       
                       {processo.dataUltimoEmail && (
                         <div className="mt-2 text-xs text-green-600">
@@ -720,6 +657,14 @@ const ControleEmailsProcessos = () => {
                   </div>
                   
                   <div className="flex items-center space-x-2">
+                    <Button
+                      onClick={() => setProcessoDetalhado(processo)}
+                      size="sm"
+                      variant="outline"
+                    >
+                      <Eye className="h-4 w-4 mr-2" />
+                      Ver Detalhes
+                    </Button>
                     <Button
                       onClick={() => enviarEmailIndividual(processo)}
                       disabled={carregando}
@@ -743,6 +688,211 @@ const ControleEmailsProcessos = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* 🆕 MODAL DETALHADO DO PROCESSO */}
+      <Dialog open={!!processoDetalhado} onOpenChange={() => setProcessoDetalhado(null)}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Detalhes do Processo - {processoDetalhado?.cliente}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {processoDetalhado && (
+            <div className="space-y-6">
+              {/* Informações Básicas */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Objeto do Atendimento */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <FileText className="h-5 w-5" />
+                    Objeto do Atendimento
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-gray-700 leading-relaxed">
+                    {processoDetalhado.objetoAtendimento || 'Não informado'}
+                  </p>
+                </CardContent>
+              </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <User className="h-5 w-5" />
+                      Dados do Cliente
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Nome Completo</label>
+                      <p className="font-semibold">{processoDetalhado.cliente}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">CPF</label>
+                      <p>{processoDetalhado.cpfAssistido}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Email</label>
+                      <p className="flex items-center gap-2">
+                        <Mail className="h-4 w-4" />
+                        {processoDetalhado.emailCliente}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Telefones</label>
+                      <p className="flex items-center gap-2">
+                        <Phone className="h-4 w-4" />
+                        {processoDetalhado.telefones}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <Scale className="h-5 w-5" />
+                      Dados do Processo
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">ID do Processo</label>
+                      <p className="font-mono text-sm">{processoDetalhado.idProcessoPlanilha}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Número Único</label>
+                      <p className="font-mono text-sm">{processoDetalhado.numeroProcesso}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">ID Atendimento Vinculado</label>
+                      <p className="font-mono text-sm">{processoDetalhado.idAtendimento}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Natureza do Processo</label>
+                      <p>{processoDetalhado.tipoProcesso}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Data de Autuação</label>
+                      <p className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4" />
+                        {formatarData(processoDetalhado.dataAjuizamento)}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Informações Adicionais */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <Building className="h-5 w-5" />
+                      Informações Processuais
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Ex-adverso</label>
+                      <p>{processoDetalhado.exAdverso}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Instância</label>
+                      <p>{processoDetalhado.instancia}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Status</label>
+                      <Badge className={getStatusBadge(processoDetalhado.status)}>
+                        {processoDetalhado.status}
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <Mail className="h-5 w-5" />
+                      Controle de Email
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Status do Email</label>
+                      <div className="flex items-center gap-2">
+                        {processoDetalhado.emailEnviado ? (
+                          <Badge className="bg-green-100 text-green-800">
+                            <Check className="h-3 w-3 mr-1" />
+                            Email Enviado
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-red-100 text-red-800">
+                            <X className="h-3 w-3 mr-1" />
+                            Email Não Enviado
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    {processoDetalhado.dataUltimoEmail && (
+                      <div>
+                        <label className="text-sm font-medium text-gray-600">Último Envio</label>
+                        <p>{formatarData(processoDetalhado.dataUltimoEmail)}</p>
+                      </div>
+                    )}
+                    <div className="pt-2">
+                      <Button
+                        onClick={() => enviarEmailIndividual(processoDetalhado)}
+                        disabled={carregando}
+                        className="w-full"
+                      >
+                        <Send className="h-4 w-4 mr-2" />
+                        {processoDetalhado.emailEnviado ? 'Reenviar Email' : 'Enviar Email'}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Observações */}
+              {processoDetalhado.observacoes && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <AlertCircle className="h-5 w-5" />
+                      Observações
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-gray-700 leading-relaxed">
+                      {processoDetalhado.observacoes}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Ações */}
+              <div className="flex justify-end gap-2 pt-4 border-t">
+                <Button
+                  onClick={() => setProcessoDetalhado(null)}
+                  variant="outline"
+                >
+                  Fechar
+                </Button>
+                <Button
+                  onClick={() => enviarEmailIndividual(processoDetalhado)}
+                  disabled={carregando}
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  {processoDetalhado.emailEnviado ? 'Reenviar Email' : 'Enviar Email'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

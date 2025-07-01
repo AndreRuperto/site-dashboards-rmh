@@ -117,7 +117,8 @@ const isPendenteVerificacao = (usuario: Usuario): boolean => {
   return !usuario.email_verificado;
 };
 
-const API_BASE_URL = process.env.REACT_APP_API_URL;
+// No topo do arquivo
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
 // 🆕 COMPONENTE PARA TOKENS EXPIRADOS (definido FORA do componente principal)
 const TokensExpiradosSection: React.FC<{
@@ -257,6 +258,8 @@ const TokensExpiradosSection: React.FC<{
 };
 
 const AdminUserControl: React.FC = () => {
+  // No topo do arquivo
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
   const navigate = useNavigate();
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const setores = SETORES;
@@ -1324,9 +1327,10 @@ const AdminUserControl: React.FC = () => {
 
         {/* 🆕 ABA 2: VERIFICAÇÕES & TOKENS */}
         <TabsContent value="verificacoes" className="space-y-6">
-          <TokensExpiradosTab 
-            API_BASE_URL={API_BASE_URL}
+          <TokensExpiradosSection 
+            activeTab={activeTab}
             fetchWithAuth={fetchWithAuth}
+            toast={toast}
           />
         </TabsContent>
 
