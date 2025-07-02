@@ -1521,14 +1521,15 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
             border-radius: 4px; 
           }
           .aviso{
-            
+
           }
         </style>
       </head>
       <body>
         <div class="container">
           <div class="header">
-            <img src="https://sistema.resendemh.com.br/logo-rmh.ico" alt="Logo RMH" style="height: 50px; margin-bottom: 20px;" />
+            <img src="https://sistema.resendemh.com.br/logo-rmh.png" alt="Logo RMH" style="height: 55px; margin-bottom: 20px;" />
+            <h1>ATUALIZAÇÃO DO PROCESSO</h1>
           </div>
           
           <div class="content">
@@ -1559,6 +1560,7 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
               <p>📧 Email: contato@resendemh.com.br</p>
               <p>📱 WhatsApp Oficial:</p>
               <div style="text-align: center;">
+              <img src="https://sistema.resendemh.com.br/whatsapp.png" alt="YouTube" style="height: 30px; margin: 0 5px; vertical-align: middle;">
                 <a href="https://wa.me/556130314400" class="whatsapp-btn">
                   WhatsApp
                 </a>
@@ -1592,7 +1594,7 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
 
     // Enviar email usando Resend
     const emailResult = await resend.emails.send({
-      from: 'email.automatico.{coisamaluca}@resendemh.com.br', // Configure o domínio no Resend
+      from: 'processos@resendemh.com.br', // Configure o domínio no Resend
       to: [emailCliente],
       subject: `📋 Atualização - Processo ${numeroProcesso} | RMH Advogados`,
       html: emailTemplate
