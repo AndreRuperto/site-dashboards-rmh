@@ -47,6 +47,7 @@ interface ProcessoData {
   exAdverso: string;                 // J: Ex-adverso (responsável/réu)
   instancia: string;                 // K: Instância
   objetoAtendimento: string;         // L: Objeto do atendimento
+  valorCausa: string;
   observacoes: string;               // M: Observações
   
   // Campos de controle de email
@@ -138,6 +139,7 @@ const ControleEmailsProcessos = () => {
           exAdverso: "INSS - Instituto Nacional do Seguro Social",
           instancia: "1ª Instância",
           objetoAtendimento: "Concessão de aposentadoria por invalidez devido a incapacidade permanente",
+          valorCausa: '',
           observacoes: "Aguardando perícia médica. Cliente possui laudo médico favorável.",
           emailEnviado: false,
           dataUltimoEmail: null,
@@ -159,6 +161,7 @@ const ControleEmailsProcessos = () => {
           exAdverso: "INSS - Instituto Nacional do Seguro Social",
           instancia: "2ª Instância",
           objetoAtendimento: "Concessão de auxílio-doença por incapacidade temporária",
+          valorCausa: '',
           observacoes: "Benefício concedido em primeira instância",
           emailEnviado: true,
           dataUltimoEmail: "2024-06-25",
@@ -335,7 +338,8 @@ const ControleEmailsProcessos = () => {
             cpfAssistido: p.cpfAssistido,
             instancia: p.instancia,
             exAdverso: p.exAdverso,
-            objetoAtendimento: p.objetoAtendimento
+            objetoAtendimento: p.objetoAtendimento,
+            valorCausa: p.valorCausa || ''
           }))
         })
       });
