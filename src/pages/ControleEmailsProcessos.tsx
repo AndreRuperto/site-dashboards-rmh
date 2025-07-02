@@ -377,20 +377,6 @@ const ControleEmailsProcessos = () => {
     }
   };
 
-  const formatarData = (data: string) => {
-    if (!data) return '-';
-    return new Date(data).toLocaleDateString('pt-BR');
-  };
-
-  const getStatusBadge = (status: string) => {
-    const colors = {
-      'Em Andamento': 'bg-blue-100 text-blue-800',
-      'Deferido': 'bg-green-100 text-green-800',
-      'Indeferido': 'bg-red-100 text-red-800'
-    };
-    return colors[status] || 'bg-gray-100 text-gray-800';
-  };
-
   // Renderizar loading inicial
   if (carregandoInicial) {
     return (
@@ -414,14 +400,6 @@ const ControleEmailsProcessos = () => {
           <p className="text-gray-600">Gerencie o envio de emails sobre processos ajuizados</p>
         </div>
         <div className="flex gap-2">
-          <Button
-            onClick={() => carregarProcessos()}
-            variant="outline"
-            disabled={carregando}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${carregando ? 'animate-spin' : ''}`} />
-            Atualizar
-          </Button>
           <Button
             onClick={() => setMostrarFiltros(!mostrarFiltros)}
             variant="outline"
@@ -474,10 +452,6 @@ const ControleEmailsProcessos = () => {
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
               <Clock className="h-5 w-5 text-blue-600" />
-              <div>
-                <p className="text-sm text-gray-600">Em Andamento</p>
-                <p className="text-xl font-bold text-blue-600">{stats.emAndamento}</p>
-              </div>
             </div>
           </CardContent>
         </Card>
@@ -525,21 +499,6 @@ const ControleEmailsProcessos = () => {
                   />
                 </div>
               </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Status do Processo</label>
-                <select
-                  value={filtroStatus}
-                  onChange={(e) => setFiltroStatus(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="todos">Todos os Status</option>
-                  <option value="Em Andamento">Em Andamento</option>
-                  <option value="Deferido">Deferido</option>
-                  <option value="Indeferido">Indeferido</option>
-                </select>
-              </div>
-
               <div>
                 <label className="block text-sm font-medium mb-2">Status do Email</label>
                 <select
@@ -627,9 +586,6 @@ const ControleEmailsProcessos = () => {
                     <div className="flex-1">
                       <div className="flex items-center space-x-2 mb-2">
                         <h3 className="font-semibold text-gray-900">{processo.cliente}</h3>
-                        <Badge className={getStatusBadge(processo.status)}>
-                          {processo.status}
-                        </Badge>
                         {processo.emailEnviado && (
                           <Badge className="bg-green-100 text-green-800">
                             <Mail className="h-3 w-3 mr-1" />
@@ -653,13 +609,13 @@ const ControleEmailsProcessos = () => {
                           <strong>Natureza:</strong> {processo.tipoProcesso}
                         </div>
                         <div>
-                          <strong>Ajuizamento:</strong> {formatarData(processo.dataAjuizamento)}
+                          <strong>Ajuizamento:</strong> {processo.dataAjuizamento}
                         </div>
                       </div>
                       
                       {processo.dataUltimoEmail && (
                         <div className="mt-2 text-xs text-green-600">
-                          Último email enviado em: {formatarData(processo.dataUltimoEmail)}
+                          Último email enviado em: {processo.dataUltimoEmail}
                         </div>
                       )}
                     </div>
@@ -788,7 +744,7 @@ const ControleEmailsProcessos = () => {
                       <label className="text-sm font-medium text-gray-600">Data de Autuação</label>
                       <p className="flex items-center gap-2">
                         <Calendar className="h-4 w-4" />
-                        {formatarData(processoDetalhado.dataAjuizamento)}
+                        {processoDetalhado.dataAjuizamento}
                       </p>
                     </div>
                   </CardContent>
@@ -812,12 +768,6 @@ const ControleEmailsProcessos = () => {
                     <div>
                       <label className="text-sm font-medium text-gray-600">Instância</label>
                       <p>{processoDetalhado.instancia}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-600">Status</label>
-                      <Badge className={getStatusBadge(processoDetalhado.status)}>
-                        {processoDetalhado.status}
-                      </Badge>
                     </div>
                   </CardContent>
                 </Card>
@@ -849,19 +799,9 @@ const ControleEmailsProcessos = () => {
                     {processoDetalhado.dataUltimoEmail && (
                       <div>
                         <label className="text-sm font-medium text-gray-600">Último Envio</label>
-                        <p>{formatarData(processoDetalhado.dataUltimoEmail)}</p>
+                        <p>{processoDetalhado.dataUltimoEmail}</p>
                       </div>
                     )}
-                    <div className="pt-2">
-                      <Button
-                        onClick={() => enviarEmailIndividual(processoDetalhado)}
-                        disabled={carregando}
-                        className="w-full"
-                      >
-                        <Send className="h-4 w-4 mr-2" />
-                        {processoDetalhado.emailEnviado ? 'Reenviar Email' : 'Enviar Email'}
-                      </Button>
-                    </div>
                   </CardContent>
                 </Card>
               </div>
