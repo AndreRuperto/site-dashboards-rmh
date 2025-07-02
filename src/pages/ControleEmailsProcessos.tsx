@@ -231,23 +231,28 @@ const ControleEmailsProcessos = () => {
     setCarregando(true);
     try {
       console.log(`📧 Enviando email para processo ${processo.numeroProcesso}`);
+      console.log('📧 Dados sendo enviados:', processo);
+      
+      const dadosEmail = {
+        numeroProcesso: processo.numeroProcesso,
+        cliente: processo.cliente,
+        emailCliente: processo.emailCliente,
+        tipoProcesso: processo.tipoProcesso,
+        status: processo.status,
+        ultimoAndamento: processo.ultimoAndamento,
+        responsavel: processo.responsavel || processo.exAdverso,
+        observacoes: processo.observacoes,
+        cpfAssistido: processo.cpfAssistido,
+        instancia: processo.instancia,
+        exAdverso: processo.exAdverso,
+        objetoAtendimento: processo.objetoAtendimento
+      };
+      
+      console.log('📧 Payload final:', dadosEmail);
       
       const response = await fetchWithAuth(`${API_BASE_URL}/api/emails/processo/${processo.id}`, {
         method: 'POST',
-        body: JSON.stringify({
-          numeroProcesso: processo.numeroProcesso,
-          cliente: processo.cliente,
-          emailCliente: processo.emailCliente,
-          tipoProcesso: processo.tipoProcesso,
-          status: processo.status,
-          ultimoAndamento: processo.ultimoAndamento,
-          responsavel: processo.responsavel,
-          observacoes: processo.observacoes,
-          cpfAssistido: processo.cpfAssistido,
-          instancia: processo.instancia,
-          exAdverso: processo.exAdverso,
-          objetoAtendimento: processo.objetoAtendimento
-        })
+        body: JSON.stringify(dadosEmail)
       });
 
       if (!response.ok) {
@@ -701,9 +706,7 @@ const ControleEmailsProcessos = () => {
           
           {processoDetalhado && (
             <div className="space-y-6">
-              {/* Informações Básicas */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Objeto do Atendimento */}
+              {/* Objeto do Atendimento - MOVIDO PARA O TOPO */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-lg">
@@ -717,6 +720,9 @@ const ControleEmailsProcessos = () => {
                   </p>
                 </CardContent>
               </Card>
+
+              {/* Informações Básicas */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-lg">

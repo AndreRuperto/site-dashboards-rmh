@@ -1312,31 +1312,6 @@ function extrairResponsavel(exAdverso) {
   return exAdverso;
 }
 
-// Funções auxiliares para processar dados
-function definirStatusProcesso(natureza, dataAutuacao) {
-  if (!dataAutuacao) return 'Indefinido';
-  
-  const hoje = new Date();
-  const dataProcesso = new Date(dataAutuacao.split('/').reverse().join('-')); // Converter DD/MM/YYYY para YYYY-MM-DD
-  const diasDecorridos = Math.floor((hoje - dataProcesso) / (1000 * 60 * 60 * 24));
-  
-  // Lógica simples para definir status baseado no tempo
-  if (diasDecorridos <= 30) return 'Em Andamento';
-  if (diasDecorridos <= 90) return 'Aguardando';
-  return 'Em Andamento'; // Default
-}
-
-function extrairResponsavel(exAdverso) {
-  if (!exAdverso) return 'Não informado';
-  
-  // Se for muito longo, pegar apenas a primeira parte
-  if (exAdverso.length > 50) {
-    return exAdverso.substring(0, 50) + '...';
-  }
-  
-  return exAdverso;
-}
-
 // Atualizar planilha com controle de email (ADICIONAR COLUNAS)
 app.patch('/api/processos/atualizar-email', authMiddleware, async (req, res) => {
   try {
@@ -1408,23 +1383,135 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>Atualização do Processo Jurídico</title>
       <style>
-        body { font-family: 'Arial', sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; background-color: #ffffff; }
-        .header { background-color: #165A5D; color: white; padding: 25px; text-align: center; border-radius: 8px 8px 0 0; }
-        .header h1 { margin: 0; font-size: 24px; font-weight: bold; }
-        .content { padding: 30px; background-color: #f9f9f9; border-radius: 0 0 8px 8px; }
-        .info-box { background-color: #e3f2fd; padding: 20px; margin: 20px 0; border-left: 4px solid #165A5D; border-radius: 4px; }
-        .info-box p { margin: 8px 0; }
-        .highlight { color: #165A5D; font-weight: bold; }
-        .footer { text-align: center; padding: 20px; font-size: 12px; color: #666; background-color: #f5f5f5; margin-top: 20px; border-radius: 4px; }
-        .contact-info { background-color: #fff3cd; padding: 15px; border: 1px solid #ffeaa7; border-radius: 4px; margin: 15px 0; }
+        body { 
+          font-family: 'Arial', sans-serif; 
+          line-height: 1.6; 
+          color: #333; 
+          margin: 0; 
+          padding: 0; 
+          background-color: #f5f5f5;
+        }
+        .container { 
+          max-width: 600px; 
+          margin: 0 auto; 
+          padding: 20px; 
+          background-color: #ffffff; 
+          box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+          border-radius: 8px;
+        }
+        .header { 
+          background: linear-gradient(135deg, #165A5D 0%, #1a6b6f 100%);
+          color: white; 
+          padding: 25px; 
+          text-align: center; 
+          border-radius: 8px 8px 0 0; 
+        }
+        .header h1 { 
+          margin: 0; 
+          font-size: 24px; 
+          font-weight: bold; 
+        }
+        .content { 
+          padding: 30px; 
+          background-color: #f9f9f9; 
+          border-radius: 0 0 8px 8px; 
+        }
+        .info-box { 
+          background-color: #e3f2fd; 
+          padding: 20px; 
+          margin: 20px 0; 
+          border-left: 4px solid #165A5D; 
+          border-radius: 4px; 
+        }
+        .info-box p { 
+          margin: 8px 0; 
+        }
+        .highlight { 
+          color: #165A5D; 
+          font-weight: bold; 
+        }
+        .valor-box {
+          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+          color: white;
+          padding: 20px;
+          border-radius: 8px;
+          text-align: center;
+          margin: 20px 0;
+          font-size: 18px;
+          font-weight: bold;
+        }
+        .valor-box .valor-label {
+          font-size: 14px;
+          opacity: 0.9;
+          margin-bottom: 5px;
+        }
+        .anti-golpe {
+          background-color: #dc2626;
+          color: white;
+          padding: 20px;
+          border-radius: 8px;
+          margin: 25px 0;
+          border: 3px solid #b91c1c;
+        }
+        .anti-golpe h3 {
+          margin: 0 0 10px 0;
+          font-size: 18px;
+          text-align: center;
+        }
+        .anti-golpe ul {
+          margin: 10px 0;
+          padding-left: 20px;
+        }
+        .anti-golpe li {
+          margin: 5px 0;
+        }
+        .contact-info { 
+          background-color: #fff3cd; 
+          padding: 20px; 
+          border: 1px solid #ffeaa7; 
+          border-radius: 8px; 
+          margin: 20px 0; 
+        }
+        .whatsapp-btn {
+          display: inline-block;
+          background-color: #25d366;
+          color: white;
+          padding: 12px 20px;
+          text-decoration: none;
+          border-radius: 25px;
+          font-weight: bold;
+          margin: 10px 5px;
+          text-align: center;
+        }
+        .social-links {
+          text-align: center;
+          padding: 20px;
+          background-color: #f8f9fa;
+          border-radius: 8px;
+          margin: 20px 0;
+        }
+        .social-links a {
+          display: inline-block;
+          margin: 0 10px;
+          color: #165A5D;
+          text-decoration: none;
+          font-weight: bold;
+        }
+        .footer { 
+          text-align: center; 
+          padding: 20px; 
+          font-size: 12px; 
+          color: #666; 
+          background-color: #f5f5f5; 
+          margin-top: 20px; 
+          border-radius: 4px; 
+        }
       </style>
     </head>
     <body>
       <div class="container">
         <div class="header">
-          <h1>📋 Atualização do seu Processo</h1>
-          <p style="margin: 5px 0 0 0; opacity: 0.9;">RMH Advogados Associados</p>
+          <img src="https://sistema.resendemh.com.br/logo-rmh.ico" alt="Logo RMH" style="height: 50px; margin-bottom: 20px;" />
         </div>
         
         <div class="content">
@@ -1433,7 +1520,6 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
           <p>Entramos em contato para informar sobre a situação atual do seu processo jurídico:</p>
           
           <div class="info-box">
-            <p><strong>📋 Número do Processo:</strong> <span class="highlight">${numeroProcesso}</span></p>
             <p><strong>⚖️ Tipo de Ação:</strong> ${tipoProcesso}</p>
             <p><strong>📊 Status Atual:</strong> ${status}</p>
             <p><strong>📅 Última Movimentação:</strong> ${ultimoAndamento}</p>
@@ -1441,12 +1527,46 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
             <p><strong>👨‍💼 Parte Contrária:</strong> ${responsavel}</p>
             ${observacoes ? `<p><strong>📝 Observações:</strong> ${observacoes}</p>` : ''}
           </div>
+
+          <!-- NOVA SEÇÃO: Valor em Causa -->
+          ${valorCausa ? `
+          <div class="valor-box">
+            <div class="valor-label">💰 Valor da Causa</div>
+            <div>R$ ${valorCausa}</div>
+          </div>
+          ` : ''}
+
+          <!-- AVISO ANTI-GOLPE -->
+          <div class="anti-golpe">
+            <h3>⚠️ ATENÇÃO: NÃO CAIA EM GOLPES!</h3>
+            <p><strong>A RMH Advogados NUNCA solicita:</strong></p>
+            <ul>
+              <li>🚫 Pagamento de taxas ou custas por email, WhatsApp ou telefone</li>
+              <li>🚫 Depósitos em contas pessoais</li>
+              <li>🚫 Senhas bancárias ou dados pessoais por mensagem</li>
+              <li>🚫 Transferências PIX para pessoas físicas</li>
+            </ul>
+            <p><strong>Em caso de dúvida, entre em contato APENAS pelos nossos canais oficiais!</strong></p>
+          </div>
           
           <div class="contact-info">
             <p><strong>💬 Precisa de esclarecimentos?</strong></p>
-            <p>Entre em contato conosco através dos nossos canais de atendimento:</p>
+            <p>Entre em contato conosco através dos nossos canais oficiais:</p>
             <p>📧 Email: contato@resendemh.com.br</p>
-            <p>📱 WhatsApp: (61) 9999-9999</p>
+            <p>📱 WhatsApp Oficial:</p>
+            <div style="text-align: center;">
+              <a href="https://wa.me/5561999999999?text=Olá, tenho dúvidas sobre meu processo ${numeroProcesso}" class="whatsapp-btn">
+                📱 Falar no WhatsApp
+              </a>
+            </div>
+          </div>
+
+          <!-- Redes Sociais -->
+          <div class="social-links">
+            <p><strong>🌐 Nos acompanhe nas redes sociais:</strong></p>
+            <a href="https://www.instagram.com/rmhadvogados">📸 Instagram</a>
+            <a href="https://www.linkedin.com/company/rmhadvogados">💼 LinkedIn</a>
+            <a href="https://www.facebook.com/rmhadvogados">📘 Facebook</a>
           </div>
           
           <p>Continuamos trabalhando para garantir o melhor resultado em seu caso.</p>
@@ -1458,6 +1578,9 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
           <p>Este é um email automático de acompanhamento processual.</p>
           <p>Por favor, não responda diretamente a esta mensagem.</p>
           <p>Para dúvidas, utilize nossos canais oficiais de atendimento.</p>
+          <p style="margin-top: 10px;">
+            <small>RMH Advogados Associados | CNPJ: XX.XXX.XXX/XXXX-XX | OAB/DF XXXX</small>
+          </p>
         </div>
       </div>
     </body>
