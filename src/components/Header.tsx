@@ -1,7 +1,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
-import { LogOut, Shield, Users, Settings } from 'lucide-react';
+import { LogOut, Shield, Users, Settings, Mail } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   DropdownMenu,
@@ -29,6 +29,10 @@ const Header = () => {
 
   const goToAdminUsers = () => {
     navigate('/admin/usuarios');
+  };
+
+  const goToAdminEmails = () => {
+    navigate('/admin/emails');
   };
 
   const goToHome = () => {
@@ -130,6 +134,10 @@ const Header = () => {
                     <DropdownMenuItem onClick={goToAdminUsers} className="cursor-pointer">
                       <Users className="h-4 w-4 mr-2" />
                       Controle de Usuários
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={goToAdminEmails} className="cursor-pointer">
+                      <Mail className="h-4 w-4 mr-2" />
+                      Controle de Emails
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => navigate('/admin/settings')} className="cursor-pointer">
                       <Settings className="h-4 w-4 mr-2" />

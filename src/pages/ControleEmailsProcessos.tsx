@@ -237,6 +237,7 @@ const ControleEmailsProcessos = () => {
       console.log('📧 Dados sendo enviados:', processo);
       
       const dadosEmail = {
+        idProcessoPlanilha: processo.idProcessoPlanilha,
         numeroProcesso: processo.numeroProcesso,
         cliente: processo.cliente,
         emailCliente: processo.emailCliente,

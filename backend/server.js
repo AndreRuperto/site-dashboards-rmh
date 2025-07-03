@@ -1233,25 +1233,53 @@ async function moverProcessoParaEnviados(numeroProcesso, dadosProcesso, dataEnvi
       throw new Error('Aba de processos pendentes não encontrada');
     }
     
-    // Encontrar a linha do processo
+    // ✅ CORREÇÃO: Encontrar a linha do processo pela coluna A (ID do processo)
     let linhaEncontrada = -1;
     let dadosLinha = null;
     
+    console.log(`🔍 DEBUG: Procurando ID do processo: "${numeroProcesso}"`);
+    console.log(`📊 DEBUG: Total de linhas na planilha: ${rowsPendentes.length}`);
+    
     for (let i = 1; i < rowsPendentes.length; i++) { // Pular header
-      if (rowsPendentes[i][1] === numeroProcesso) { // Coluna B = número do processo
+      const idProcessoPlanilha = rowsPendentes[i][0]; // Coluna A = ID do processo
+      const numeroProcessoPlanilha = rowsPendentes[i][1]; // Coluna B = Número do processo
+      const clientePlanilha = rowsPendentes[i][3]; // Coluna D = Cliente
+      
+      // ✅ PROCURAR PELA COLUNA A (ID do processo)
+      if (idProcessoPlanilha === numeroProcesso) {
         linhaEncontrada = i + 1; // +1 por causa do índice da planilha
         dadosLinha = rowsPendentes[i];
+        console.log(`✅ ENCONTRADO: ID "${numeroProcesso}" na linha ${linhaEncontrada}`);
         break;
       }
     }
     
     if (linhaEncontrada === -1) {
-      throw new Error(`Processo ${numeroProcesso} não encontrado na aba pendentes`);
+      console.log(`❌ DEBUG: ID do processo "${numeroProcesso}" não encontrado`);
+      console.log(`📊 DEBUG: Verificando primeiras 5 linhas da planilha:`);
+      for (let i = 1; i < Math.min(6, rowsPendentes.length); i++) {
+        console.log(`   Linha ${i + 1}:`);
+        console.log(`     Coluna A (ID): "${rowsPendentes[i][0] || 'VAZIO'}"`);
+        console.log(`     Coluna B (Número): "${rowsPendentes[i][1] || 'VAZIO'}"`);
+        console.log(`     Coluna D (Cliente): "${rowsPendentes[i][3] || 'VAZIO'}"`);
+      }
+      
+      // ✅ ADICIONAR: Verificar se o processo foi passado com número ao invés de ID
+      console.log(`🔍 DEBUG: Verificando se "${numeroProcesso}" está na coluna B (número do processo):`);
+      for (let i = 1; i < rowsPendentes.length; i++) {
+        if (rowsPendentes[i][1] === numeroProcesso) {
+          console.log(`⚠️ ATENÇÃO: "${numeroProcesso}" encontrado na coluna B (linha ${i + 1}), mas deveria estar na coluna A`);
+          console.log(`   ID correto seria: "${rowsPendentes[i][0]}"`);
+          break;
+        }
+      }
+      
+      throw new Error(`Processo com ID "${numeroProcesso}" não encontrado na aba pendentes`);
     }
     
     console.log(`📍 ENCONTRADO: Processo na linha ${linhaEncontrada} da aba pendentes`);
     
-    // 2. VERIFICAR SE ABA "PROCESSO ENVIADOS" EXISTE
+    // 2. VERIFICAR SE ABA "PROCESSOS ENVIADOS" EXISTE
     const metadataResponse = await sheets.spreadsheets.get({
       spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID
     });
@@ -1268,8 +1296,12 @@ async function moverProcessoParaEnviados(numeroProcesso, dadosProcesso, dataEnvi
     
     // 3. PREPARAR DADOS PARA ABA ENVIADOS (adicionar data de envio)
     const dadosParaEnviados = [
-      ...dadosLinha, // Todos os dados originais
-      new Date(dataEnvio).toLocaleDateString('pt-BR') // Nova coluna: Data de Envio
+      ...dadosLinha, // Todos os dados originais (A até M)
+      new Date(dataEnvio).toLocaleDateString('pt-BR') + ' ' + 
+      new Date(dataEnvio).toLocaleTimeString('pt-BR', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      }) // Coluna N: Data e hora do envio
     ];
     
     // 4. ADICIONAR À ABA ENVIADOS
@@ -1291,10 +1323,19 @@ async function moverProcessoParaEnviados(numeroProcesso, dadosProcesso, dataEnvi
     });
     
     // 6. REORGANIZAR ABA PENDENTES (remover linha vazia)
+    // ✅ CORREÇÃO: Precisamos buscar o sheetId correto da aba "Processos Pendentes"
+    const abasPendentes = abas.find(aba => 
+      aba.properties.title === 'Processos Pendentes'
+    );
+    
+    if (!abasPendentes) {
+      throw new Error('Aba "Processos Pendentes" não encontrada para reorganização');
+    }
+    
     const deleteRequest = {
       deleteDimension: {
         range: {
-          sheetId: 0, // ID da primeira aba (geralmente Processos Pendentes)
+          sheetId: abasPendentes.properties.sheetId, // ✅ USAR SHEET ID CORRETO
           dimension: 'ROWS',
           startIndex: linhaEncontrada - 1, // -1 porque a API usa índice 0
           endIndex: linhaEncontrada
@@ -1358,7 +1399,7 @@ app.get('/api/processos/planilha', authMiddleware, async (req, res) => {
       // G: ID atendimento, H: Natureza, I: Data autuação, J: Ex-adverso, K: Instância, L: Objeto
       
       const processo = {
-        id: index + 1, // ID sequencial para controle interno
+        id: row[0] || `temp_${index + 1}`, // ID sequencial para controle interno
         idProcessoPlanilha: row[0] || '', // A: ID original da planilha
         numeroProcesso: row[1] || '', // B: Número único do processo
         cpfAssistido: row[2] || '', // C: CPF do assistido
@@ -1373,7 +1414,8 @@ app.get('/api/processos/planilha', authMiddleware, async (req, res) => {
         objetoAtendimento: row[11] || '', // L: Objeto do atendimento
         
         // ✅ ADICIONADO: Valor da causa (coluna M ou N dependendo da estrutura)
-        valorCausa: row[13] || 'A definir', // N: Valor da causa estimado
+        valorCausa: row[12] || 'A definir', // N: Valor da causa estimado
+        proveito: extrairProveito(row[12]),
         
         // Campos de controle de email (não existem na planilha original)
         emailEnviado: false, // Sempre false inicialmente
@@ -1566,6 +1608,16 @@ function extrairResponsavel(exAdverso) {
   return exAdverso;
 }
 
+function extrairProveito(valorCausa) {
+  if (!valorCausa) return 'Não informado';
+  
+  if (valorCausa.length > 50) {
+    return valorCausa.substring(0, 50) + '...';
+  }
+  
+  return valorCausa;
+}
+
 // Atualizar planilha com controle de email (ADICIONAR COLUNAS)
 app.patch('/api/processos/atualizar-email', authMiddleware, async (req, res) => {
   try {
@@ -1619,7 +1671,8 @@ app.patch('/api/processos/atualizar-email', authMiddleware, async (req, res) => 
 app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const { 
+    const {
+      idProcessoPlanilha, 
       numeroProcesso, 
       cliente, 
       emailCliente, 
@@ -1631,7 +1684,8 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
       instancia,
       exAdverso,
       objetoAtendimento,
-      valorCausa
+      valorCausa,
+      proveito
     } = req.body;
 
     console.log(`📧 EMAIL: Enviando para processo ${numeroProcesso} - ${cliente}`);
@@ -1814,7 +1868,7 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
               <p><strong>📅 Data de protocolo do processo:</strong> ${ultimoAndamento}</p>
               ${instancia ? `<p><strong>🏛️ Instância:</strong> ${instancia}</p>` : ''}
               <p><strong>👨‍💼 Parte Contrária:</strong> ${responsavel}</p>
-              <p><strong>💲 Previsão de Proveito Econômico:</strong> ${valorCausa}</p>
+              <p><strong>💲 Previsão de Proveito Econômico:</strong> ${proveito}</p>
             </div>
 
             <p class="texto-inicial">
@@ -1824,7 +1878,7 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
             <!-- AVISO ANTI-GOLPE -->
             <div class="anti-golpe">
               <h3>⚠️ CUIDADO COM OS GOLPES</h3>
-              <p>A RMH <strong>NUNCA SOLICITA</strong> informações ou pagamentos para liberação de créditos de processos e não entra em contato por outros números além do oficial.</p>
+              <p>A Resende Mori Hutchison <strong>NUNCA SOLICITA</strong> informações ou pagamentos para liberação de créditos de processos e não entra em contato por outros números além do oficial.</p>
               <p>Caso receba qualquer mensagem ou ligação de outro número além do nosso canal oficial, entre em contato conosco para confirmar a veracidade.</p>
               <p>Estamos disponíveis exclusivamente no whatsapp pelo (61) 3031-4400.</p>
             </div>
@@ -1881,11 +1935,11 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
       const dadosProcesso = {
         numeroProcesso, cliente, emailCliente, tipoProcesso, status,
         ultimoAndamento, responsavel, cpfAssistido,
-        instancia, exAdverso, objetoAtendimento, valorCausa
+        instancia, exAdverso, objetoAtendimento, valorCausa, proveito
       };
       
       await moverProcessoParaEnviados(
-        numeroProcesso, 
+        idProcessoPlanilha,
         dadosProcesso, 
         new Date().toISOString()
       );

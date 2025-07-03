@@ -12,6 +12,7 @@ import Home from "@/pages/Home"; // ✅ NOVA PÁGINA INICIAL
 import DashboardsPage from "@/pages/Dashboards";
 import NotFound from "./pages/NotFound";
 import AdminUserControl from '@/pages/AdminUserControl';
+import ControleEmailsProcessos from '@/pages/ControleEmailsProcessos';
 import ConfigurarConta from '@/pages/ConfigurarConta';
 
 const queryClient = new QueryClient();
@@ -90,6 +91,14 @@ const AppContent = () => {
           element={
             <ProtectedRoute requireAdmin={true}>
               <AdminUserControl />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/admin/usuarios" 
+          element={
+            <ProtectedRoute requireAdmin={true}>
+              <ControleEmailsProcessos />
             </ProtectedRoute>
           } 
         />
