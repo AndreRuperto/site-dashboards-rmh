@@ -323,11 +323,16 @@ const ControleEmailsProcessos = () => {
     try {
       console.log(`📧 Enviando emails em massa para ${processosComEmailValido.length} processos`);
       
+      // ✅ DEBUG: Verificar se idProcessoPlanilha existe
+      console.log('📋 DEBUG: Primeiro processo:', processosComEmailValido[0]);
+      console.log('📋 DEBUG: idProcessoPlanilha do primeiro:', processosComEmailValido[0]?.idProcessoPlanilha);
+      
       const response = await fetchWithAuth(`${API_BASE_URL}/api/emails/massa`, {
         method: 'POST',
         body: JSON.stringify({
           processos: processosComEmailValido.map(p => ({
             id: p.id,
+            idProcessoPlanilha: p.idProcessoPlanilha, // ✅ LINHA ADICIONADA
             numeroProcesso: p.numeroProcesso,
             cliente: p.cliente,
             emailCliente: p.emailCliente,
@@ -352,6 +357,9 @@ const ControleEmailsProcessos = () => {
 
       const result = await response.json();
       
+      // ✅ DEBUG: Mostrar resultado
+      console.log('✅ Resultado completo:', result);
+      
       // Atualizar processos selecionados localmente
       const dataAtual = new Date().toISOString().split('T')[0];
       setProcessos(prev => prev.map(p => 
@@ -362,9 +370,10 @@ const ControleEmailsProcessos = () => {
 
       setProcessosSelecionados([]);
 
+      // ✅ Toast melhorado com informações de movimentação
       toast({
         title: "Emails enviados com sucesso!",
-        description: `${result.enviados || processosComEmailValido.length} email(s) foram enviados.`,
+        description: `${result.enviados || processosComEmailValido.length} email(s) enviados. ${result.movimentacoes || 0} processo(s) movidos para aba enviados.`,
       });
     } catch (error) {
       console.error("❌ Erro ao enviar emails em massa:", error);
