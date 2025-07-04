@@ -358,7 +358,7 @@ const EmailsProcessos = () => {
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center space-y-4">
           <div className="flex items-center space-x-3">
-            <RefreshCw className="h-8 w-8 animate-spin text-blue-600" />
+            <RefreshCw className="h-8 w-8 animate-spin text-gray-600" />
             <span className="text-lg font-medium text-gray-700">Carregando processos...</span>
           </div>
           <div className="text-sm text-gray-500">Por favor, aguarde um momento</div>
@@ -452,14 +452,14 @@ const EmailsProcessos = () => {
           </Card>
 
           {/* Estatísticas */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center space-x-2">
-                  <BarChart3 className="h-5 w-5 text-blue-600" />
+                  <BarChart3 className="h-5 w-5 text-gray-600" />
                   <div>
                     <p className="text-sm text-gray-600">Total de processos</p>
-                    <p className="text-xl font-bold">{stats.total}</p>
+                    <p className="text-xl font-bold text-gray">{stats.total}</p>
                   </div>
                 </div>
               </CardContent>
@@ -468,10 +468,10 @@ const EmailsProcessos = () => {
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center space-x-2">
-                  <Check className="h-5 w-5 text-green-600" />
+                  <Check className="h-5 w-5 text-gray-600" />
                   <div>
-                    <p className="text-sm text-gray-600">Com Email Enviado</p>
-                    <p className="text-xl font-bold text-green-600">{stats.comEmail}</p>
+                    <p className="text-sm text-gray-600">Emails Enviados</p>
+                    <p className="text-xl font-bold text-gray-600">{stats.comEmail}</p>
                   </div>
                 </div>
               </CardContent>
@@ -480,22 +480,10 @@ const EmailsProcessos = () => {
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center space-x-2">
-                  <X className="h-5 w-5 text-red-600" />
+                  <Clock className="h-5 w-5 text-gray-600" />
                   <div>
-                    <p className="text-sm text-gray-600">Email Pendente</p>
-                    <p className="text-xl font-bold text-red-600">{stats.semEmail}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center space-x-2">
-                  <TrendingUp className="h-5 w-5 text-blue-600" />
-                  <div>
-                    <p className="text-sm text-gray-600">Emails Hoje</p>
-                    <p className="text-xl font-bold text-blue-600">{stats.emailsHoje}</p>
+                    <p className="text-sm text-gray-600">Emails Pendentes</p>
+                    <p className="text-xl font-bold text-gray-600">{stats.semEmail}</p>
                   </div>
                 </div>
               </CardContent>
@@ -587,19 +575,19 @@ const EmailsProcessos = () => {
                           <div className="flex items-center space-x-2 mb-2">
                             <h3 className="font-semibold text-gray-900">{processo.cliente}</h3>
                             {processo.emailEnviado ? (
-                              <Badge className="bg-green-100 text-green-800">
+                              <Badge className="bg-green-100 hover:bg-green-100 text-green-800">
                                 <Mail className="h-3 w-3 mr-1" />
                                 Email Enviado
                               </Badge>
                             ) : (
-                              <Badge className="bg-red-100 text-red-800">
+                              <Badge className="bg-red-100 hover:bg-red-100 text-red-800">
                                 <Clock className="h-3 w-3 mr-1" />
                                 Email Pendente
                               </Badge>
                             )}
                           </div>
                           
-                          <div className="grid grid-cols-1 md:grid-cols-4 gap-2 text-sm text-gray-600">
+                          <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-600">
                             <div>
                               <strong>Número:</strong> {processo.numeroProcesso}
                             </div>

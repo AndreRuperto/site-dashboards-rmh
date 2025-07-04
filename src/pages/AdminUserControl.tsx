@@ -658,24 +658,39 @@ const AdminUserControl: React.FC = () => {
       );
     }
 
+    // ✅ MUDANÇA: Renderizar AMBAS as tags quando for admin E coordenador
+    const badges = [];
+
+    // Tag de Administrador
     if (usuario.tipo_usuario === 'admin') {
-      return (
-        <Badge variant="destructive" className="bg-rmh-primary hover:bg-rmh-primary">
+      badges.push(
+        <Badge key="admin" variant="destructive" className="bg-rmh-primary hover:bg-rmh-primary">
           <Crown className="h-3 w-3 mr-1" />
           Administrador
         </Badge>
       );
     }
 
+    // Tag de Coordenador (independente de ser admin ou não)
     if (usuario.is_coordenador) {
-      return (
-        <Badge variant="default" className="bg-yellow-500">
+      badges.push(
+        <Badge key="coordenador" variant="default" className="bg-yellow-500">
           <Crown className="h-3 w-3 mr-1" />
           Coordenador
         </Badge>
       );
     }
 
+    // Se já temos badges de admin/coordenador, retornar elas
+    if (badges.length > 0) {
+      return (
+        <div className="flex items-center space-x-1">
+          {badges}
+        </div>
+      );
+    }
+
+    // Continuar com a lógica original para outros casos
     if (isPendenteAprovacao(usuario)) {
       return (
         <Badge variant="secondary" className="bg-rmh-yellow hover:bg-rmh-yellow text-white">
@@ -687,11 +702,11 @@ const AdminUserControl: React.FC = () => {
 
     if (!usuario.email_verificado) {
       return (
-          <Badge variant="secondary" className="bg-rmh-yellow hover:bg-rmh-yellow text-white">
-            <Mail className="h-3 w-3 mr-1" />
-            Verificação Pendente
-          </Badge>
-        );
+        <Badge variant="secondary" className="bg-rmh-yellow hover:bg-rmh-yellow text-white">
+          <Mail className="h-3 w-3 mr-1" />
+          Verificação Pendente
+        </Badge>
+      );
     }
 
     if (usuario.aprovado_admin && usuario.email_verificado) {
@@ -798,7 +813,7 @@ const AdminUserControl: React.FC = () => {
             <p className="text-gray-600">Gerencie cadastros, aprovações e coordenações por setor</p>
           </div>
           <div className="flex gap-2">
-            <Button onClick={() => setModalNovoUsuario(true)} className="bg-green-600 hover:bg-green-700">
+            <Button onClick={() => setModalNovoUsuario(true)} className="bg-rmh-lightGreen hover:bg-rmh-primary">
               <UserPlus className="h-4 w-4 mr-2" />
               Adicionar Usuário
             </Button>
@@ -818,7 +833,7 @@ const AdminUserControl: React.FC = () => {
               <Users className="h-5 w-5 text-gray-600" />
               <div>
                 <p className="text-sm font-medium text-gray-600">Total</p>
-                <p className="text-2xl font-bold">{stats.total}</p>
+                <p className="text-2xl font-bold text-gray-700">{stats.total}</p>
               </div>
             </div>
           </CardContent>
@@ -827,10 +842,10 @@ const AdminUserControl: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
-              <Clock className="h-5 w-5 text-yellow-600" />
+              <Clock className="h-5 w-5 text-gray-600" />
               <div>
                 <p className="text-sm font-medium text-gray-600">Pendentes</p>
-                <p className="text-2xl font-bold text-yellow-600">{stats.pendentes_aprovacao + stats.nao_verificados}</p>
+                <p className="text-2xl font-bold text-gray-700">{stats.pendentes_aprovacao + stats.nao_verificados}</p>
               </div>
             </div>
           </CardContent>
@@ -839,10 +854,10 @@ const AdminUserControl: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
-              <Briefcase className="h-5 w-5 text-blue-500" />
+              <Briefcase className="h-5 w-5 text-gray-500" />
               <div>
                 <p className="text-sm font-medium text-gray-600">CLT/Associados</p>
-                <p className="text-2xl font-bold text-blue-500">{stats.clt_associados}</p>
+                <p className="text-2xl font-bold text-gray-700">{stats.clt_associados}</p>
               </div>
             </div>
           </CardContent>
@@ -851,10 +866,10 @@ const AdminUserControl: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
-              <GraduationCap className="h-5 w-5 text-green-500" />
+              <GraduationCap className="h-5 w-5 text-gray-500" />
               <div>
                 <p className="text-sm font-medium text-gray-600">Estagiários</p>
-                <p className="text-2xl font-bold text-green-500">{stats.estagiarios}</p>
+                <p className="text-2xl font-bold text-gray-700">{stats.estagiarios}</p>
               </div>
             </div>
           </CardContent>
@@ -863,10 +878,10 @@ const AdminUserControl: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
-              <Crown className="h-5 w-5 text-yellow-500" />
+              <Crown className="h-5 w-5 text-gray-500" />
               <div>
                 <p className="text-sm font-medium text-gray-600">Coordenadores</p>
-                <p className="text-2xl font-bold text-yellow-500">{stats.coordenadores}</p>
+                <p className="text-2xl font-bold text-gray-700">{stats.coordenadores}</p>
               </div>
             </div>
           </CardContent>
@@ -875,10 +890,10 @@ const AdminUserControl: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
-              <Shield className="h-5 w-5 text-red-600" />
+              <Shield className="h-5 w-5 text-gray-600" />
               <div>
-                <p className="text-sm font-medium text-gray-600">Admins</p>
-                <p className="text-2xl font-bold text-red-600">{stats.admins}</p>
+                <p className="text-sm font-medium text-gray-600">Administradores</p>
+                <p className="text-2xl font-bold text-gray-700">{stats.admins}</p>
               </div>
             </div>
           </CardContent>
@@ -887,10 +902,10 @@ const AdminUserControl: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
-              <Ban className="h-5 w-5 text-red-700" />
+              <Ban className="h-5 w-5 text-gray-700" />
               <div>
                 <p className="text-sm font-medium text-gray-600">Revogados</p>
-                <p className="text-2xl font-bold text-red-700">{stats.revogados}</p>
+                <p className="text-2xl font-bold text-gray-700">{stats.revogados}</p>
               </div>
             </div>
           </CardContent>
@@ -899,12 +914,18 @@ const AdminUserControl: React.FC = () => {
 
       {/* 🆕 SISTEMA DE ABAS */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="geral">
+        <TabsList className="grid w-full grid-cols-2 gap-2">
+          <TabsTrigger 
+            value="geral"
+            className="data-[state=active]:border data-[state=active]:border-black-300 data-[state=active]:shadow-sm"
+          >
             <Users className="h-4 w-4 mr-2" />
             Usuários Gerais
           </TabsTrigger>
-          <TabsTrigger value="verificacoes" className="relative">
+          <TabsTrigger 
+            value="verificacoes" 
+            className="relative data-[state=active]:border data-[state=active]:border-black-300 data-[state=active]:shadow-sm"
+          >
             <Clock className="h-4 w-4 mr-2" />
             Verificações & Tokens
           </TabsTrigger>
@@ -1002,7 +1023,7 @@ const AdminUserControl: React.FC = () => {
                 className="w-full"
               >
                 <Shield className="h-4 w-4 mr-1" />
-                Admins ({stats.admins})
+                Administradores ({stats.admins})
               </Button>
               <Button
                 variant={filter === 'revogados' ? 'default' : 'outline'}
@@ -1019,7 +1040,7 @@ const AdminUserControl: React.FC = () => {
                 size="sm"
                 className="w-full"
               >
-                Todos
+                Todos ({stats.total})
               </Button>
             </div>
           </div>
@@ -1082,7 +1103,7 @@ const AdminUserControl: React.FC = () => {
                             )}
 
                             {/* Botões para usuários ativos */}
-                            {usuario.aprovado_admin && usuario.email_verificado && usuario.ativo !== false && usuario.tipo_usuario !== 'admin' && (
+                            {usuario.aprovado_admin && usuario.email_verificado && usuario.ativo !== false && usuario.tipo_colaborador !== 'estagiario' && (
                               <>
                                 {/* Botão de coordenação */}
                                 <Button
@@ -1268,7 +1289,7 @@ const AdminUserControl: React.FC = () => {
                                     </>
                                   )}
 
-                                  {usuario.aprovado_admin && usuario.email_verificado && usuario.ativo !== false && usuario.tipo_usuario !== 'admin' && (
+                                  {usuario.aprovado_admin && usuario.email_verificado && usuario.ativo !== false && usuario.tipo_colaborador !== 'estagiario' && (
                                     <>
                                       <Button
                                         size="sm"
@@ -1444,7 +1465,7 @@ const AdminUserControl: React.FC = () => {
             <Button 
               onClick={adicionarUsuario}
               disabled={!novoUsuarioData.nome || !novoUsuarioData.email_pessoal || !novoUsuarioData.setor}
-              className="bg-green-600 hover:bg-green-700"
+              className="bg-rmh-lightGreen hover:bg-rmh-primary"
             >
               <UserPlus className="h-4 w-4 mr-2" />
               Adicionar Usuário
