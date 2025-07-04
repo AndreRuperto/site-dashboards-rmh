@@ -1226,7 +1226,7 @@ async function moverProcessoParaEnviados(numeroProcesso, dadosProcesso, dataEnvi
     
     const sheets = getGoogleSheetsInstance();
 
-    // Buscar na aba pendentes
+    // ✅ ETAPA 1: Buscar dinamicamente o processo na aba pendentes
     const responsePendentes = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
       range: 'Processos Pendentes!A:M',
@@ -1237,47 +1237,31 @@ async function moverProcessoParaEnviados(numeroProcesso, dadosProcesso, dataEnvi
       throw new Error('Aba de processos pendentes não encontrada');
     }
 
-    console.log(`📊 DEBUG: Total de linhas na planilha: ${rowsPendentes.length}`);
+    console.log(`📊 DEBUG: Total de linhas na planilha ATUAL: ${rowsPendentes.length}`);
 
-    // ✅ BUSCAR POR ID DA PLANILHA (coluna A)
-    for (let i = 1; i < rowsPendentes.length; i++) { // Pular header
-      if (rowsPendentes[i][0] === dadosProcesso.idProcessoPlanilha) { // Coluna A = ID da planilha
-        linhaEncontrada = i + 1; // +1 por causa do índice da planilha
+    // Buscar o processo por ID
+    for (let i = 1; i < rowsPendentes.length; i++) {
+      if (rowsPendentes[i][0] === dadosProcesso.idProcessoPlanilha) {
+        linhaEncontrada = i + 1; // +1 para índice do Google Sheets
         dadosLinha = rowsPendentes[i];
-        console.log(`✅ ENCONTRADO: ID "${dadosProcesso.idProcessoPlanilha}" na linha ${linhaEncontrada}`);
+        console.log(`✅ ENCONTRADO DINAMICAMENTE: ID "${dadosProcesso.idProcessoPlanilha}" na linha ATUAL ${linhaEncontrada}`);
         break;
       }
     }
     
     if (linhaEncontrada === -1) {
-      // Debug melhorado
-      console.log(`📊 DEBUG: Verificando primeiras 5 linhas da planilha:`);
-      for (let i = 1; i < Math.min(6, rowsPendentes.length); i++) {
-        console.log(`   Linha ${i + 1}:`);
-        console.log(`     Coluna A (ID): "${rowsPendentes[i][0]}"`);
-        console.log(`     Coluna B (Número): "${rowsPendentes[i][1]}"`);
-        console.log(`     Coluna D (Cliente): "${rowsPendentes[i][3]}"`);
+      // Debug detalhado se não encontrar
+      console.log(`📊 DEBUG: IDs atualmente na planilha:`);
+      for (let i = 1; i < Math.min(rowsPendentes.length, 6); i++) {
+        console.log(`   Linha ${i + 1}: ID "${rowsPendentes[i][0]}" - Cliente: "${rowsPendentes[i][3] || 'N/A'}"`);
       }
       
-      // Fallback: tentar buscar por número do processo
-      console.log(`🔍 DEBUG: Tentando buscar por número do processo: "${numeroProcesso}"`);
-      for (let i = 1; i < rowsPendentes.length; i++) {
-        if (rowsPendentes[i][1] === numeroProcesso) { // Coluna B = número do processo
-          linhaEncontrada = i + 1;
-          dadosLinha = rowsPendentes[i];
-          console.log(`✅ ENCONTRADO por número do processo na linha ${linhaEncontrada}`);
-          break;
-        }
-      }
-      
-      if (linhaEncontrada === -1) {
-        throw new Error(`Processo com ID "${dadosProcesso.idProcessoPlanilha}" não encontrado na aba pendentes`);
-      }
+      throw new Error(`Processo com ID "${dadosProcesso.idProcessoPlanilha}" não encontrado na aba pendentes`);
     }
     
-    console.log(`📍 ENCONTRADO: Processo na linha ${linhaEncontrada} da aba pendentes`);
+    console.log(`📍 ENCONTRADO: Processo na linha ATUAL ${linhaEncontrada} da aba pendentes`);
     
-    // Verificar se aba enviados existe
+    // ✅ ETAPA 2: Verificar se aba enviados existe
     const metadataResponse = await sheets.spreadsheets.get({
       spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID
     });
@@ -1292,13 +1276,13 @@ async function moverProcessoParaEnviados(numeroProcesso, dadosProcesso, dataEnvi
       await criarAbaProcessosEnviados(sheets);
     }
     
-    // Preparar dados para aba enviados
+    // ✅ ETAPA 3: Preparar dados para aba enviados
     const dadosParaEnviados = [
-      ...dadosLinha, // Todos os dados originais
-      new Date(dataEnvio).toLocaleDateString('pt-BR') // Nova coluna: Data de Envio
+      ...dadosLinha,
+      new Date(dataEnvio).toLocaleDateString('pt-BR') // Data de envio
     ];
     
-    // PRIMEIRO: Adicionar à aba enviados
+    // ✅ ETAPA 4: PRIMEIRO - Adicionar à aba enviados
     console.log('📝 ADICIONANDO: Processo na aba enviados...');
     await sheets.spreadsheets.values.append({
       spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
@@ -1312,69 +1296,197 @@ async function moverProcessoParaEnviados(numeroProcesso, dadosProcesso, dataEnvi
     processoAdicionadoNaAbaEnviados = true;
     console.log(`✅ ADICIONADO: Processo inserido na aba enviados`);
     
-    // Verificar se foi adicionado corretamente
+    // ✅ ETAPA 5: Verificar se foi adicionado corretamente
     const responseEnviados = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
       range: 'Processos Enviados!A:N',
     });
     
     const rowsEnviados = responseEnviados.data.values;
-    const ultimaLinhaEnviados = rowsEnviados[rowsEnviados.length - 1];
+    let processoEncontradoNaAbaEnviados = false;
     
-    if (ultimaLinhaEnviados[0] !== dadosProcesso.idProcessoPlanilha) {
-      throw new Error('Falha na verificação: processo não foi adicionado corretamente na aba enviados');
+    // Buscar o processo na aba enviados
+    for (let i = 1; i < rowsEnviados.length; i++) {
+      if (rowsEnviados[i][0] === dadosProcesso.idProcessoPlanilha) {
+        processoEncontradoNaAbaEnviados = true;
+        break;
+      }
+    }
+    
+    if (!processoEncontradoNaAbaEnviados) {
+      throw new Error('Falha na verificação: processo não foi encontrado na aba enviados após inserção');
     }
     
     console.log(`✅ VERIFICADO: Processo confirmado na aba enviados`);
     
-    // AGORA SIM: Remover da aba pendentes
-    console.log('🗑️ REMOVENDO: Processo da aba pendentes...');
+    // ✅ ETAPA 6: Buscar novamente a linha atual do processo (pode ter mudado!)
+    console.log('🔄 BUSCANDO: Linha atual do processo antes de remover...');
     
-    // Limpar a linha
-    await sheets.spreadsheets.values.clear({
+    const responsePendentesAtual = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
-      range: `Processos Pendentes!A${linhaEncontrada}:M${linhaEncontrada}`
+      range: 'Processos Pendentes!A:M',
     });
     
-    // Remover a linha vazia
-    const deleteRequest = {
-      deleteDimension: {
-        range: {
-          sheetId: 0, // ID da primeira aba
-          dimension: 'ROWS',
-          startIndex: linhaEncontrada - 1,
-          endIndex: linhaEncontrada
+    const rowsPendentesAtual = responsePendentesAtual.data.values;
+    let linhaAtualParaRemover = -1;
+    
+    // Buscar a posição atual do processo
+    for (let i = 1; i < rowsPendentesAtual.length; i++) {
+      if (rowsPendentesAtual[i][0] === dadosProcesso.idProcessoPlanilha) {
+        linhaAtualParaRemover = i + 1;
+        console.log(`✅ LINHA ATUAL: Processo ainda está na linha ${linhaAtualParaRemover}`);
+        break;
+      }
+    }
+    
+    if (linhaAtualParaRemover === -1) {
+      console.log(`✅ JÁ REMOVIDO: Processo já foi removido por outro processo concorrente - OK!`);
+      return {
+        success: true,
+        numeroProcesso,
+        linhaOriginal: linhaEncontrada,
+        linhaFinal: 'já removido por outro processo',
+        dataEnvio: new Date(dataEnvio).toLocaleDateString('pt-BR'),
+        verificado: true,
+        status: 'já removido'
+      };
+    }
+    
+    // ✅ ETAPA 7: Verificação de segurança - confirmar que é o processo correto
+    const dadosLinhaAtual = rowsPendentesAtual[linhaAtualParaRemover - 1];
+    if (dadosLinhaAtual[0] !== dadosProcesso.idProcessoPlanilha) {
+      console.log(`⚠️ ERRO: Linha ${linhaAtualParaRemover} contém processo diferente!`);
+      console.log(`   Esperado: ${dadosProcesso.idProcessoPlanilha}`);
+      console.log(`   Encontrado: ${dadosLinhaAtual[0]}`);
+      
+      throw new Error(`Inconsistência: linha ${linhaAtualParaRemover} contém processo diferente do esperado`);
+    }
+    
+    // ✅ ETAPA 8: Remover da aba pendentes com tratamento de erro
+    console.log(`🗑️ REMOVENDO: Processo da aba pendentes (linha confirmada: ${linhaAtualParaRemover})...`);
+    
+    try {
+      // Primeiro limpar o conteúdo da linha
+      await sheets.spreadsheets.values.clear({
+        spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
+        range: `Processos Pendentes!A${linhaAtualParaRemover}:M${linhaAtualParaRemover}`
+      });
+      
+      // Depois remover a linha vazia
+      const deleteRequest = {
+        deleteDimension: {
+          range: {
+            sheetId: 0, // ID da aba Processos Pendentes
+            dimension: 'ROWS',
+            startIndex: linhaAtualParaRemover - 1,
+            endIndex: linhaAtualParaRemover
+          }
+        }
+      };
+      
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
+        resource: {
+          requests: [deleteRequest]
+        }
+      });
+      
+      console.log(`🗑️ REMOVIDO: Processo removido da aba pendentes (linha ${linhaAtualParaRemover})`);
+      
+    } catch (removeError) {
+      console.error(`❌ ERRO ao remover linha ${linhaAtualParaRemover}:`, removeError.message);
+      
+      // ✅ VERIFICAÇÃO PÓS-ERRO: Confirmar se o processo ainda existe
+      const verificacaoFinal = await sheets.spreadsheets.values.get({
+        spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
+        range: 'Processos Pendentes!A:M',
+      });
+      
+      const rowsVerificacao = verificacaoFinal.data.values;
+      let processoAindaExiste = false;
+      
+      for (let i = 1; i < rowsVerificacao.length; i++) {
+        if (rowsVerificacao[i][0] === dadosProcesso.idProcessoPlanilha) {
+          processoAindaExiste = true;
+          console.log(`⚠️ PROCESSO AINDA EXISTE na linha ${i + 1} após erro de remoção`);
+          break;
         }
       }
-    };
-    
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
-      resource: {
-        requests: [deleteRequest]
+      
+      if (!processoAindaExiste) {
+        console.log(`✅ VERIFICAÇÃO: Processo não existe mais na aba pendentes - removido com sucesso por outro meio`);
+      } else {
+        console.error(`❌ ERRO CRÍTICO: Processo ainda existe na aba pendentes após falha na remoção`);
+        throw new Error(`Falha ao remover processo da aba pendentes: ${removeError.message}`);
       }
-    });
+    }
     
-    console.log(`🗑️ REMOVIDO: Processo removido da aba pendentes (linha ${linhaEncontrada})`);
-    
+    // ✅ SUCESSO COMPLETO
     return {
       success: true,
       numeroProcesso,
       linhaOriginal: linhaEncontrada,
+      linhaFinal: linhaAtualParaRemover,
       dataEnvio: new Date(dataEnvio).toLocaleDateString('pt-BR'),
-      verificado: true
+      verificado: true,
+      status: 'movido com sucesso'
     };
     
   } catch (error) {
     console.error('❌ Erro ao mover processo:', error);
     
-    // Rollback se necessário
+    // ✅ ROLLBACK ROBUSTO: Se já adicionou na aba enviados mas falhou depois
     if (processoAdicionadoNaAbaEnviados) {
       try {
-        console.log('🔄 ROLLBACK: Tentando remover processo da aba enviados...');
-        // Código de rollback aqui
+        console.log('🔄 ROLLBACK: Tentando remover processo da aba enviados devido ao erro...');
+        
+        const responseEnviados = await sheets.spreadsheets.values.get({
+          spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
+          range: 'Processos Enviados!A:N',
+        });
+        
+        const rowsEnviados = responseEnviados.data.values;
+        
+        // Buscar de trás para frente (mais provável que seja o último adicionado)
+        for (let i = rowsEnviados.length - 1; i >= 1; i--) {
+          if (rowsEnviados[i][0] === dadosProcesso.idProcessoPlanilha) {
+            // Obter o sheetId da aba enviados
+            const metadataResponse = await sheets.spreadsheets.get({
+              spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID
+            });
+            
+            const abaEnviados = metadataResponse.data.sheets.find(aba => 
+              aba.properties.title === 'Processos Enviados'
+            );
+            
+            const sheetIdEnviados = abaEnviados ? abaEnviados.properties.sheetId : 1;
+            
+            const deleteRequestRollback = {
+              deleteDimension: {
+                range: {
+                  sheetId: sheetIdEnviados,
+                  dimension: 'ROWS',
+                  startIndex: i,
+                  endIndex: i + 1
+                }
+              }
+            };
+            
+            await sheets.spreadsheets.batchUpdate({
+              spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
+              resource: {
+                requests: [deleteRequestRollback]
+              }
+            });
+            
+            console.log('✅ ROLLBACK: Processo removido da aba enviados com sucesso');
+            break;
+          }
+        }
+        
       } catch (rollbackError) {
         console.error('❌ ERRO NO ROLLBACK:', rollbackError);
+        console.error('⚠️ ATENÇÃO: Processo pode estar duplicado nas duas abas! Verificação manual necessária.');
       }
     }
     
@@ -1389,97 +1501,174 @@ app.get('/api/processos/planilha', authMiddleware, async (req, res) => {
 
     const sheets = getGoogleSheetsInstance();
     
-    // ✅ CORREÇÃO: Usar o range definido nas configurações
-    const response = await sheets.spreadsheets.values.get({
+    // ✅ BUSCAR ABA PENDENTES (A:L)
+    const responsePendentes = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
-      range: SHEETS_CONFIG.ABAS.PENDENTES.range, // ✅ Usar o range correto
+      range: 'Processos Pendentes!A:L',
     });
 
-    const rows = response.data.values;
+    // ✅ BUSCAR ABA ENVIADOS (A:M)
+    const responseEnviados = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
+      range: 'Processos Enviados!A:M',
+    });
+
+    const rowsPendentes = responsePendentes.data.values || [];
+    const rowsEnviados = responseEnviados.data.values || [];
     
-    if (!rows || rows.length === 0) {
-      console.log('📋 PROCESSOS: Nenhum dado encontrado na planilha');
+    if (rowsPendentes.length === 0 && rowsEnviados.length === 0) {
+      console.log('📋 PROCESSOS: Nenhum dado encontrado nas planilhas');
       return res.json({ processos: [] });
     }
 
-    // Primeira linha são os cabeçalhos
-    const headers = rows[0];
-    const dataRows = rows.slice(1);
+    console.log(`📊 PLANILHAS: ${rowsPendentes.length - 1} pendentes, ${rowsEnviados.length - 1} enviados`);
 
-    console.log('📋 Cabeçalhos encontrados:', headers);
-    console.log(`📊 Total de linhas de dados: ${dataRows.length}`);
+    const processos = [];
 
-    // Mapear dados CORRETAMENTE conforme sua planilha
-    const processos = dataRows.map((row, index) => {
-      const processo = {
-        // ✅ CORREÇÃO: Usar o ID real da planilha como ID principal
-        id: row[0] || (index + 1), // Usar ID da planilha (coluna A) como ID principal
-        idProcessoPlanilha: row[0] || '', // A: ID original da planilha (mesmo valor que ID)
-        numeroProcesso: row[1] || '',     // B: Número único do processo
-        cpfAssistido: row[2] || '',       // C: CPF do assistido
-        cliente: row[3] || '',            // D: Nome do assistido (cliente)
-        emailCliente: row[4] || '',       // E: Email
-        telefones: row[5] || '',          // F: Telefones
-        idAtendimento: row[6] || '',      // G: ID do atendimento vinculado
-        tipoProcesso: row[7] || '',       // H: Natureza do processo (tipo)
-        dataAjuizamento: row[8] || '',    // I: Data de autuação
-        exAdverso: row[9] || '',          // J: Ex-adverso (responsável/réu)
-        instancia: row[10] || '',         // K: Instância
-        objetoAtendimento: row[11] || '', // L: Objeto do atendimento
-        valorCausa: row[13] || 'A definir', // N: Valor da causa estimado
-        
-        // Campos de controle
-        emailEnviado: false,
-        dataUltimoEmail: null,
-        
-        // Campos derivados
-        status: definirStatusProcesso(row[7], row[8]),
-        ultimoAndamento: row[8] || '',
-        responsavel: extrairResponsavel(row[9])
-      };
+    // ✅ PROCESSAR ABA PENDENTES (A:L)
+    if (rowsPendentes.length > 1) {
+      const headersPendentes = rowsPendentes[0];
+      const dataRowsPendentes = rowsPendentes.slice(1);
 
-      return processo;
-    }).filter(processo => {
-      const temNumeroProcesso = processo.numeroProcesso && processo.numeroProcesso.trim().length > 0;
-      const temCliente = processo.cliente && processo.cliente.trim().length > 0;
-      
-      if (!temNumeroProcesso || !temCliente) {
-        console.log(`⚠️ Linha ignorada: numeroProcesso="${processo.numeroProcesso}", cliente="${processo.cliente}"`);
-        return false;
+      console.log('📋 Cabeçalhos aba pendentes:', headersPendentes);
+
+      dataRowsPendentes.forEach((row, index) => {
+        if (row[0] && row[3]) { // Tem ID e cliente
+          const processo = {
+            id: row[0], // ✅ USAR ID real da planilha
+            idProcessoPlanilha: row[0],       // A: ID do processo
+            numeroProcesso: row[1] || '',     // B: Número único
+            cpfAssistido: row[2] || '',       // C: CPF do assistido
+            cliente: row[3] || '',            // D: Nome do assistido
+            emailCliente: row[4] || '',       // E: Email
+            telefones: row[5] || '',          // F: Telefones
+            idAtendimento: row[6] || '',      // G: ID do atendimento vinculado
+            tipoProcesso: row[7] || '',       // H: Natureza do processo
+            dataAjuizamento: row[8] || '',    // I: Data de autuação
+            exAdverso: row[9] || '',          // J: Ex-adverso
+            instancia: row[10] || '',         // K: Instância
+            objetoAtendimento: row[11] || '', // L: Objeto do atendimento
+            
+            // ✅ STATUS DE EMAIL: ABA PENDENTES = EMAIL NÃO ENVIADO
+            emailEnviado: false,              // Sempre false na aba pendentes
+            dataUltimoEmail: null,            // Sempre null na aba pendentes
+            
+            // Campos derivados
+            status: definirStatusProcesso(row[7], row[8]),
+            ultimoAndamento: row[8] || '',
+            responsavel: extrairResponsavel(row[9]),
+            valorCausa: 'A definir', // Não tem na aba pendentes
+            origem: 'pendentes'
+          };
+
+          processos.push(processo);
+        }
+      });
+    }
+
+    // ✅ PROCESSAR ABA ENVIADOS (A:M)
+    if (rowsEnviados.length > 1) {
+      const headersEnviados = rowsEnviados[0];
+      const dataRowsEnviados = rowsEnviados.slice(1);
+
+      console.log('📋 Cabeçalhos aba enviados:', headersEnviados);
+
+      dataRowsEnviados.forEach((row, index) => {
+        if (row[0] && row[3]) { // Tem ID e cliente
+          const processo = {
+            id: row[0], // ✅ USAR ID real da planilha
+            idProcessoPlanilha: row[0],       // A: ID Processo
+            numeroProcesso: row[1] || '',     // B: Número Processo
+            cpfAssistido: row[2] || '',       // C: CPF
+            cliente: row[3] || '',            // D: Cliente
+            emailCliente: row[4] || '',       // E: Email
+            telefones: row[5] || '',          // F: Telefones
+            idAtendimento: row[6] || '',      // G: ID Atendimento
+            tipoProcesso: row[7] || '',       // H: Natureza
+            dataAjuizamento: row[8] || '',    // I: Data Autuação
+            exAdverso: row[9] || '',          // J: Ex-adverso
+            instancia: row[10] || '',         // K: Instância
+            objetoAtendimento: row[11] || '', // L: Objeto
+            
+            // ✅ STATUS DE EMAIL: ABA ENVIADOS = EMAIL ENVIADO + DATA
+            emailEnviado: true,               // Sempre true na aba enviados
+            dataUltimoEmail: row[12] || null, // M: Data Envio Email
+            
+            // Campos derivados
+            status: 'Email Enviado',
+            ultimoAndamento: row[8] || '',
+            responsavel: extrairResponsavel(row[9]),
+            valorCausa: 'A definir', // Não especificado na estrutura
+            origem: 'enviados'
+          };
+
+          processos.push(processo);
+        }
+      });
+    }
+
+    // ✅ REMOVER DUPLICATAS (priorizar aba enviados se existir o mesmo ID)
+    const processosUnicos = [];
+    const idsProcessados = new Set();
+
+    // Primeiro adicionar os da aba enviados (têm prioridade)
+    processos.filter(p => p.origem === 'enviados').forEach(processo => {
+      if (!idsProcessados.has(processo.id)) {
+        processosUnicos.push(processo);
+        idsProcessados.add(processo.id);
       }
-      
-      return true;
     });
 
-    console.log(`✅ PROCESSOS: ${processos.length} processos válidos carregados da planilha`);
+    // Depois adicionar os da aba pendentes que não existem na aba enviados
+    processos.filter(p => p.origem === 'pendentes').forEach(processo => {
+      if (!idsProcessados.has(processo.id)) {
+        processosUnicos.push(processo);
+        idsProcessados.add(processo.id);
+      }
+    });
 
-    // ✅ ADICIONADO: Log de debug para verificar estrutura
-    if (processos.length > 0) {
-      console.log('📋 Exemplo do primeiro processo:', {
-        numeroProcesso: processos[0].numeroProcesso,
-        cliente: processos[0].cliente,
-        emailCliente: processos[0].emailCliente,
-        tipoProcesso: processos[0].tipoProcesso,
-        valorCausa: processos[0].valorCausa
+    console.log(`✅ PROCESSOS: ${processosUnicos.length} processos únicos carregados`);
+    
+    // ✅ ESTATÍSTICAS DETALHADAS
+    const estatisticas = {
+      total: processosUnicos.length,
+      comEmailEnviado: processosUnicos.filter(p => p.emailEnviado).length,
+      semEmailEnviado: processosUnicos.filter(p => !p.emailEnviado).length,
+      comDataEnvio: processosUnicos.filter(p => p.dataUltimoEmail).length
+    };
+    
+    console.log(`📊 ESTATÍSTICAS:`, estatisticas);
+
+    // ✅ DEBUG: Mostrar alguns exemplos
+    if (processosUnicos.length > 0) {
+      console.log('📋 Exemplo dos primeiros 3 processos:');
+      processosUnicos.slice(0, 3).forEach((processo, i) => {
+        console.log(`   ${i + 1}. ${processo.cliente} - Email enviado: ${processo.emailEnviado} - Data: ${processo.dataUltimoEmail || 'N/A'} - Origem: ${processo.origem}`);
       });
     }
 
     res.json({
-      processos,
-      total: processos.length,
+      processos: processosUnicos,
+      total: processosUnicos.length,
       ultimaAtualizacao: new Date().toISOString(),
+      estatisticas,
       estruturaPlanilha: {
-        colunas: headers,
-        totalLinhas: dataRows.length,
-        processosValidos: processos.length,
-        processosIgnorados: dataRows.length - processos.length
+        aba_pendentes: {
+          colunas: rowsPendentes[0] || [],
+          totalLinhas: rowsPendentes.length - 1,
+          range: 'A:L'
+        },
+        aba_enviados: {
+          colunas: rowsEnviados[0] || [],
+          totalLinhas: rowsEnviados.length - 1,
+          range: 'A:M'
+        }
       }
     });
 
   } catch (error) {
     console.error('❌ Erro ao buscar dados da planilha:', error);
     
-    // ✅ MELHOR TRATAMENTO DE ERRO
     let errorMessage = 'Erro ao buscar dados da planilha';
     let errorDetails = undefined;
     
@@ -1495,8 +1684,7 @@ app.get('/api/processos/planilha', authMiddleware, async (req, res) => {
       errorDetails = {
         message: error.message,
         stack: error.stack,
-        spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
-        range: SHEETS_CONFIG.ABAS.PENDENTES.range
+        spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID
       };
     }
     
@@ -2044,7 +2232,7 @@ app.post('/api/emails/massa', authMiddleware, async (req, res) => {
     const { processos } = req.body;
 
     console.log(`📧 EMAIL MASSA: Enviando para ${processos.length} processos`);
-    console.log(`📋 DEBUG: Dados recebidos:`, JSON.stringify(processos, null, 2));
+    console.log('📋 DEBUG: Dados recebidos:', JSON.stringify(processos, null, 2));
 
     let enviados = 0;
     let erros = 0;
@@ -2052,8 +2240,6 @@ app.post('/api/emails/massa', authMiddleware, async (req, res) => {
     const resultados = [];
 
     const processosValidos = processos.filter(p => p.emailCliente && p.emailCliente.includes('@'));
-    
-    console.log(`📊 DEBUG: ${processosValidos.length} processos com email válido de ${processos.length} total`);
     
     if (processosValidos.length === 0) {
       return res.status(400).json({
@@ -2063,295 +2249,346 @@ app.post('/api/emails/massa', authMiddleware, async (req, res) => {
       });
     }
 
-    // Enviar emails em lotes
-    const batchSize = 3;
-    for (let i = 0; i < processosValidos.length; i += batchSize) {
-      const batch = processosValidos.slice(i, i + batchSize);
-      
-      const batchPromises = batch.map(async (processo) => {
-        try {
-          console.log(`📧 MASSA: Processando ${processo.cliente} (${processo.emailCliente})`);
-          console.log(`🆔 MASSA: idProcessoPlanilha = "${processo.idProcessoPlanilha}"`);
-          
-          // Validar campos obrigatórios
-          if (!processo.cliente) {
-            throw new Error('Campo cliente é obrigatório');
-          }
-          if (!processo.emailCliente) {
-            throw new Error('Campo emailCliente é obrigatório');
-          }
-          if (!processo.numeroProcesso) {
-            throw new Error('Campo numeroProcesso é obrigatório');
-          }
+    console.log(`📊 DEBUG: ${processosValidos.length} processos com email válido de ${processos.length} total`);
 
-          // Template completo do email
-          const emailTemplate = `
-            <!DOCTYPE html>
-            <html lang="pt-BR">
-            <head>
-              <meta charset="UTF-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <title>Atualização do Processo Jurídico</title>
-              <style>
-                body { 
-                  font-family: 'Arial', sans-serif; 
-                  line-height: 1.6; 
-                  color: #333; 
-                  margin: 0; 
-                  padding: 0; 
-                  background-color: #f5f5f5;
-                }
-                .container { 
-                  max-width: 600px; 
-                  margin: 0 auto; 
-                  padding: 20px; 
-                  background-color: #ffffff; 
-                  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                  border-radius: 8px;
-                }
-                .header { 
-                  background: linear-gradient(135deg, #165A5D 0%, #1a6b6f 100%);
-                  color: white; 
-                  padding: 25px; 
-                  text-align: center; 
-                  border-radius: 8px 8px 0 0; 
-                }
-                .header h1 { 
-                  margin: 0; 
-                  font-size: 24px; 
-                  font-weight: bold; 
-                }
-                .content { 
-                  padding: 30px; 
-                  background-color: #f9f9f9; 
-                  border-radius: 0 0 8px 8px; 
-                }
-                .texto-inicial{
-                  color: #000000;
-                  text-align: justify;
-                }
-                .info-box { 
-                  background-color: #e3f2fd; 
-                  padding: 20px; 
-                  margin: 20px 0; 
-                  border-left: 4px solid #165A5D; 
-                  border-radius: 4px; 
-                }
-                .info-box p { 
-                  margin: 8px 0; 
-                }
-                .info-box p{
-                  color: #000000;
-                }
-                .info-box strong {
-                  color: #000000;
-                }
-                .highlight { 
-                  color: #165A5D; 
-                  font-weight: bold; 
-                }
-                .anti-golpe {
-                  background-color: #dc2626;
-                  color: white;
-                  padding: 20px;
-                  border-radius: 8px;
-                  margin: 25px 0;
-                  border: 3px solid #b91c1c;
-                }
-                .anti-golpe h3 {
-                  margin: 0 0 10px 0;
-                  font-size: 18px;
-                  text-align: center;
-                }
-                .anti-golpe p {
-                  text-align: justify;
-                }
-                .contact-info { 
-                  background-color: #fff3cd; 
-                  padding: 20px; 
-                  border: 1px solid #ffeaa7; 
-                  border-radius: 8px; 
-                  margin: 20px 0; 
-                }
-                .whatsapp-btn {
-                  display: inline-block;
-                  background-color: #25d366;
-                  color: white;
-                  padding: 12px 20px;
-                  text-decoration: none;
-                  border-radius: 25px;
-                  font-weight: bold;
-                  margin: 10px 5px;
-                  text-align: center;
-                }
-                .social-links {
-                  text-align: center;
-                  padding: 20px;
-                  background-color: #f8f9fa;
-                  border-radius: 8px;
-                  margin: 20px 0;
-                }
-                .social-links p {
-                  margin-bottom: 25px;
-                }
-                .social-links a {
-                  display: inline-block;
-                  margin: 0 10px;
-                  color: #165A5D;
-                  text-decoration: none;
-                  font-weight: bold;
-                }
-                .footer { 
-                  text-align: center; 
-                  padding: 20px; 
-                  font-size: 14px;
-                  color: #222222; 
-                  background-color: #f5f5f5; 
-                  margin-top: 20px; 
-                  border-radius: 4px; 
-                }
-              </style>
-            </head>
-            <body>
-              <div class="container">
-                <div class="header">
-                  <img src="https://sistema.resendemh.com.br/logo-rmh.png" alt="Logo RMH" style="height: 55px; margin-bottom: 20px;" />
-                  <h1>ATUALIZAÇÃO DO PROCESSO</h1>
-                </div>
-                
-                <div class="content">
-                  <p class="texto-inicial">Prezado(a) <strong>${processo.cliente}</strong>,</p>
-                  
-                  <p class="texto-inicial">Entramos em contato para informar sobre a situação atual do seu processo jurídico:</p>
-                  
-                  <div class="info-box">
-                    <p><strong>Número do processo:</strong> ${processo.numeroProcesso}</p>
-                    <p><strong>🎯 Objeto da Ação:</strong> ${processo.objetoAtendimento}</p>
-                    <p><strong>⚖️ Tipo de Ação:</strong> ${processo.tipoProcesso}</p>
-                    <p><strong>📅 Data de protocolo do processo:</strong> ${processo.ultimoAndamento}</p>
-                    ${processo.instancia ? `<p><strong>🏛️ Instância:</strong> ${processo.instancia}</p>` : ''}
-                    <p><strong>👨‍💼 Parte Contrária:</strong> ${processo.responsavel}</p>
-                    <p><strong>💲 Previsão de Proveito Econômico:</strong> ${processo.valorCausa || 'Não informado'}</p>
-                  </div>
+    // ✅ FUNÇÃO PARA GERAR TEMPLATE DO EMAIL
+    const gerarTemplateEmail = (processo) => {
+      return `
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Atualização do Processo Jurídico</title>
+          <style>
+            body { 
+              font-family: 'Arial', sans-serif; 
+              line-height: 1.6; 
+              color: #333; 
+              margin: 0; 
+              padding: 0; 
+              background-color: #f5f5f5;
+            }
+            .container { 
+              max-width: 600px; 
+              margin: 0 auto; 
+              padding: 20px; 
+              background-color: #ffffff; 
+              box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+              border-radius: 8px;
+            }
+            .header { 
+              background: linear-gradient(135deg, #165A5D 0%, #1a6b6f 100%);
+              color: white; 
+              padding: 25px; 
+              text-align: center; 
+              border-radius: 8px 8px 0 0; 
+            }
+            .header h1 { 
+              margin: 0; 
+              font-size: 24px; 
+              font-weight: bold; 
+            }
+            .content { 
+              padding: 30px; 
+              background-color: #f9f9f9; 
+              border-radius: 0 0 8px 8px; 
+            }
+            .texto-inicial{
+              color: #000000;
+              text-align: justify;
+            }
+            .info-box { 
+              background-color: #e3f2fd; 
+              padding: 20px; 
+              margin: 20px 0; 
+              border-left: 4px solid #165A5D; 
+              border-radius: 4px; 
+            }
+            .info-box p { 
+              margin: 8px 0; 
+            }
+            .info-box p{
+              color: #000000;
+            }
+            .info-box strong {
+              color: #000000;
+            }
+            .highlight { 
+              color: #165A5D; 
+              font-weight: bold; 
+            }
+            .anti-golpe {
+              background-color: #dc2626;
+              color: white;
+              padding: 20px;
+              border-radius: 8px;
+              margin: 25px 0;
+              border: 3px solid #b91c1c;
+            }
+            .anti-golpe h3 {
+              margin: 0 0 10px 0;
+              font-size: 18px;
+              text-align: center;
+            }
+            .anti-golpe p {
+              text-align: justify;
+            }
+            .contact-info { 
+              background-color: #fff3cd; 
+              padding: 20px; 
+              border: 1px solid #ffeaa7; 
+              border-radius: 8px; 
+              margin: 20px 0; 
+            }
+            .whatsapp-btn {
+              display: inline-block;
+              background-color: #25d366;
+              color: white;
+              padding: 12px 20px;
+              text-decoration: none;
+              border-radius: 25px;
+              font-weight: bold;
+              margin: 10px 5px;
+              text-align: center;
+            }
+            .social-links {
+              text-align: center;
+              padding: 20px;
+              background-color: #f8f9fa;
+              border-radius: 8px;
+              margin: 20px 0;
+            }
+            .social-links p {
+              margin-bottom: 25px;
+            }
+            .social-links a {
+              display: inline-block;
+              margin: 0 10px;
+              color: #165A5D;
+              text-decoration: none;
+              font-weight: bold;
+            }
+            .footer { 
+              text-align: center; 
+              padding: 20px; 
+              font-size: 14px;
+              color: #222222; 
+              background-color: #f5f5f5; 
+              margin-top: 20px; 
+              border-radius: 4px; 
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <img src="https://sistema.resendemh.com.br/logo-rmh.png" alt="Logo RMH" style="height: 55px; margin-bottom: 20px;" />
+              <h1>ATUALIZAÇÃO DO PROCESSO</h1>
+            </div>
+            
+            <div class="content">
+              <p class="texto-inicial">Prezado(a) <strong>${processo.cliente}</strong>,</p>
+              
+              <p class="texto-inicial">Entramos em contato para informar sobre a situação atual do seu processo jurídico:</p>
+              
+              <div class="info-box">
+                <p><strong>Número do processo:</strong> ${processo.numeroProcesso}</p>
+                <p><strong>🎯 Objeto da Ação:</strong> ${processo.objetoAtendimento || 'Não informado'}</p>
+                <p><strong>⚖️ Tipo de Ação:</strong> ${processo.tipoProcesso}</p>
+                <p><strong>📅 Data de protocolo do processo:</strong> ${processo.ultimoAndamento}</p>
+                ${processo.instancia ? `<p><strong>🏛️ Instância:</strong> ${processo.instancia}</p>` : ''}
+                <p><strong>👨‍💼 Parte Contrária:</strong> ${processo.responsavel || processo.exAdverso || 'Não informado'}</p>
+                <p><strong>💲 Previsão de Proveito Econômico:</strong> ${processo.valorCausa || 'Não informado'}</p>
+              </div>
 
-                  <p class="texto-inicial">
-                    O valor inicial que está sendo requerido na ação descrito acima representa uma expectativa de recebimento a depender da sentença,<strong> APÓS A TRAMITAÇÃO COMPLETA DA AÇÃO</strong>, pois nesse momento <strong>NÃO HÁ PREVISÃO DE RECEBIMENTO DE VALORES</strong>.
-                  </p>
+              <p class="texto-inicial">
+                O valor inicial que está sendo requerido na ação descrito acima representa uma expectativa de recebimento a depender da sentença,<strong> APÓS A TRAMITAÇÃO COMPLETA DA AÇÃO</strong>, pois nesse momento <strong>NÃO HÁ PREVISÃO DE RECEBIMENTO DE VALORES</strong>.
+              </p>
 
-                  <!-- AVISO ANTI-GOLPE -->
-                  <div class="anti-golpe">
-                    <h3>⚠️ CUIDADO COM OS GOLPES</h3>
-                    <p>A Resende Mori Hutchison <strong>NUNCA SOLICITA</strong> informações ou pagamentos para liberação de créditos de processos e não entra em contato por outros números além do oficial.</p>
-                    <p>Caso receba qualquer mensagem ou ligação de outro número além do nosso canal oficial, entre em contato conosco para confirmar a veracidade.</p>
-                    <p>Estamos disponíveis exclusivamente no whatsapp pelo (61) 3031-4400.</p>
-                  </div>
-                  
-                  <div class="contact-info">
-                    <p><strong>💬 Precisa tirar dúvidas?</strong></p>
-                    <p>Entre em contato conosco através dos nossos canais oficiais:</p>
-                    <p>📧 Email: contato@resendemh.com.br</p>
-                    <p>📱 WhatsApp Oficial:</p>
-                    <div style="text-align: center;">
-                      <a href="https://wa.me/556130314400" class="whatsapp-btn">
-                        <img src="https://sistema.resendemh.com.br/whatsapp.png" alt="WhatsApp" style="height: 30px; margin: 0 5px; vertical-align: middle;">
-                        WhatsApp
-                      </a>
-                    </div>
-                  </div>
-
-                  <!-- Redes Sociais -->
-                  <div class="social-links">
-                    <p><strong>🌐 Nos acompanhe nas redes sociais:</strong></p>
-                    <a href="https://www.resendemh.com.br">
-                      <img src="https://sistema.resendemh.com.br/resendemh-logo.png" alt="Site RMH" style="height: 30px; margin: 0 5px; vertical-align: middle;">
-                      Site Oficial
-                    </a>
-                    <a href="https://www.instagram.com/advocaciarmh">
-                      <img src="https://sistema.resendemh.com.br/instagram.png" alt="Instagram" style="height: 30px; margin: 0 5px; vertical-align: middle;">
-                      Instagram
-                    </a>
-                    <a href="https://www.youtube.com/@ResendeMoriHutchison">
-                      <img src="https://sistema.resendemh.com.br/youtube.png" alt="YouTube" style="height: 30px; margin: 0 5px; vertical-align: middle;">
-                      YouTube
-                    </a>
-                  </div>
-                </div>
-                <div class="footer">
-                  <p><strong>ATENÇÃO: ESTE É UM E-MAIL AUTOMÁTICO, FAVOR NÃO RESPONDER.</strong></p>
+              <!-- AVISO ANTI-GOLPE -->
+              <div class="anti-golpe">
+                <h3>⚠️ CUIDADO COM OS GOLPES</h3>
+                <p>A Resende Mori Hutchison <strong>NUNCA SOLICITA</strong> informações ou pagamentos para liberação de créditos de processos e não entra em contato por outros números além do oficial.</p>
+                <p>Caso receba qualquer mensagem ou ligação de outro número além do nosso canal oficial, entre em contato conosco para confirmar a veracidade.</p>
+                <p>Estamos disponíveis exclusivamente no whatsapp pelo (61) 3031-4400.</p>
+              </div>
+              
+              <div class="contact-info">
+                <p><strong>💬 Precisa tirar dúvidas?</strong></p>
+                <p>Entre em contato conosco através dos nossos canais oficiais:</p>
+                <p>📧 Email: contato@resendemh.com.br</p>
+                <p>📱 WhatsApp Oficial:</p>
+                <div style="text-align: center;">
+                  <a href="https://wa.me/556130314400" class="whatsapp-btn">
+                    <img src="https://sistema.resendemh.com.br/whatsapp.png" alt="WhatsApp" style="height: 30px; margin: 0 5px; vertical-align: middle;">
+                    WhatsApp
+                  </a>
                 </div>
               </div>
-            </body>
-            </html>
-          `;
 
-          console.log(`📧 MASSA: Enviando email para ${processo.emailCliente}`);
+              <!-- Redes Sociais -->
+              <div class="social-links">
+                <p><strong>🌐 Nos acompanhe nas redes sociais:</strong></p>
+                <a href="https://www.resendemh.com.br">
+                  <img src="https://sistema.resendemh.com.br/resendemh-logo.png" alt="Site RMH" style="height: 30px; margin: 0 5px; vertical-align: middle;">
+                  Site Oficial
+                </a>
+                <a href="https://www.instagram.com/advocaciarmh">
+                  <img src="https://sistema.resendemh.com.br/instagram.png" alt="Instagram" style="height: 30px; margin: 0 5px; vertical-align: middle;">
+                  Instagram
+                </a>
+                <a href="https://www.youtube.com/@ResendeMoriHutchison">
+                  <img src="https://sistema.resendemh.com.br/youtube.png" alt="YouTube" style="height: 30px; margin: 0 5px; vertical-align: middle;">
+                  YouTube
+                </a>
+              </div>
+            </div>
+            <div class="footer">
+              <p><strong>ATENÇÃO: ESTE É UM E-MAIL AUTOMÁTICO, FAVOR NÃO RESPONDER.</strong></p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+    };
 
-          // Enviar email
+    // ✅ PROCESSAMENTO 100% SEQUENCIAL - UM POR VEZ
+    for (let i = 0; i < processosValidos.length; i++) {
+      const processo = processosValidos[i];
+      
+      try {
+        console.log(`\n=== PROCESSANDO ${i + 1}/${processosValidos.length} ===`);
+        console.log(`📧 MASSA: Processando ${processo.cliente} (${processo.emailCliente})`);
+        console.log(`🆔 MASSA: idProcessoPlanilha = "${processo.idProcessoPlanilha}"`);
+
+        // Validar campos obrigatórios
+        if (!processo.cliente) {
+          throw new Error('Campo cliente é obrigatório');
+        }
+        if (!processo.emailCliente) {
+          throw new Error('Campo emailCliente é obrigatório');
+        }
+        if (!processo.numeroProcesso) {
+          throw new Error('Campo numeroProcesso é obrigatório');
+        }
+
+        // Verificar se tem idProcessoPlanilha
+        if (!processo.idProcessoPlanilha || processo.idProcessoPlanilha.trim() === '') {
+          console.log(`⚠️ MASSA: Processo ${processo.numeroProcesso} sem idProcessoPlanilha - apenas enviando email`);
+          
+          // Enviar email sem mover
+          const emailTemplate = gerarTemplateEmail(processo);
           const emailResult = await resend.emails.send({
             from: 'processos@resendemh.com.br',
             to: [processo.emailCliente],
-            subject: `📋 Atualização - Processo ${processo.numeroProcesso}`,
+            subject: `📋 Atualização - Processo ${processo.numeroProcesso} | RMH Advogados`,
             html: emailTemplate
           });
 
           console.log(`✅ MASSA: Email enviado - ID: ${emailResult.id}`);
-
-          // Tentar mover para aba enviados usando idProcessoPlanilha
-          try {
-            if (processo.idProcessoPlanilha) {
-              console.log(`📋 MASSA: Tentando mover processo ID ${processo.idProcessoPlanilha} para enviados`);
-              await moverProcessoParaEnviados(
-                processo.idProcessoPlanilha, // ✅ USAR ID da coluna A
-                processo,
-                new Date().toISOString()
-              );
-              movimentacoes++;
-              console.log(`✅ MASSA: Processo ID ${processo.idProcessoPlanilha} movido para enviados`);
-            } else {
-              console.log(`⚠️ MASSA: Processo ${processo.numeroProcesso} sem idProcessoPlanilha - não movido`);
-            }
-          } catch (movError) {
-            console.error(`⚠️ MASSA: Erro ao mover processo ${processo.numeroProcesso}:`, movError.message);
-            // Não falhar o email por causa da movimentação
-          }
-
           enviados++;
-          return {
+          
+          resultados.push({
             id: processo.id,
             cliente: processo.cliente,
             numeroProcesso: processo.numeroProcesso,
             success: true,
             emailId: emailResult.id,
-            movido: !!processo.idProcessoPlanilha
-          };
-
-        } catch (error) {
-          console.error(`❌ MASSA: Erro ao processar ${processo.cliente}:`, error.message);
-          erros++;
-          return {
-            id: processo.id,
-            cliente: processo.cliente || 'N/A',
-            numeroProcesso: processo.numeroProcesso || 'N/A',
-            success: false,
-            error: error.message,
-            movido: false
-          };
+            movido: false,
+            motivo: 'Sem idProcessoPlanilha'
+          });
+          
+          // Pausa antes do próximo
+          if (i < processosValidos.length - 1) {
+            console.log(`⏳ MASSA: Aguardando 2 segundos antes do próximo processo...`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+          continue;
         }
-      });
 
-      const batchResults = await Promise.all(batchPromises);
-      resultados.push(...batchResults);
+        // 1. ENVIAR EMAIL PRIMEIRO
+        console.log(`📧 MASSA: Enviando email para ${processo.emailCliente}`);
+        const emailTemplate = gerarTemplateEmail(processo);
+        
+        const emailResult = await resend.emails.send({
+          from: 'processos@resendemh.com.br',
+          to: [processo.emailCliente],
+          subject: `📋 Atualização - Processo ${processo.numeroProcesso} | RMH Advogados`,
+          html: emailTemplate
+        });
 
-      console.log(`📊 MASSA: Lote processado - ${batchResults.filter(r => r.success).length} sucessos, ${batchResults.filter(r => !r.success).length} erros`);
+        console.log(`✅ MASSA: Email enviado - ID: ${emailResult.id}`);
 
-      // Pausa entre lotes
-      if (i + batchSize < processosValidos.length) {
-        console.log('⏳ MASSA: Aguardando 2 segundos antes do próximo lote...');
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // 2. DEPOIS MOVER PARA ABA ENVIADOS
+        try {
+          console.log(`📋 MASSA: Tentando mover processo ID ${processo.idProcessoPlanilha} para enviados`);
+          
+          const resultadoMovimentacao = await moverProcessoParaEnviados(
+            processo.numeroProcesso,
+            processo,
+            new Date().toISOString()
+          );
+          
+          console.log(`✅ MASSA: Processo ID ${processo.idProcessoPlanilha} movido para enviados`);
+          movimentacoes++;
+          
+          resultados.push({
+            id: processo.id,
+            cliente: processo.cliente,
+            numeroProcesso: processo.numeroProcesso,
+            success: true,
+            emailId: emailResult.id,
+            movido: true,
+            linhaOriginal: resultadoMovimentacao.linhaOriginal,
+            linhaFinal: resultadoMovimentacao.linhaFinal,
+            status: resultadoMovimentacao.status
+          });
+
+        } catch (movError) {
+          console.error(`⚠️ MASSA: Erro ao mover processo ${processo.numeroProcesso}:`, movError.message);
+          
+          resultados.push({
+            id: processo.id,
+            cliente: processo.cliente,
+            numeroProcesso: processo.numeroProcesso,
+            success: true,
+            emailId: emailResult.id,
+            movido: false,
+            erro: movError.message
+          });
+        }
+
+        enviados++;
+
+        // ✅ PAUSA OBRIGATÓRIA entre cada processo (evita conflitos)
+        if (i < processosValidos.length - 1) {
+          console.log(`⏳ MASSA: Aguardando 3 segundos antes do próximo processo...`);
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+
+      } catch (error) {
+        console.error(`❌ MASSA: Erro ao processar ${processo.cliente}:`, error);
+        erros++;
+        
+        resultados.push({
+          id: processo.id,
+          cliente: processo.cliente || 'N/A',
+          numeroProcesso: processo.numeroProcesso || 'N/A',
+          success: false,
+          error: error.message,
+          movido: false
+        });
+
+        // Pausa mesmo em caso de erro
+        if (i < processosValidos.length - 1) {
+          console.log(`⏳ MASSA: Aguardando 2 segundos após erro...`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
       }
     }
 
-    console.log(`✅ EMAIL MASSA FINALIZADO: ${enviados} enviados, ${movimentacoes} movidos, ${erros} erros`);
+    console.log(`\n✅ EMAIL MASSA FINALIZADO: ${enviados} enviados, ${movimentacoes} movidos, ${erros} erros`);
 
     // Log detalhado dos erros
     const errosDetalhados = resultados.filter(r => !r.success);
@@ -2379,6 +2616,81 @@ app.post('/api/emails/massa', authMiddleware, async (req, res) => {
       error: 'Erro no envio em massa',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
+  }
+});
+
+async function limparLinhasVaziasPlanilha() {
+  try {
+    console.log('🧹 LIMPEZA: Verificando linhas vazias na aba pendentes...');
+    
+    const sheets = getGoogleSheetsInstance();
+    
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
+      range: 'Processos Pendentes!A:M',
+    });
+    
+    const rows = response.data.values;
+    if (!rows || rows.length <= 1) {
+      console.log('🧹 LIMPEZA: Nenhuma linha para verificar');
+      return;
+    }
+
+    // Encontrar linhas vazias (sem ID na coluna A)
+    const linhasVazias = [];
+    for (let i = 1; i < rows.length; i++) {
+      if (!rows[i] || !rows[i][0] || rows[i][0].trim() === '') {
+        linhasVazias.push(i + 1); // +1 para índice do Google Sheets
+      }
+    }
+
+    if (linhasVazias.length === 0) {
+      console.log('🧹 LIMPEZA: Nenhuma linha vazia encontrada');
+      return;
+    }
+
+    console.log(`🧹 LIMPEZA: Encontradas ${linhasVazias.length} linhas vazias:`, linhasVazias);
+
+    // Remover linhas vazias (de trás para frente para não alterar os índices)
+    for (let i = linhasVazias.length - 1; i >= 0; i--) {
+      const linha = linhasVazias[i];
+      
+      const deleteRequest = {
+        deleteDimension: {
+          range: {
+            sheetId: 0,
+            dimension: 'ROWS',
+            startIndex: linha - 1,
+            endIndex: linha
+          }
+        }
+      };
+      
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
+        resource: {
+          requests: [deleteRequest]
+        }
+      });
+      
+      console.log(`🧹 LIMPEZA: Linha vazia ${linha} removida`);
+    }
+
+    console.log('✅ LIMPEZA: Concluída');
+
+  } catch (error) {
+    console.error('❌ Erro na limpeza de linhas vazias:', error);
+  }
+}
+
+// ✅ ENDPOINT PARA LIMPEZA MANUAL
+app.post('/api/processos/limpar-vazias', authMiddleware, async (req, res) => {
+  try {
+    await limparLinhasVaziasPlanilha();
+    res.json({ success: true, message: 'Limpeza concluída' });
+  } catch (error) {
+    console.error('❌ Erro na limpeza:', error);
+    res.status(500).json({ error: 'Erro na limpeza', details: error.message });
   }
 });
 

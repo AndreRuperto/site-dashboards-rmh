@@ -95,7 +95,7 @@ const AppContent = () => {
           } 
         />
         <Route 
-          path="/admin/usuarios" 
+          path="/admin/emails" 
           element={
             <ProtectedRoute requireAdmin={true}>
               <ControleEmailsProcessos />

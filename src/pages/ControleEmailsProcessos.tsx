@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -24,7 +25,8 @@ import {
   Eye,
   Phone,
   Building,
-  Scale
+  Scale,
+  ArrowLeft
 } from 'lucide-react';
 
 // Configurações da API
@@ -61,6 +63,7 @@ interface ProcessoData {
 }
 
 const ControleEmailsProcessos = () => {
+  const navigate = useNavigate();
   const [processos, setProcessos] = useState<ProcessoData[]>([]);
   const [processosSelecionados, setProcessosSelecionados] = useState<number[]>([]);
   const [carregando, setCarregando] = useState(false);
@@ -404,6 +407,14 @@ const ControleEmailsProcessos = () => {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
+      <Button
+        onClick={() => navigate('/')}
+        variant="ghost"
+        className="mb-2"
+      >
+        <ArrowLeft className="h-4 w-4 mr-2" />
+        Voltar ao Início
+      </Button>
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Controle de Emails - Processos</h1>

@@ -767,15 +767,20 @@ const AdminUserControl: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <RefreshCw className="h-6 w-6 animate-spin mr-2" />
-        Carregando usuários...
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="flex items-center space-x-3">
+            <RefreshCw className="h-8 w-8 animate-spin text-black-600" />
+            <span className="text-lg font-medium text-gray-700">Carregando usuários...</span>
+          </div>
+          <div className="text-sm text-gray-500">Por favor, aguarde um momento</div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-[1350px] mx-auto">
+    <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
       {/* Header */}
       <div className="space-y-4">
         <Button
@@ -894,14 +899,10 @@ const AdminUserControl: React.FC = () => {
 
       {/* 🆕 SISTEMA DE ABAS */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="geral">
             <Users className="h-4 w-4 mr-2" />
             Usuários Gerais
-          </TabsTrigger>
-          <TabsTrigger value="emails-processos">
-            <Mail className="h-4 w-4 mr-2" />
-            Emails - Processos
           </TabsTrigger>
           <TabsTrigger value="verificacoes" className="relative">
             <Clock className="h-4 w-4 mr-2" />
@@ -948,11 +949,12 @@ const AdminUserControl: React.FC = () => {
               </div>
             </div>
             {/* Filtros por tipo */}
-            <div className="flex flex-wrap gap-2 justify-between">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
               <Button
                 variant={filter === 'pendentes_aprovacao' ? 'default' : 'outline'}
                 onClick={() => setFilter('pendentes_aprovacao')}
                 size="sm"
+                className="w-full"
               >
                 <Clock className="h-4 w-4 mr-1" />
                 Aguard. Aprovação ({stats.pendentes_aprovacao})
@@ -961,6 +963,7 @@ const AdminUserControl: React.FC = () => {
                 variant={filter === 'pendentes_verificacao' ? 'default' : 'outline'}
                 onClick={() => setFilter('pendentes_verificacao')}
                 size="sm"
+                className="w-full"
               >
                 <MailSearch className="h-4 w-4 mr-1" />
                 Aguard. Verificação ({stats.nao_verificados})
@@ -969,6 +972,7 @@ const AdminUserControl: React.FC = () => {
                 variant={filter === 'corporativos' ? 'default' : 'outline'}
                 onClick={() => setFilter('corporativos')}
                 size="sm"
+                className="w-full"
               >
                 <Briefcase className="h-4 w-4 mr-1" />
                 CLT/Associados ({stats.clt_associados})
@@ -977,6 +981,7 @@ const AdminUserControl: React.FC = () => {
                 variant={filter === 'estagiarios' ? 'default' : 'outline'}
                 onClick={() => setFilter('estagiarios')}
                 size="sm"
+                className="w-full"
               >
                 <GraduationCap className="h-4 w-4 mr-1" />
                 Estagiários ({stats.estagiarios})
@@ -985,6 +990,7 @@ const AdminUserControl: React.FC = () => {
                 variant={filter === 'coordenadores' ? 'default' : 'outline'}
                 onClick={() => setFilter('coordenadores')}
                 size="sm"
+                className="w-full"
               >
                 <Crown className="h-4 w-4 mr-1" />
                 Coordenadores ({stats.coordenadores})
@@ -993,6 +999,7 @@ const AdminUserControl: React.FC = () => {
                 variant={filter === 'admins' ? 'default' : 'outline'}
                 onClick={() => setFilter('admins')}
                 size="sm"
+                className="w-full"
               >
                 <Shield className="h-4 w-4 mr-1" />
                 Admins ({stats.admins})
@@ -1001,6 +1008,7 @@ const AdminUserControl: React.FC = () => {
                 variant={filter === 'revogados' ? 'default' : 'outline'}
                 onClick={() => setFilter('revogados')}
                 size="sm"
+                className="w-full"
               >
                 <Ban className="h-4 w-4 mr-1" />
                 Revogados ({stats.revogados})
@@ -1009,6 +1017,7 @@ const AdminUserControl: React.FC = () => {
                 variant={filter === 'todos' ? 'default' : 'outline'}
                 onClick={() => setFilter('todos')}
                 size="sm"
+                className="w-full"
               >
                 Todos
               </Button>
@@ -1332,10 +1341,6 @@ const AdminUserControl: React.FC = () => {
             fetchWithAuth={fetchWithAuth}
             toast={toast}
           />
-        </TabsContent>
-
-        <TabsContent value="emails-processos" className="space-y-6">
-          <ControleEmailsProcessos />
         </TabsContent>
       </Tabs>
       {/* MODAL: Adicionar Novo Usuário */}
