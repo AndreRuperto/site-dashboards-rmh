@@ -8,11 +8,11 @@ import { AuthProvider, useAuth, ProtectedRoute } from "@/contexts/AuthContext";
 import { DashboardProvider } from "@/contexts/DashboardContext";
 import { setupAPIInterceptor } from "@/utils/apiInterceptor";
 import AuthSystem from "@/components/AuthSystem";
-import Home from "@/pages/Home"; // ✅ NOVA PÁGINA INICIAL
+import Home from "@/pages/Home";
 import DashboardsPage from "@/pages/Dashboards";
 import NotFound from "./pages/NotFound";
 import AdminUserControl from '@/pages/AdminUserControl';
-import ControleEmailsProcessos from '@/pages/ControleEmailsProcessos';
+import EmailsProcessos from '@/pages/EmailsProcessos'; // ✅ Página única com tudo
 import ConfigurarConta from '@/pages/ConfigurarConta';
 
 const queryClient = new QueryClient();
@@ -85,7 +85,17 @@ const AppContent = () => {
           } 
         />
         
-        {/* ROTAS ADMINISTRATIVAS - Só acessíveis para admins */}
+        {/* ✅ EMAILS - PÁGINA ÚNICA (todos veem, protocolo envia) */}
+        <Route 
+          path="/emails-processos" 
+          element={
+            <ProtectedRoute>
+              <EmailsProcessos />
+            </ProtectedRoute>
+          } 
+        />
+        
+        {/* ✅ ROTAS ADMINISTRATIVAS - SÓ USUÁRIOS */}
         <Route 
           path="/admin/usuarios" 
           element={
@@ -94,14 +104,8 @@ const AppContent = () => {
             </ProtectedRoute>
           } 
         />
-        <Route 
-          path="/admin/emails" 
-          element={
-            <ProtectedRoute requireAdmin={true}>
-              <ControleEmailsProcessos />
-            </ProtectedRoute>
-          } 
-        />
+        
+        {/* ✅ CONFIGURAÇÕES DO SISTEMA */}
         <Route 
           path="/admin/settings" 
           element={
@@ -116,8 +120,11 @@ const AppContent = () => {
           } 
         />
 
-        {/* REDIRECIONAMENTOS */}
+        {/* ✅ REDIRECIONAMENTOS */}
         <Route path="/admin" element={<Navigate to="/admin/usuarios" replace />} />
+        <Route path="/admin/emails" element={<Navigate to="/emails-processos" replace />} />
+        <Route path="/admin/emails-processos" element={<Navigate to="/emails-processos" replace />} />
+        <Route path="/controle-emails" element={<Navigate to="/emails-processos" replace />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="/dashboard" element={<Navigate to="/" replace />} />
         <Route path="/home" element={<Navigate to="/" replace />} />

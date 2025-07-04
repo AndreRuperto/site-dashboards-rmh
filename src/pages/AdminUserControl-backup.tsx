@@ -668,7 +668,7 @@ const AdminUserControl: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
-              <Users className="h-5 w-5 text-blue-600" />
+              <Users className="h-5 w-5 text-gray-600" />
               <div>
                 <p className="text-sm font-medium text-gray-600">Total</p>
                 <p className="text-2xl font-bold">{stats.total}</p>

@@ -9,7 +9,7 @@ import { TokensExpiradosTab } from './TokensExpiradosTab';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import ControleEmailsProcessos from './ControleEmailsProcessos';
+import EmailsProcessos from './EmailsProcessos';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -815,7 +815,7 @@ const AdminUserControl: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
-              <Users className="h-5 w-5 text-blue-600" />
+              <Users className="h-5 w-5 text-gray-600" />
               <div>
                 <p className="text-sm font-medium text-gray-600">Total</p>
                 <p className="text-2xl font-bold">{stats.total}</p>

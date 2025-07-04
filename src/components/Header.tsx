@@ -31,8 +31,8 @@ const Header = () => {
     navigate('/admin/usuarios');
   };
 
-  const goToAdminEmails = () => {
-    navigate('/admin/emails');
+  const goToEmails = () => {
+    navigate('/emails-processos'); // ✅ CORREÇÃO: Nova rota unificada
   };
 
   const goToHome = () => {
@@ -59,15 +59,16 @@ const Header = () => {
           <div className="flex items-center space-x-4">
             <RMHLogo />
 
-            {/* Navegação padrão */}
+            {/* ✅ NAVEGAÇÃO ATUALIZADA - Emails no menu principal */}
             <nav className="hidden lg:flex items-center space-x-2">
               <Button
                 variant="ghost"
                 onClick={goToHome}
                 className="text-rmh-white hover:text-white hover:bg-rmh-lightGreen/20"
               >
-                Inicío
+                Início
               </Button>
+              
               {canViewDashboards && (
                 <Button
                   variant="ghost"
@@ -76,8 +77,16 @@ const Header = () => {
                 >
                   Dashboards
                 </Button>
-                
               )}
+              
+              {/* ✅ NOVO: Emails no menu principal (todos podem ver) */}
+              <Button
+                variant="ghost"
+                onClick={goToEmails}
+                className="text-rmh-white hover:text-white hover:bg-rmh-lightGreen/20 flex items-center space-x-2"
+              >
+                <span>Emails</span>
+              </Button>
             </nav>
           </div>
 
@@ -90,7 +99,7 @@ const Header = () => {
               )}
             </div>
 
-            {/* Menu do usuário com Admin incluso */}
+            {/* ✅ MENU DO USUÁRIO SIMPLIFICADO - Sem emails */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-10 w-10 rounded-full">
@@ -128,17 +137,13 @@ const Header = () => {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
 
-                {/* Itens de administração visíveis apenas para admin */}
+                {/* ✅ ADMINISTRAÇÃO SIMPLIFICADA - Só usuários */}
                 {user?.tipo_usuario === 'admin' && (
                   <>
                     <DropdownMenuLabel>Administração</DropdownMenuLabel>
                     <DropdownMenuItem onClick={goToAdminUsers} className="cursor-pointer">
                       <Users className="h-4 w-4 mr-2" />
                       Controle de Usuários
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={goToAdminEmails} className="cursor-pointer">
-                      <Mail className="h-4 w-4 mr-2" />
-                      Controle de Emails
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => navigate('/admin/settings')} className="cursor-pointer">
                       <Settings className="h-4 w-4 mr-2" />
