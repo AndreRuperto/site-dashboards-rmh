@@ -5457,6 +5457,123 @@ app.get('/api/admin/usuarios', adminMiddleware, async (req, res) => {
   }
 });
 
+app.get('/api/organograma/colaboradores', authMiddleware, async (req, res) => {
+  try {
+    console.log('📊 ORGANOGRAMA: Buscando dados da view vw_colaboradores...');
+    
+    // Query para buscar todos os colaboradores da view vw_colaboradores
+    // ✅ CORRIGIDO: Status é "ATIVO" (maiúsculo) baseado nos dados reais
+    const result = await pool.query(`
+      SELECT 
+        id,
+        nome,
+        cargo,
+        setor,
+        sub_setor,
+        email,
+        telefone,
+        status,
+        cpf,
+        genero,
+        nascimento,
+        endereco
+      FROM vw_colaboradores
+      WHERE status = 'ATIVO'
+      ORDER BY 
+        CASE 
+          -- Coordenadores (cargo contém COORD.)
+          WHEN UPPER(cargo) LIKE '%COORD%' THEN 1
+          -- Advogados
+          WHEN UPPER(cargo) LIKE '%ADVOGADO%' THEN 2
+          -- Analistas
+          WHEN UPPER(cargo) LIKE '%ANALISTA%' THEN 3
+          -- Assistentes
+          WHEN UPPER(cargo) LIKE '%ASSISTENTE%' THEN 4
+          -- Auxiliares
+          WHEN UPPER(cargo) LIKE '%AUX%' THEN 5
+          -- Técnicos
+          WHEN UPPER(cargo) LIKE '%TECNICO%' OR UPPER(cargo) LIKE '%TÉCNICO%' THEN 6
+          -- Estagiários
+          WHEN UPPER(cargo) LIKE '%ESTAGIARIO%' OR UPPER(cargo) LIKE '%ESTAGIÁRIO%' THEN 7
+          -- Menores aprendizes
+          WHEN UPPER(cargo) LIKE '%MENOR%' OR UPPER(cargo) LIKE '%APRENDIZ%' THEN 8
+          ELSE 9
+        END,
+        setor,
+        nome
+    `);
+
+    const colaboradores = result.rows;
+    
+    // Processar dados para compatibilidade com o frontend
+    const colaboradoresProcessados = colaboradores.map(c => ({
+      id: c.id,
+      nome: c.nome,
+      setor: c.setor || 'Sem Setor',
+      cargo: c.cargo || 'Não informado',
+      sub_setor: c.sub_setor,
+      email: c.email,
+      telefone: c.telefone,
+      status: c.status,
+      cpf: c.cpf,
+      genero: c.genero,
+      nascimento: c.nascimento,
+      endereco: c.endereco,
+      // Mapear para compatibilidade com interface existente
+      tipo_usuario: (c.cargo && (
+        c.cargo.toUpperCase().includes('DIRETOR') || 
+        c.cargo.toUpperCase().includes('ADMIN') ||
+        c.cargo.toUpperCase().includes('COORD')
+      )) ? 'admin' : 'usuario',
+      tipo_colaborador: (c.cargo && (
+        c.cargo.toUpperCase().includes('ESTAGIARIO') || 
+        c.cargo.toUpperCase().includes('ESTAGIÁRIO') ||
+        c.cargo.toUpperCase().includes('MENOR') ||
+        c.cargo.toUpperCase().includes('APRENDIZ')
+      )) ? 'estagiario' : 'clt_associado',
+      is_coordenador: c.cargo && c.cargo.toUpperCase().includes('COORD'),
+      email_verificado: true, // Assumindo que estão ativos
+      ativo: c.status === 'ATIVO'
+    }));
+    
+    // Estatísticas calculadas
+    const stats = {
+      total: colaboradoresProcessados.length,
+      setores: [...new Set(colaboradoresProcessados.map(c => c.setor))].length,
+      admins: colaboradoresProcessados.filter(c => c.tipo_usuario === 'admin').length,
+      coordenadores: colaboradoresProcessados.filter(c => c.is_coordenador === true).length,
+      estagiarios: colaboradoresProcessados.filter(c => c.tipo_colaborador === 'estagiario').length,
+      clt_associados: colaboradoresProcessados.filter(c => c.tipo_colaborador === 'clt_associado').length,
+      // Estatísticas por cargo
+      advogados: colaboradores.filter(c => c.cargo && c.cargo.toUpperCase().includes('ADVOGADO')).length,
+      auxiliares: colaboradores.filter(c => c.cargo && c.cargo.toUpperCase().includes('AUX')).length,
+      assistentes: colaboradores.filter(c => c.cargo && c.cargo.toUpperCase().includes('ASSISTENTE')).length,
+      analistas: colaboradores.filter(c => c.cargo && c.cargo.toUpperCase().includes('ANALISTA')).length
+    };
+
+    console.log(`✅ ORGANOGRAMA: ${colaboradores.length} colaboradores encontrados`);
+    console.log('📈 STATS:', stats);
+    console.log('🔍 SETORES:', [...new Set(colaboradores.map(c => c.setor))]);
+    console.log('💼 CARGOS:', [...new Set(colaboradores.map(c => c.cargo))].slice(0, 10));
+
+    res.json({
+      success: true,
+      colaboradores: colaboradoresProcessados,
+      stats,
+      total: colaboradores.length,
+      raw_data_sample: colaboradores.slice(0, 3) // Para debug
+    });
+
+  } catch (error) {
+    console.error('❌ ORGANOGRAMA: Erro ao buscar colaboradores:', error);
+    res.status(500).json({
+      error: 'Erro interno do servidor',
+      message: 'Não foi possível carregar os dados do organograma',
+      details: error.message
+    });
+  }
+});
+
 // REENVIAR CÓDIGO PARA QUALQUER USUÁRIO (ADMIN)
 app.post('/api/admin/reenviar-codigo/:userId', adminMiddleware, async (req, res) => {
   const client = await pool.connect();

@@ -35,6 +35,10 @@ const Header = () => {
     navigate('/emails-processos'); // ✅ CORREÇÃO: Nova rota unificada
   };
 
+  const goToOrganograma = () => {
+    navigate('/organograma'); // ✅ CORREÇÃO: Nova rota unificada
+  };
+
   const goToHome = () => {
     navigate('/');
   };
@@ -86,6 +90,14 @@ const Header = () => {
                 className="text-rmh-white hover:text-white hover:bg-rmh-lightGreen/20 flex items-center space-x-2"
               >
                 <span>Emails</span>
+              </Button>
+
+              <Button
+                variant="ghost"
+                onClick={goToOrganograma}
+                className="text-rmh-white hover:text-white hover:bg-rmh-lightGreen/20 flex items-center space-x-2"
+              >
+                <span>Organograma</span>
               </Button>
             </nav>
           </div>

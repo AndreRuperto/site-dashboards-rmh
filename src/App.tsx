@@ -12,12 +12,13 @@ import Home from "@/pages/Home";
 import DashboardsPage from "@/pages/Dashboards";
 import NotFound from "./pages/NotFound";
 import AdminUserControl from '@/pages/AdminUserControl';
-import EmailsProcessos from '@/pages/EmailsProcessos'; // ✅ Página única com tudo
+import EmailsProcessos from '@/pages/EmailsProcessos'; // Página única com tudo
 import ConfigurarConta from '@/pages/ConfigurarConta';
+import Organograma from '@/pages/Organograma'; // NOVO: Importar componente Organograma
 
 const queryClient = new QueryClient();
 
-// ✅ Componente wrapper para proteger página de dashboards
+// Componente wrapper para proteger página de dashboards
 const DashboardsPageProtected = () => {
   const { user } = useAuth();
   
@@ -65,7 +66,7 @@ const AppContent = () => {
   return (
     <DashboardProvider>
       <Routes>
-        {/* ✅ PÁGINA INICIAL - Dashboard Principal */}
+        {/* PÁGINA INICIAL - Dashboard Principal */}
         <Route 
           path="/" 
           element={
@@ -75,7 +76,7 @@ const AppContent = () => {
           } 
         />
         
-        {/* ✅ PÁGINA DE DASHBOARDS - Controle manual por tipo de usuário */}
+        {/* PÁGINA DE DASHBOARDS - Controle manual por tipo de usuário */}
         <Route 
           path="/dashboards" 
           element={
@@ -85,7 +86,7 @@ const AppContent = () => {
           } 
         />
         
-        {/* ✅ EMAILS - PÁGINA ÚNICA (todos veem, protocolo envia) */}
+        {/* EMAILS - PÁGINA ÚNICA (todos veem, protocolo envia) */}
         <Route 
           path="/emails-processos" 
           element={
@@ -95,7 +96,17 @@ const AppContent = () => {
           } 
         />
         
-        {/* ✅ ROTAS ADMINISTRATIVAS - SÓ USUÁRIOS */}
+        {/* NOVO: ORGANOGRAMA - Todos podem ver */}
+        <Route 
+          path="/organograma" 
+          element={
+            <ProtectedRoute>
+              <Organograma />
+            </ProtectedRoute>
+          } 
+        />
+        
+        {/* ROTAS ADMINISTRATIVAS - SÓ USUÁRIOS */}
         <Route 
           path="/admin/usuarios" 
           element={
@@ -105,7 +116,7 @@ const AppContent = () => {
           } 
         />
         
-        {/* ✅ CONFIGURAÇÕES DO SISTEMA */}
+        {/* CONFIGURAÇÕES DO SISTEMA */}
         <Route 
           path="/admin/settings" 
           element={
@@ -120,7 +131,7 @@ const AppContent = () => {
           } 
         />
 
-        {/* ✅ REDIRECIONAMENTOS */}
+        {/* REDIRECIONAMENTOS */}
         <Route path="/admin" element={<Navigate to="/admin/usuarios" replace />} />
         <Route path="/admin/emails" element={<Navigate to="/emails-processos" replace />} />
         <Route path="/admin/emails-processos" element={<Navigate to="/emails-processos" replace />} />

@@ -595,7 +595,7 @@ const EmailsProcessos = () => {
                               <strong>Email:</strong> {processo.emailCliente}
                             </div>
                             <div>
-                              <strong>Natureza:</strong> {processo.tipoProcesso}
+                              <strong>ID do atendimento:</strong> {processo.idAtendimento}
                             </div>
                             <div>
                               <strong>Ajuizamento:</strong> {processo.dataAjuizamento}
