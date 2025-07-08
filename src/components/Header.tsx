@@ -1,7 +1,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
-import { LogOut, Shield, Users, Settings, Mail } from 'lucide-react';
+import { LogOut, Shield, Users, Settings, Mail, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   DropdownMenu,
@@ -32,11 +32,15 @@ const Header = () => {
   };
 
   const goToEmails = () => {
-    navigate('/emails-processos'); // ✅ CORREÇÃO: Nova rota unificada
+    navigate('/emails-processos');
   };
 
   const goToOrganograma = () => {
-    navigate('/organograma'); // ✅ CORREÇÃO: Nova rota unificada
+    navigate('/organograma');
+  };
+
+  const goToDocuments = () => {
+    navigate('/documentos');
   };
 
   const goToHome = () => {
@@ -63,7 +67,7 @@ const Header = () => {
           <div className="flex items-center space-x-4">
             <RMHLogo />
 
-            {/* ✅ NAVEGAÇÃO ATUALIZADA - Emails no menu principal */}
+            {/* ✅ NAVEGAÇÃO ATUALIZADA - Incluindo Documentos */}
             <nav className="hidden lg:flex items-center space-x-2">
               <Button
                 variant="ghost"
@@ -83,7 +87,15 @@ const Header = () => {
                 </Button>
               )}
               
-              {/* ✅ NOVO: Emails no menu principal (todos podem ver) */}
+              {/* ✅ NOVO: Documentos no menu principal */}
+              <Button
+                variant="ghost"
+                onClick={goToDocuments}
+                className="text-rmh-white hover:text-white hover:bg-rmh-lightGreen/20 flex items-center space-x-2"
+              >
+                <span>Documentos</span>
+              </Button>
+              
               <Button
                 variant="ghost"
                 onClick={goToEmails}
@@ -111,7 +123,7 @@ const Header = () => {
               )}
             </div>
 
-            {/* ✅ MENU DO USUÁRIO SIMPLIFICADO - Sem emails */}
+            {/* ✅ MENU DO USUÁRIO */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-10 w-10 rounded-full">
@@ -149,7 +161,31 @@ const Header = () => {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
 
-                {/* ✅ ADMINISTRAÇÃO SIMPLIFICADA - Só usuários */}
+                {/* ✅ NAVEGAÇÃO RÁPIDA NO MENU MOBILE */}
+                <div className="lg:hidden">
+                  <DropdownMenuLabel>Navegação</DropdownMenuLabel>
+                  {canViewDashboards && (
+                    <DropdownMenuItem onClick={goToDashboards} className="cursor-pointer">
+                      <span className="mr-2">📊</span>
+                      Dashboards
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem onClick={goToDocuments} className="cursor-pointer">
+                    <FileText className="h-4 w-4 mr-2" />
+                    Documentos
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={goToEmails} className="cursor-pointer">
+                    <Mail className="h-4 w-4 mr-2" />
+                    Emails
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={goToOrganograma} className="cursor-pointer">
+                    <span className="mr-2">👥</span>
+                    Organograma
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </div>
+
+                {/* ✅ ADMINISTRAÇÃO */}
                 {user?.tipo_usuario === 'admin' && (
                   <>
                     <DropdownMenuLabel>Administração</DropdownMenuLabel>

@@ -209,7 +209,15 @@ app.use(
           "'self'",
           "'unsafe-inline'",
           "'unsafe-eval'",
-          "https://app.fabric.microsoft.com"
+          "https://app.fabric.microsoft.com",
+          // ✅ ADICIONAR CDN DO PDF.js WORKER
+          "https://cdnjs.cloudflare.com"  // <- ESTA É A LINHA IMPORTANTE
+        ],
+        // ✅ ADICIONAR worker-src ESPECÍFICO
+        workerSrc: [
+          "'self'",
+          "blob:",
+          "https://cdnjs.cloudflare.com"
         ],
         styleSrc: [
           "'self'",
@@ -1815,6 +1823,20 @@ function extrairProveito(valorCausa) {
   
   return valorCausa;
 }
+
+// backend/routes/upload.js
+app.post('/api/upload-document', upload.single('file'), (req, res) => {
+  const file = req.file;
+  const destinationPath = `public/documents/${file.originalname}`;
+  
+  // Mover arquivo para public/documents/
+  fs.moveSync(file.path, destinationPath);
+  
+  res.json({ 
+    success: true, 
+    fileUrl: `/documents/${file.originalname}` 
+  });
+});
 
 // Atualizar planilha com controle de email (ADICIONAR COLUNAS)
 app.patch('/api/processos/atualizar-email', authMiddleware, async (req, res) => {

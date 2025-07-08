@@ -6,15 +6,17 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth, ProtectedRoute } from "@/contexts/AuthContext";
 import { DashboardProvider } from "@/contexts/DashboardContext";
+import { PDFProvider } from "@/contexts/PDFContext"; // ✅ NOVO: Provider para documentos
 import { setupAPIInterceptor } from "@/utils/apiInterceptor";
 import AuthSystem from "@/components/AuthSystem";
 import Home from "@/pages/Home";
 import DashboardsPage from "@/pages/Dashboards";
+import DocumentsPage from "@/pages/Documents"; // ✅ NOVO: Página de documentos
 import NotFound from "./pages/NotFound";
 import AdminUserControl from '@/pages/AdminUserControl';
-import EmailsProcessos from '@/pages/EmailsProcessos'; // Página única com tudo
+import EmailsProcessos from '@/pages/EmailsProcessos';
 import ConfigurarConta from '@/pages/ConfigurarConta';
-import Organograma from '@/pages/Organograma'; // NOVO: Importar componente Organograma
+import Organograma from '@/pages/Organograma';
 
 const queryClient = new QueryClient();
 
@@ -65,84 +67,101 @@ const AppContent = () => {
 
   return (
     <DashboardProvider>
-      <Routes>
-        {/* PÁGINA INICIAL - Dashboard Principal */}
-        <Route 
-          path="/" 
-          element={
-            <ProtectedRoute>
-              <Home />
-            </ProtectedRoute>
-          } 
-        />
-        
-        {/* PÁGINA DE DASHBOARDS - Controle manual por tipo de usuário */}
-        <Route 
-          path="/dashboards" 
-          element={
-            <ProtectedRoute>
-              <DashboardsPageProtected />
-            </ProtectedRoute>
-          } 
-        />
-        
-        {/* EMAILS - PÁGINA ÚNICA (todos veem, protocolo envia) */}
-        <Route 
-          path="/emails-processos" 
-          element={
-            <ProtectedRoute>
-              <EmailsProcessos />
-            </ProtectedRoute>
-          } 
-        />
-        
-        {/* NOVO: ORGANOGRAMA - Todos podem ver */}
-        <Route 
-          path="/organograma" 
-          element={
-            <ProtectedRoute>
-              <Organograma />
-            </ProtectedRoute>
-          } 
-        />
-        
-        {/* ROTAS ADMINISTRATIVAS - SÓ USUÁRIOS */}
-        <Route 
-          path="/admin/usuarios" 
-          element={
-            <ProtectedRoute requireAdmin={true}>
-              <AdminUserControl />
-            </ProtectedRoute>
-          } 
-        />
-        
-        {/* CONFIGURAÇÕES DO SISTEMA */}
-        <Route 
-          path="/admin/settings" 
-          element={
-            <ProtectedRoute requireAdmin={true}>
-              <div className="min-h-screen flex items-center justify-center bg-gray-50">
-                <div className="text-center p-8">
-                  <h1 className="text-2xl font-bold text-gray-800 mb-4">🚧 Em Desenvolvimento</h1>
-                  <p className="text-gray-600">Configurações do Sistema em breve...</p>
+      <PDFProvider> {/* ✅ NOVO: Provider para documentos */}
+        <Routes>
+          {/* PÁGINA INICIAL - Dashboard Principal */}
+          <Route 
+            path="/" 
+            element={
+              <ProtectedRoute>
+                <Home />
+              </ProtectedRoute>
+            } 
+          />
+          
+          {/* PÁGINA DE DASHBOARDS - Controle manual por tipo de usuário */}
+          <Route 
+            path="/dashboards" 
+            element={
+              <ProtectedRoute>
+                <DashboardsPageProtected />
+              </ProtectedRoute>
+            } 
+          />
+          
+          {/* ✅ NOVO: DOCUMENTOS - Todos podem ver */}
+          <Route 
+            path="/documentos" 
+            element={
+              <ProtectedRoute>
+                <DocumentsPage />
+              </ProtectedRoute>
+            } 
+          />
+          
+          {/* EMAILS - PÁGINA ÚNICA (todos veem, protocolo envia) */}
+          <Route 
+            path="/emails-processos" 
+            element={
+              <ProtectedRoute>
+                <EmailsProcessos />
+              </ProtectedRoute>
+            } 
+          />
+          
+          {/* ORGANOGRAMA - Todos podem ver */}
+          <Route 
+            path="/organograma" 
+            element={
+              <ProtectedRoute>
+                <Organograma />
+              </ProtectedRoute>
+            } 
+          />
+          
+          {/* ROTAS ADMINISTRATIVAS - SÓ ADMINS */}
+          <Route 
+            path="/admin/usuarios" 
+            element={
+              <ProtectedRoute requireAdmin={true}>
+                <AdminUserControl />
+              </ProtectedRoute>
+            } 
+          />
+          
+          {/* CONFIGURAÇÕES DO SISTEMA */}
+          <Route 
+            path="/admin/settings" 
+            element={
+              <ProtectedRoute requireAdmin={true}>
+                <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                  <div className="text-center p-8">
+                    <h1 className="text-2xl font-bold text-gray-800 mb-4">🚧 Em Desenvolvimento</h1>
+                    <p className="text-gray-600">Configurações do Sistema em breve...</p>
+                  </div>
                 </div>
-              </div>
-            </ProtectedRoute>
-          } 
-        />
+              </ProtectedRoute>
+            } 
+          />
 
-        {/* REDIRECIONAMENTOS */}
-        <Route path="/admin" element={<Navigate to="/admin/usuarios" replace />} />
-        <Route path="/admin/emails" element={<Navigate to="/emails-processos" replace />} />
-        <Route path="/admin/emails-processos" element={<Navigate to="/emails-processos" replace />} />
-        <Route path="/controle-emails" element={<Navigate to="/emails-processos" replace />} />
-        <Route path="/login" element={<Navigate to="/" replace />} />
-        <Route path="/dashboard" element={<Navigate to="/" replace />} />
-        <Route path="/home" element={<Navigate to="/" replace />} />
-        
-        {/* 404 - NOT FOUND */}
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+          {/* REDIRECIONAMENTOS */}
+          <Route path="/admin" element={<Navigate to="/admin/usuarios" replace />} />
+          <Route path="/admin/emails" element={<Navigate to="/emails-processos" replace />} />
+          <Route path="/admin/emails-processos" element={<Navigate to="/emails-processos" replace />} />
+          <Route path="/controle-emails" element={<Navigate to="/emails-processos" replace />} />
+          <Route path="/login" element={<Navigate to="/" replace />} />
+          <Route path="/dashboard" element={<Navigate to="/" replace />} />
+          <Route path="/home" element={<Navigate to="/" replace />} />
+          
+          {/* ✅ REDIRECIONAMENTOS PARA DOCUMENTOS */}
+          <Route path="/pdfs" element={<Navigate to="/documentos" replace />} />
+          <Route path="/arquivos" element={<Navigate to="/documentos" replace />} />
+          <Route path="/documents" element={<Navigate to="/documentos" replace />} />
+          
+          {/* 404 - NOT FOUND */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </PDFProvider> {/* ✅ NOVO: Fechar provider */}
     </DashboardProvider>
   );
 };
