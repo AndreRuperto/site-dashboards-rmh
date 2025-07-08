@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Plus, FileText } from 'lucide-react';
+import { Plus, FileText, Shield, ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePDFs, PDFDocument } from '@/contexts/PDFContext';
 import { useToast } from '@/hooks/use-toast';
+import { useNavigate } from 'react-router-dom';
 import Header from '@/components/Header';
 import PDFCard from '@/components/PDFCard';
-import PDFForm from '@/components/PDFForm'; // O componente que criamos
+import PDFForm from '@/components/PDFForm';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { isAdmin } from '@/types';
 
@@ -16,58 +17,105 @@ const DocumentsPage = () => {
   const [editingDocument, setEditingDocument] = useState<PDFDocument | null>(null);
 
   const { user } = useAuth();
-  const { getFilteredDocuments, deleteDocument, addDocument, updateDocument, categories } = usePDFs();
+  const navigate = useNavigate();
+  const { 
+    getFilteredDocuments, 
+    deleteDocument, 
+    addDocument, 
+    updateDocument, 
+    uploadFile,
+    categories,
+    isLoading,
+    error 
+  } = usePDFs();
   const { toast } = useToast();
+
+  // ✅ PERMISSÕES DE EDIÇÃO (apenas Admin e Administrativo)
+  const userIsAdmin = user ? isAdmin(user) : false;
+  const isAdministrativo = user?.setor?.toLowerCase().includes('administrativo') || false;
+  const canEdit = userIsAdmin || isAdministrativo;
+
+  // ✅ Mostrar loading enquanto carrega usuário
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="flex items-center space-x-3">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-rmh-primary"></div>
+          <span className="text-rmh-gray">Carregando...</span>
+        </div>
+      </div>
+    );
+  }
 
   const filteredDocuments = getFilteredDocuments(
     selectedCategory === 'all' ? undefined : selectedCategory
   );
 
-  // Verificação de permissão usando a função utilitária do types
-  const userIsAdmin = user ? isAdmin(user) : false;
-
-  const handleDeleteDocument = (id: string) => {
-    if (window.confirm('Tem certeza que deseja excluir este documento?')) {
-      deleteDocument(id);
+  const handleDeleteDocument = async (id: string) => {
+    if (!canEdit) {
       toast({
-        title: "Sucesso",
-        description: "Documento excluído com sucesso"
+        title: "Acesso Negado",
+        description: "Apenas administradores e setor Administrativo podem excluir documentos.",
+        variant: "destructive"
       });
+      return;
+    }
+
+    if (window.confirm('Tem certeza que deseja excluir este documento?')) {
+      try {
+        await deleteDocument(id);
+        toast({
+          title: "Sucesso",
+          description: "Documento excluído com sucesso"
+        });
+      } catch (error) {
+        toast({
+          title: "Erro",
+          description: "Erro ao excluir documento",
+          variant: "destructive"
+        });
+      }
     }
   };
 
   const handleNewDocument = () => {
+    if (!canEdit) {
+      toast({
+        title: "Acesso Negado",
+        description: "Apenas administradores e setor Administrativo podem criar documentos.",
+        variant: "destructive"
+      });
+      return;
+    }
     setEditingDocument(null);
     setIsFormOpen(true);
   };
 
   const handleEditDocument = (document: PDFDocument) => {
+    if (!canEdit) {
+      toast({
+        title: "Acesso Negado",
+        description: "Apenas administradores e setor Administrativo podem editar documentos.",
+        variant: "destructive"
+      });
+      return;
+    }
     setEditingDocument(document);
     setIsFormOpen(true);
   };
 
-  const handleFormSubmit = (documentData: Partial<PDFDocument>) => {
+  const handleFormSubmit = async (documentData: Partial<PDFDocument>) => {
     try {
       if (editingDocument) {
-        // Editando documento existente
-        updateDocument(editingDocument.id, documentData);
+        // ✅ EDITANDO DOCUMENTO EXISTENTE
+        await updateDocument(editingDocument.id, documentData);
         toast({
           title: "Sucesso",
           description: "Documento atualizado com sucesso"
         });
       } else {
-        // Criando novo documento - ajustado para corresponder ao contexto
-        const newDocument: Omit<PDFDocument, 'id' | 'uploadedAt'> = {
-          title: documentData.title!,
-          description: documentData.description || '',
-          category: documentData.category!,
-          fileName: documentData.fileName!,
-          fileUrl: documentData.fileUrl!,
-          uploadedBy: user?.email || '',
-          isActive: true // Adicionado o campo isActive que estava faltando
-        };
-        
-        addDocument(newDocument);
+        // ✅ CRIANDO NOVO DOCUMENTO
+        await addDocument(documentData as Omit<PDFDocument, 'id' | 'uploadedAt' | 'createdAt' | 'updatedAt'>);
         toast({
           title: "Sucesso",
           description: "Documento adicionado com sucesso"
@@ -77,9 +125,10 @@ const DocumentsPage = () => {
       setIsFormOpen(false);
       setEditingDocument(null);
     } catch (error) {
+      console.error('Erro ao salvar documento:', error);
       toast({
         title: "Erro",
-        description: "Erro ao salvar documento",
+        description: error instanceof Error ? error.message : "Erro ao salvar documento",
         variant: "destructive"
       });
     }
@@ -100,17 +149,21 @@ const DocumentsPage = () => {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
             <div>
               <h1 className="text-3xl font-heading font-bold text-rmh-primary">
-                Documentos PDF
+                Documentos
               </h1>
               <p className="text-rmh-gray mt-1">
-                Acesse e organize os documentos da empresa
+                {canEdit 
+                  ? "Acesse e organize os documentos da empresa" 
+                  : "Acesse e visualize os documentos da empresa"
+                }
               </p>
             </div>
             
-            {userIsAdmin && (
+            {/* ✅ Botão só aparece para quem pode editar */}
+            {canEdit && (
               <Button 
                 onClick={handleNewDocument}
-                className="bg-rmh-primary hover:bg-rmh-secondary"
+                className="bg-rmh-lightGreen hover:bg-rmh-primary"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Novo Documento
@@ -149,7 +202,27 @@ const DocumentsPage = () => {
 
           {/* Documents Grid */}
           <div className="space-y-4">
-            {filteredDocuments.length > 0 ? (
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-rmh-primary"></div>
+                <span className="ml-2 text-rmh-gray">Carregando documentos...</span>
+              </div>
+            ) : error ? (
+              <div className="text-center py-12">
+                <FileText className="h-16 w-16 text-red-400 mx-auto mb-4 opacity-50" />
+                <h3 className="text-lg font-medium text-red-600 mb-2">
+                  Erro ao carregar documentos
+                </h3>
+                <p className="text-gray-600 mb-4">{error}</p>
+                <Button 
+                  variant="outline" 
+                  onClick={() => window.location.reload()}
+                  className="border-rmh-primary text-rmh-primary hover:bg-rmh-primary hover:text-white"
+                >
+                  Tentar Novamente
+                </Button>
+              </div>
+            ) : filteredDocuments.length > 0 ? (
               <>
                 <div className="flex items-center space-x-2 text-sm text-rmh-gray">
                   <FileText className="h-4 w-4" />
@@ -162,8 +235,9 @@ const DocumentsPage = () => {
                     <PDFCard
                       key={document.id}
                       document={document}
-                      onEdit={handleEditDocument}
-                      onDelete={handleDeleteDocument}
+                      onEdit={canEdit ? handleEditDocument : undefined} // ✅ Só passa onEdit se pode editar
+                      onDelete={canEdit ? handleDeleteDocument : undefined} // ✅ Só passa onDelete se pode editar
+                      canEdit={canEdit} // ✅ Passa prop para o PDFCard saber se pode mostrar botões
                     />
                   ))}
                 </div>
@@ -187,7 +261,7 @@ const DocumentsPage = () => {
                   >
                     Limpar Filtros
                   </Button>
-                ) : userIsAdmin && (
+                ) : canEdit && (
                   <Button 
                     onClick={handleNewDocument}
                     className="bg-rmh-primary hover:bg-rmh-secondary"
@@ -202,14 +276,17 @@ const DocumentsPage = () => {
         </div>
       </main>
 
-      {/* Modal de Formulário */}
-      <PDFForm
-        isOpen={isFormOpen}
-        onClose={handleFormClose}
-        onSubmit={handleFormSubmit}
-        document={editingDocument}
-        categories={categories}
-      />
+      {/* ✅ Modal de Formulário só renderiza se pode editar */}
+      {canEdit && (
+        <PDFForm
+          isOpen={isFormOpen}
+          onClose={handleFormClose}
+          onSubmit={handleFormSubmit}
+          document={editingDocument}
+          categories={categories}
+          uploadFile={uploadFile}
+        />
+      )}
     </div>
   );
 };

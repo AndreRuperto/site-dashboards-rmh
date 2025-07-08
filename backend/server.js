@@ -13,8 +13,10 @@ const { Pool } = require('pg');
 const path = require('path');
 const fs = require('fs/promises');
 const { google } = require('googleapis');
+const multer = require('multer');
 
 const app = express();
+app.use('/documents', express.static(path.join(__dirname, 'public', 'documents')));
 
 // ✅ Corrige MIME types para arquivos estáticos
 express.static.mime.define({
@@ -30,6 +32,60 @@ express.static.mime.define({
   'image/x-icon': ['ico'],
   'text/plain': ['txt']
 });
+
+// Configuração do multer para upload de arquivos
+const storage = multer.diskStorage({
+  destination: async (req, file, cb) => {
+    const uploadDir = path.join(__dirname, 'public', 'documents');
+    
+    // Criar diretório se não existir
+    try {
+      await fs.mkdir(uploadDir, { recursive: true });
+    } catch (err) {
+      console.error('Erro ao criar diretório:', err);
+    }
+    
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    // Gerar nome único: timestamp_nome-original
+    const timestamp = Date.now();
+    const originalName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const fileName = `${timestamp}_${originalName}`;
+    cb(null, fileName);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB
+  },
+  fileFilter: (req, file, cb) => {
+    // Tipos permitidos
+    const allowedMimes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/webp'
+    ];
+
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Tipo de arquivo não permitido'), false);
+    }
+  }
+});
+
 
 // ✅ Serve os arquivos da pasta dist com headers corretos
 if (process.env.NODE_ENV === 'production') {
@@ -414,6 +470,209 @@ const authMiddleware = async (req, res, next) => {
     res.status(401).json({ error: 'Token inválido' });
   }
 };
+
+// ROTAS ATUALIZADAS PARA A NOVA ESTRUTURA DA TABELA "documentos"
+
+// ======================= LISTAGEM DE DOCUMENTOS =======================
+app.get('/api/documents', authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        d.id, d.titulo, d.descricao, d.categoria, d.nome_arquivo,
+        d.url_arquivo, d.tamanho_arquivo, d.tipo_mime, d.qtd_downloads,
+        d.enviado_por, d.enviado_em, d.ativo, d.criado_em, d.atualizado_em,
+        u.nome as enviado_por_nome
+      FROM documentos d
+      LEFT JOIN usuarios u ON d.enviado_por = u.id
+      WHERE d.ativo = true
+      ORDER BY d.criado_em DESC
+    `);
+
+    const documentos = result.rows.map(doc => ({
+      id: doc.id,
+      titulo: doc.titulo,
+      descricao: doc.descricao,
+      categoria: doc.categoria,
+      nomeArquivo: doc.nome_arquivo,
+      urlArquivo: doc.url_arquivo,
+      tamanhoArquivo: doc.tamanho_arquivo,
+      tipoMime: doc.tipo_mime,
+      qtdDownloads: doc.qtd_downloads,
+      enviadoPor: doc.enviado_por,
+      enviadoPorNome: doc.enviado_por_nome,
+      enviadoEm: doc.enviado_em,
+      ativo: doc.ativo,
+      criadoEm: doc.criado_em,
+      atualizadoEm: doc.atualizado_em
+    }));
+
+    res.json({
+      documentos,
+      total: documentos.length,
+      categorias: [...new Set(documentos.map(d => d.categoria))]
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro interno do servidor', documentos: [] });
+  }
+});
+
+// ======================= UPLOAD DE DOCUMENTO =======================
+app.post('/api/documents/upload', authMiddleware, upload.single('file'), async (req, res) => {
+  try {
+    const { title, description, category } = req.body;
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({ error: 'Arquivo não enviado' });
+    }
+
+    // ✅ Usa o nome salvo no disco (com timestamp único)
+    const fileName = file.filename;
+    const fileUrl = `/documents/${fileName}`;
+
+    const result = await pool.query(`
+      INSERT INTO documentos (
+        titulo, descricao, categoria, nome_arquivo, url_arquivo,
+        tamanho_arquivo, tipo_mime, enviado_por, ativo
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING *
+    `, [
+      title,
+      description || '',
+      category,
+      fileName,         
+      fileUrl,          
+      file.size,
+      file.mimetype,
+      req.user.id,
+      true
+    ]);
+
+    res.status(201).json({ success: true, document: result.rows[0] });
+
+  } catch (error) {
+    console.error('❌ Erro no upload:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// ======================= CRIAR DOCUMENTO VIA URL =======================
+app.post('/api/documents', authMiddleware, async (req, res) => {
+  try {
+    const { title, description, category, fileName, fileUrl } = req.body;
+
+    const result = await pool.query(`
+      INSERT INTO documentos (
+        titulo, descricao, categoria, nome_arquivo, url_arquivo,
+        enviado_por, ativo
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING *
+    `, [
+      title, description || '', category, fileName || 'Documento via URL',
+      fileUrl, req.user.id, true
+    ]);
+
+    res.status(201).json({ success: true, documento: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// ======================= ATUALIZAR DOCUMENTO =======================
+app.put('/api/documents/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, category, fileName } = req.body;
+
+    // ✅ Construir a URL com base no nome do arquivo
+    const fileUrl = fileName ? `/documents/${fileName}` : null;
+
+    const result = await pool.query(`
+      UPDATE documentos SET
+        titulo = COALESCE($1, titulo),
+        descricao = COALESCE($2, descricao),
+        categoria = COALESCE($3, categoria),
+        nome_arquivo = COALESCE($4, nome_arquivo),
+        url_arquivo = COALESCE($5, url_arquivo),
+        atualizado_em = CURRENT_TIMESTAMP
+      WHERE id = $6 AND ativo = true
+      RETURNING *
+    `, [title, description, category, fileName, fileUrl, id]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Documento não encontrado ou inativo' });
+    }
+
+    res.json({ success: true, documento: result.rows[0] });
+
+  } catch (error) {
+    console.error('❌ Erro ao atualizar documento:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// ======================= DELETAR DOCUMENTO =======================
+app.delete('/api/documents/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query(`
+      UPDATE documentos SET ativo = false, atualizado_em = CURRENT_TIMESTAMP
+      WHERE id = $1
+    `, [id]);
+    res.json({ success: true, message: 'Documento removido com sucesso' });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// ======================= DOWNLOAD COM CONTADOR =======================
+app.get('/api/documents/:id/download', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(`
+      SELECT url_arquivo, nome_arquivo FROM documentos
+      WHERE id = $1 AND ativo = true
+    `, [id]);
+
+    if (result.rows.length === 0)
+      return res.status(404).json({ error: 'Documento não encontrado' });
+
+    const documento = result.rows[0];
+
+    await pool.query(`
+      UPDATE documentos SET qtd_downloads = COALESCE(qtd_downloads, 0) + 1
+      WHERE id = $1
+    `, [id]);
+
+    res.redirect(documento.url_arquivo);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// ======================= ESTATÍSTICAS =======================
+app.get('/api/documents/stats', authMiddleware, async (req, res) => {
+  try {
+    const stats = await pool.query(`
+      SELECT 
+        COUNT(*) as total_documentos,
+        COUNT(DISTINCT categoria) as total_categorias,
+        SUM(COALESCE(qtd_downloads, 0)) as total_downloads,
+        AVG(tamanho_arquivo) as media_tamanho
+      FROM documentos WHERE ativo = true
+    `);
+
+    const porCategoria = await pool.query(`
+      SELECT categoria, COUNT(*) as quantidade, SUM(COALESCE(qtd_downloads, 0)) as downloads
+      FROM documentos WHERE ativo = true GROUP BY categoria ORDER BY quantidade DESC
+    `);
+
+    res.json({ stats: stats.rows[0], categorias: porCategoria.rows });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
 
 // ===============================================
 // TEMPLATE DE EMAIL ATUALIZADO

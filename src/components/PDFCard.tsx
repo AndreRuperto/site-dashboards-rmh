@@ -428,7 +428,7 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
                 size="sm"
                 onClick={handleView}
                 disabled={!isValidFileUrl(document.fileUrl)}
-                className="flex-1 bg-rmh-primary hover:bg-rmh-secondary text-sm h-9 disabled:opacity-50 transition-all duration-200"
+                className="flex-1 bg-rmh-lightGreen hover:bg-rmh-primary text-sm h-9 disabled:opacity-50 transition-all duration-200"
               >
                 <Eye className="h-4 w-4 mr-1" />
                 Ver

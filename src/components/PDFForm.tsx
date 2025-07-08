@@ -16,6 +16,7 @@ interface PDFFormProps {
   onSubmit: (documentData: Partial<PDFDocument>) => void;
   document?: PDFDocument | null; // Para edição
   categories: string[];
+  uploadFile: (file: File, documentData: Partial<PDFDocument>) => Promise<PDFDocument>; // Função de upload
 }
 
 type UploadType = 'file' | 'url';
@@ -25,7 +26,8 @@ const PDFForm: React.FC<PDFFormProps> = ({
   onClose, 
   onSubmit, 
   document, 
-  categories 
+  categories,
+  uploadFile // Receber a função de upload
 }) => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -126,61 +128,8 @@ const PDFForm: React.FC<PDFFormProps> = ({
     }
   };
 
-  // Função para upload do arquivo
-  const uploadFile = async (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const xhr = new XMLHttpRequest();
-
-      // Monitorar progresso
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) {
-          const progress = (e.loaded / e.total) * 100;
-          setUploadProgress(progress);
-        }
-      });
-
-      xhr.onload = () => {
-        if (xhr.status === 200) {
-          try {
-            const response = JSON.parse(xhr.responseText);
-            resolve(response.fileUrl || `/documents/${file.name}`);
-          } catch {
-            // Se não for JSON, assumir que retornou a URL diretamente
-            resolve(`/documents/${file.name}`);
-          }
-        } else {
-          reject(new Error(`Upload falhou com status ${xhr.status}`));
-        }
-      };
-
-      xhr.onerror = () => reject(new Error('Erro na conexão durante upload'));
-
-      // Para desenvolvimento/teste, simular upload bem-sucedido
-      if (process.env.NODE_ENV === 'development') {
-        setTimeout(() => {
-          setUploadProgress(100);
-          resolve(`/documents/${file.name}`);
-        }, 1500);
-        
-        // Simular progresso
-        let progress = 0;
-        const interval = setInterval(() => {
-          progress += 10;
-          setUploadProgress(progress);
-          if (progress >= 90) clearInterval(interval);
-        }, 150);
-        
-        return;
-      }
-
-      // Em produção, fazer o upload real
-      xhr.open('POST', '/api/upload-document');
-      xhr.send(formData);
-    });
-  };
+  // ✅ REMOVIDO: Função uploadFile duplicada 
+  // A função uploadFile já vem como prop do contexto
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -198,56 +147,93 @@ const PDFForm: React.FC<PDFFormProps> = ({
         return;
       }
 
-      let fileUrl = formData.fileUrl;
-      let fileName = formData.fileName;
+      if (document) { // ✅ CORRIGIDO: usar 'document' em vez de 'editingDocument'
+        // ✅ EDITANDO DOCUMENTO EXISTENTE
+        const updates: Partial<PDFDocument> = {
+          title: formData.title.trim(),
+          description: formData.description.trim(),
+          category: categoryToUse
+        };
 
-      // Se for upload de arquivo (não edição)
-      if (uploadType === 'file' && selectedFile && !document) {
-        try {
+        // Se mudou a URL, incluir nos updates
+        if (formData.fileUrl !== document?.fileUrl) {
+          updates.fileUrl = formData.fileUrl.trim();
+        }
+
+        // Se mudou o nome do arquivo, incluir nos updates
+        if (formData.fileName !== document?.fileName) {
+          updates.fileName = formData.fileName.trim();
+        }
+
+        onSubmit(updates);
+      } else {
+        // ✅ CRIANDO NOVO DOCUMENTO
+        if (uploadType === 'file' && selectedFile) {
+          // Upload de arquivo físico - usar função específica do contexto
+          const documentData: Partial<PDFDocument> = {
+            title: formData.title.trim(),
+            description: formData.description.trim(),
+            category: categoryToUse,
+            isActive: true
+          };
+
           setUploadStatus('uploading');
           setUploadProgress(0);
           
-          fileUrl = await uploadFile(selectedFile);
-          fileName = selectedFile.name;
-          
-          setUploadStatus('success');
-          
-          toast({
-            title: "Sucesso",
-            description: "Arquivo enviado com sucesso!",
-          });
-          
-        } catch (error) {
-          setUploadStatus('error');
-          console.error('Erro no upload:', error);
-          toast({
-            title: "Erro no Upload",
-            description: "Falha ao enviar arquivo. Tente novamente.",
-            variant: "destructive"
-          });
-          return;
+          // Simular progresso para feedback visual
+          const progressInterval = setInterval(() => {
+            setUploadProgress(prev => {
+              if (prev >= 90) {
+                clearInterval(progressInterval);
+                return 90;
+              }
+              return prev + 10;
+            });
+          }, 200);
+
+          try {
+            // Usar a função uploadFile do contexto
+            const uploadedDocument = await uploadFile(selectedFile, documentData);
+            
+            clearInterval(progressInterval);
+            setUploadProgress(100);
+            setUploadStatus('success');
+            
+            toast({
+              title: "Sucesso",
+              description: "Arquivo enviado com sucesso!",
+            });
+
+            // Fechar modal
+            setTimeout(() => {
+              onClose();
+            }, 1000);
+            
+          } catch (error) {
+            clearInterval(progressInterval);
+            setUploadStatus('error');
+            console.error('Erro no upload:', error);
+            toast({
+              title: "Erro no Upload",
+              description: error instanceof Error ? error.message : "Falha ao enviar arquivo",
+              variant: "destructive"
+            });
+            return;
+          }
+        } else {
+          // ✅ DOCUMENTO VIA URL
+          const documentData: Partial<PDFDocument> = {
+            title: formData.title.trim(),
+            description: formData.description.trim(),
+            category: categoryToUse,
+            fileName: formData.fileName || 'Documento via URL',
+            fileUrl: formData.fileUrl.trim(),
+            isActive: true
+          };
+
+          onSubmit(documentData);
         }
       }
-
-      // Se for URL, usar a URL fornecida
-      if (uploadType === 'url') {
-        fileName = formData.fileName || 'Documento via URL';
-      }
-
-      const documentData: Partial<PDFDocument> = {
-        id: document?.id, // Será undefined para novos documentos
-        title: formData.title.trim(),
-        description: formData.description.trim(),
-        category: categoryToUse,
-        fileName: fileName,
-        fileUrl: fileUrl,
-        uploadedBy: user?.email || '',
-        uploadedAt: document?.uploadedAt || new Date(),
-        isActive: true
-      };
-
-      onSubmit(documentData);
-      onClose();
       
     } catch (error) {
       console.error('Erro ao salvar documento:', error);
@@ -258,8 +244,10 @@ const PDFForm: React.FC<PDFFormProps> = ({
       });
     } finally {
       setIsSubmitting(false);
-      setUploadStatus('idle');
-      setUploadProgress(0);
+      if (uploadType !== 'file' || !selectedFile) {
+        setUploadStatus('idle');
+        setUploadProgress(0);
+      }
     }
   };
 
@@ -487,21 +475,6 @@ const PDFForm: React.FC<PDFFormProps> = ({
                 >
                   Ver Arquivo
                 </Button>
-              </div>
-              
-              {/* Opção para alterar URL */}
-              <div className="space-y-2 mt-4">
-                <Label htmlFor="newFileUrl">Alterar URL do Arquivo</Label>
-                <Input
-                  id="newFileUrl"
-                  type="url"
-                  value={formData.fileUrl}
-                  onChange={(e) => setFormData(prev => ({ ...prev, fileUrl: e.target.value }))}
-                  placeholder="Nova URL do arquivo..."
-                />
-                <p className="text-xs text-gray-500">
-                  Deixe em branco para manter o arquivo atual
-                </p>
               </div>
             </div>
           )}
