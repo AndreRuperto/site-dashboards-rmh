@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Plus, FileText, Shield, ArrowLeft } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePDFs, PDFDocument } from '@/contexts/PDFContext';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 import Header from '@/components/Header';
 import PDFCard from '@/components/PDFCard';
-import PDFForm from '@/components/PDFForm';
+import PDFForm from '@/components/PDFForm'; // O componente que criamos
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { isAdmin } from '@/types';
 
@@ -87,6 +88,7 @@ const DocumentsPage = () => {
       });
       return;
     }
+
     setEditingDocument(null);
     setIsFormOpen(true);
   };
@@ -100,6 +102,7 @@ const DocumentsPage = () => {
       });
       return;
     }
+
     setEditingDocument(document);
     setIsFormOpen(true);
   };
@@ -114,7 +117,8 @@ const DocumentsPage = () => {
           description: "Documento atualizado com sucesso"
         });
       } else {
-        // ✅ CRIANDO NOVO DOCUMENTO
+        // ✅ CRIANDO NOVO DOCUMENTO VIA URL
+        // O upload de arquivos é tratado diretamente no PDFForm via uploadFile
         await addDocument(documentData as Omit<PDFDocument, 'id' | 'uploadedAt' | 'createdAt' | 'updatedAt'>);
         toast({
           title: "Sucesso",
@@ -154,16 +158,16 @@ const DocumentsPage = () => {
               <p className="text-rmh-gray mt-1">
                 {canEdit 
                   ? "Acesse e organize os documentos da empresa" 
-                  : "Acesse e visualize os documentos da empresa"
+                  : "Acesse os documentos da empresa"
                 }
               </p>
             </div>
             
-            {/* ✅ Botão só aparece para quem pode editar */}
+            {/* ✅ Botão de adicionar apenas para quem pode editar */}
             {canEdit && (
               <Button 
                 onClick={handleNewDocument}
-                className="bg-rmh-lightGreen hover:bg-rmh-primary"
+                className="bg-rmh-primary hover:bg-rmh-secondary"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Novo Documento
@@ -172,10 +176,10 @@ const DocumentsPage = () => {
           </div>
 
           {/* Filters */}
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-            <div className="flex-1">
+          <div className="flex flex-col space-y-3 md:flex-row md:space-y-0 md:gap-4 md:items-center">
+            <div className="flex-1 min-w-0">
               <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger className="w-full h-10">
                   <SelectValue placeholder="Todas as categorias" />
                 </SelectTrigger>
                 <SelectContent>
@@ -192,8 +196,9 @@ const DocumentsPage = () => {
             {selectedCategory !== 'all' && (
               <Button
                 variant="outline"
+                size="sm"
                 onClick={() => setSelectedCategory('all')}
-                className="border-rmh-primary text-rmh-primary hover:bg-rmh-primary hover:text-white"
+                className="border-rmh-primary text-rmh-primary hover:bg-rmh-primary hover:text-white transition-colors w-full md:w-auto"
               >
                 Limpar Filtros
               </Button>
@@ -224,20 +229,29 @@ const DocumentsPage = () => {
               </div>
             ) : filteredDocuments.length > 0 ? (
               <>
-                <div className="flex items-center space-x-2 text-sm text-rmh-gray">
-                  <FileText className="h-4 w-4" />
-                  <span>
-                    {filteredDocuments.length} documento{filteredDocuments.length !== 1 ? 's' : ''} encontrado{filteredDocuments.length !== 1 ? 's' : ''}
-                  </span>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center space-x-2 text-sm text-rmh-gray">
+                    <FileText className="h-4 w-4" />
+                    <span>
+                      {filteredDocuments.length} documento{filteredDocuments.length !== 1 ? 's' : ''} encontrado{filteredDocuments.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  
+                  {/* Badge com categoria ativa */}
+                  {selectedCategory !== 'all' && (
+                    <Badge variant="secondary" className="bg-rmh-primary/10 text-rmh-primary">
+                      {selectedCategory}
+                    </Badge>
+                  )}
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 md:gap-6">
                   {filteredDocuments.map((document) => (
                     <PDFCard
                       key={document.id}
                       document={document}
-                      onEdit={canEdit ? handleEditDocument : undefined} // ✅ Só passa onEdit se pode editar
-                      onDelete={canEdit ? handleDeleteDocument : undefined} // ✅ Só passa onDelete se pode editar
-                      canEdit={canEdit} // ✅ Passa prop para o PDFCard saber se pode mostrar botões
+                      onEdit={canEdit ? handleEditDocument : undefined}
+                      onDelete={canEdit ? handleDeleteDocument : undefined}
                     />
                   ))}
                 </div>
@@ -276,7 +290,7 @@ const DocumentsPage = () => {
         </div>
       </main>
 
-      {/* ✅ Modal de Formulário só renderiza se pode editar */}
+      {/* Modal de Formulário - apenas renderiza se o usuário pode editar */}
       {canEdit && (
         <PDFForm
           isOpen={isFormOpen}
@@ -284,7 +298,7 @@ const DocumentsPage = () => {
           onSubmit={handleFormSubmit}
           document={editingDocument}
           categories={categories}
-          uploadFile={uploadFile}
+          uploadFile={uploadFile} // Passar a função de upload
         />
       )}
     </div>

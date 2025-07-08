@@ -397,7 +397,7 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
           <div className="absolute top-4 left-4">
             <Badge 
               variant="secondary" 
-              className="bg-white/95 backdrop-blur-sm text-rmh-primary text-sm font-medium border border-rmh-primary/20 shadow-lg"
+              className="bg-white hover:bg-white text-rmh-primary text-sm font-medium border border-rmh-primary/20 shadow-lg"
             >
               {document.category}
             </Badge>
