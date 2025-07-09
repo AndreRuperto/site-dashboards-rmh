@@ -16,7 +16,7 @@ interface PDFFormProps {
   onSubmit: (documentData: Partial<PDFDocument>) => void;
   document?: PDFDocument | null; // Para edição
   categories: string[];
-  uploadFile: (file: File, documentData: Partial<PDFDocument>) => Promise<PDFDocument>; // Função de upload
+  uploadFile: (file: File, documentData: Partial<PDFDocument>, existingId?: string) => Promise<PDFDocument>; // Função de upload
 }
 
 type UploadType = 'file' | 'url';
@@ -168,12 +168,16 @@ const PDFForm: React.FC<PDFFormProps> = ({
             }, 200);
 
             // Usar a função uploadFile do contexto
-            const uploadedDocument = await uploadFile(selectedFile, {
-              title: formData.title.trim(),
-              description: formData.description.trim(),
-              category: categoryToUse,
-              isActive: true
-            });
+            const uploadedDocument = await uploadFile(
+              selectedFile,
+              {
+                title: formData.title.trim(),
+                description: formData.description.trim(),
+                category: categoryToUse,
+                isActive: true
+              },
+              document?.id // <-- passa o ID do documento existente
+            );
             
             clearInterval(progressInterval);
             setUploadProgress(100);

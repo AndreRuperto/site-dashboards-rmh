@@ -670,42 +670,25 @@ app.get('/api/documents', authMiddleware, async (req, res) => {
   }
 });
 
-// ======================= UPLOAD DE DOCUMENTO =======================
 app.post('/api/documents/upload', authMiddleware, upload.single('file'), async (req, res) => {
   try {
-    const { title, description, category } = req.body;
     const file = req.file;
 
-    if (!file) {
-      return res.status(400).json({ error: 'Arquivo não enviado' });
-    }
+    if (!file) return res.status(400).json({ error: 'Arquivo não enviado' });
 
-    // ✅ Usa o nome salvo no disco (com timestamp único)
     const fileName = file.filename;
     const fileUrl = `/documents/${fileName}`;
 
-    const result = await pool.query(`
-      INSERT INTO documentos (
-        titulo, descricao, categoria, nome_arquivo, url_arquivo,
-        tamanho_arquivo, tipo_mime, enviado_por, ativo
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      RETURNING *
-    `, [
-      title,
-      description || '',
-      category,
-      fileName,         
-      fileUrl,          
-      file.size,
-      file.mimetype,
-      req.user.id,
-      true
-    ]);
-
-    res.status(201).json({ success: true, document: result.rows[0] });
+    res.status(200).json({
+      success: true,
+      fileName,
+      fileUrl,
+      tamanhoArquivo: file.size,
+      tipoMime: file.mimetype
+    });
 
   } catch (error) {
-    console.error('❌ Erro no upload:', error);
+    console.error('❌ Erro no upload do arquivo:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
@@ -764,6 +747,43 @@ app.put('/api/documents/:id', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
+
+app.put('/api/documents/:id/upload', authMiddleware, upload.single('file'), async (req, res) => {
+  const docId = req.params.id;
+  const { title, description, category } = req.body;
+  const file = req.file;
+
+  try {
+    const fileUrl = `/documents/${file.filename}`;
+    const result = await pool.query(`
+      UPDATE documentos
+      SET 
+        titulo = $1,
+        descricao = $2,
+        categoria = $3,
+        nome_arquivo = $4,
+        url_arquivo = $5,
+        tamanho_arquivo = $6,
+        tipo_mime = $7,
+        atualizado_em = CURRENT_TIMESTAMP
+      WHERE id = $8
+      RETURNING *
+    `, [
+      title, description, category, file.originalname,
+      fileUrl, file.size, file.mimetype, docId
+    ]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Documento não encontrado' });
+    }
+
+    res.status(200).json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erro ao atualizar documento' });
+  }
+});
+
 
 // ======================= DELETAR DOCUMENTO =======================
 app.delete('/api/documents/:id', authMiddleware, async (req, res) => {

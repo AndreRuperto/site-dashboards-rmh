@@ -142,7 +142,7 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         category: doc.categoria,
         fileName: doc.nomeArquivo,
         fileUrl: doc.urlArquivo,
-        uploadedAt: new Date(doc.enviadoEm),
+        uploadedAt: doc.enviadoEm ? new Date(doc.enviadoEm) : new Date(),
         createdAt: doc.criadoEm,
         updatedAt: doc.atualizadoEm,
         uploadedBy: doc.enviadoPor,
@@ -326,44 +326,41 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // ✅ Função para upload de arquivo
-  const uploadFile = async (file: File, documentData: Partial<PDFDocument>): Promise<PDFDocument> => {
+  const uploadFile = async (
+    file: File,
+    documentData: Partial<PDFDocument>,
+    existingId?: string
+  ): Promise<PDFDocument> => {
     try {
       const token = localStorage.getItem('authToken');
-      
-      if (!token) {
-        // ✅ Simular upload local
-        const newDocument: PDFDocument = {
-          id: `local_${Date.now()}`,
-          title: documentData.title || file.name,
-          description: documentData.description || '',
-          category: documentData.category || 'Geral',
-          fileName: file.name,
-          fileUrl: URL.createObjectURL(file), // URL local para desenvolvimento
-          uploadedBy: 'local@user.com',
-          uploadedAt: new Date(),
-          isActive: true
-        };
-        
-        setDocuments(prev => [newDocument, ...prev]);
-        console.log('📄 Upload simulado localmente');
-        return newDocument;
-      }
 
-      // Criar FormData para upload
       const formData = new FormData();
       formData.append('file', file);
       formData.append('title', documentData.title || '');
       formData.append('description', documentData.description || '');
       formData.append('category', documentData.category || '');
 
-      const response = await fetch(`${API_BASE_URL}/api/documents/upload`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-          // NÃO incluir Content-Type para FormData
-        },
-        body: formData
-      });
+      let response: Response;
+
+      if (existingId) {
+        // Atualização de arquivo de documento existente
+        response = await fetch(`${API_BASE_URL}/api/documents/${existingId}/upload`, {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${token}`
+          },
+          body: formData
+        });
+      } else {
+        // Upload novo
+        response = await fetch(`${API_BASE_URL}/api/documents/upload`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`
+          },
+          body: formData
+        });
+      }
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -371,23 +368,40 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       const data = await response.json();
-      const newDocument = {
-        ...data.document,
-        uploadedAt: new Date(data.document.uploadedAt || data.document.uploaded_at)
+
+      const updatedDocument: PDFDocument = {
+        id: existingId || data.document?.id || `api_${Date.now()}`,
+        title: documentData.title || file.name,
+        description: documentData.description || '',
+        category: documentData.category || 'Geral',
+        fileName: data.fileName,
+        fileUrl: data.fileUrl,
+        uploadedBy: 'api@user.com',
+        uploadedAt: new Date(),
+        isActive: true,
+        mimeType: data.tipoMime,
+        fileSize: data.tamanhoArquivo
       };
 
-      setDocuments(prev => [newDocument, ...prev]);
-      
-      console.log(`✅ Upload concluído: "${file.name}"`);
-      
-      return newDocument;
-      
+      if (existingId) {
+        setDocuments(prev =>
+          prev.map(doc =>
+            doc.id === existingId ? { ...doc, ...updatedDocument } : doc
+          )
+        );
+      } else {
+        setDocuments(prev => [updatedDocument, ...prev]);
+      }
+
+      console.log(`✅ ${existingId ? 'Atualizado' : 'Upload concluído'}: "${file.name}"`);
+      return updatedDocument;
+
     } catch (err) {
       console.error('❌ Erro no upload:', err);
-      
-      // ✅ Fallback: criar documento local
-      const newDocument: PDFDocument = {
-        id: `local_${Date.now()}`,
+
+      // Fallback para ambiente local
+      const fallbackDoc: PDFDocument = {
+        id: existingId || `local_${Date.now()}`,
         title: documentData.title || file.name,
         description: documentData.description || '',
         category: documentData.category || 'Geral',
@@ -397,12 +411,21 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         uploadedAt: new Date(),
         isActive: true
       };
-      
-      setDocuments(prev => [newDocument, ...prev]);
-      console.log('📄 Upload simulado localmente (fallback)');
-      return newDocument;
+
+      if (existingId) {
+        setDocuments(prev =>
+          prev.map(doc =>
+            doc.id === existingId ? { ...doc, ...fallbackDoc } : doc
+          )
+        );
+      } else {
+        setDocuments(prev => [fallbackDoc, ...prev]);
+      }
+
+      return fallbackDoc;
     }
   };
+
 
   // ✅ Filtrar documentos
   const getFilteredDocuments = (category?: string, searchTerm?: string) => {
