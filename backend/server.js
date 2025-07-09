@@ -482,7 +482,10 @@ app.get('/api/thumbnail', async (req, res) => {
   try {
     const url = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
 
-    const browser = await puppeteer.launch({ headless: true });
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 720 });
     await page.goto(url, { waitUntil: 'networkidle2' });
@@ -503,7 +506,7 @@ app.get('/api/thumbnail', async (req, res) => {
 
   } catch (error) {
     console.error('❌ Erro ao gerar thumbnail:', error);
-    res.status(500).send('Erro ao gerar a miniatura');
+    res.status(500).json({ error: 'Erro ao gerar a miniatura' });
   }
 });
 
