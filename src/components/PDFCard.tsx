@@ -227,14 +227,15 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
       console.log(`🎯 Processando arquivo: ${document.title}`);
 
       const fileType = getFileType(document.fileUrl);
+      console.log(`📋 Tipo detectado: ${fileType}`);
       
       if (fileType === 'google-sheet') {
         const sheetId = document.fileUrl.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1];
         if (sheetId) {
-          const thumbnailUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=png&gid=0`;
-          setThumbnailUrl(thumbnailUrl);
-          console.log('✅ Miniatura Google Sheets configurada');
-          setIsLoadingThumbnail(false);
+          const response = await fetch(`/api/thumbnail?sheetId=${sheetId}`);
+          const data = await response.json();
+          setThumbnailUrl(data.thumbnailUrl);
+          console.log(`✅ Miniatura Puppeteer carregada - ${data.thumbnailUrl}`);
           return;
         }
       }
@@ -242,7 +243,7 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
       if (fileType === 'google-doc') {
         const docId = document.fileUrl.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1];
         if (docId) {
-          const thumbnailUrl = `https://drive.google.com/thumbnail?id=${docId}&sz=w500-h650`; // Tamanho maior
+          const thumbnailUrl = `https://drive.google.com/thumbnail?id=${docId}&sz=w500-h650`;
           setThumbnailUrl(thumbnailUrl);
           console.log('✅ Miniatura Google Docs configurada');
           setIsLoadingThumbnail(false);
@@ -277,6 +278,13 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
       
     } catch (error) {
       console.error(`❌ Erro ao gerar miniatura para ${document.title}:`, error);
+      console.error('📝 Detalhes do erro:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+        fileUrl: document.fileUrl,
+        fileType: getFileType(document.fileUrl)
+      });
       setThumbnailError(true);
     } finally {
       setIsLoadingThumbnail(false);
@@ -305,10 +313,17 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
   };
 
   const handleView = () => {
+    console.log('🔍 handleView chamado');
+    console.log('📄 fileUrl:', document.fileUrl);
+    console.log('✅ isValidFileUrl:', isValidFileUrl(document.fileUrl));
+    
     if (!isValidFileUrl(document.fileUrl)) {
+      console.log('❌ URL inválida');
       alert('Arquivo não disponível para visualização');
       return;
     }
+    
+    console.log('🎯 Abrindo modal...');
     setIsViewerOpen(true);
   };
 
@@ -349,8 +364,115 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
                     setImageLoaded(true);
                     console.log(`✅ Miniatura carregada: ${document.title}`);
                   }}
-                  onError={() => {
+                  onError={(e) => {
                     console.log(`❌ Erro ao carregar miniatura: ${document.title}`);
+                    
+                    // Cast para HTMLImageElement para ter acesso às propriedades corretas
+                    const imageElement = e.target as HTMLImageElement;
+                    const currentTarget = e.currentTarget as HTMLImageElement;
+                    
+                    console.error('📝 Detalhes completos do erro da imagem:', {
+                      // Informações do documento
+                      documentTitle: document.title,
+                      documentId: document.id,
+                      documentFileName: document.fileName,
+                      documentFileUrl: document.fileUrl,
+                      documentCategory: document.category,
+                      
+                      // Informações da miniatura
+                      thumbnailUrl: thumbnailUrl,
+                      fileType: getFileType(document.fileUrl),
+                      
+                      // Informações do evento de erro
+                      errorType: e.type,
+                      errorTarget: imageElement?.tagName || 'N/A',
+                      errorCurrentTarget: currentTarget?.tagName || 'N/A',
+                      
+                      // Informações da imagem
+                      imageNaturalWidth: imageElement?.naturalWidth || 0,
+                      imageNaturalHeight: imageElement?.naturalHeight || 0,
+                      imageComplete: imageElement?.complete || false,
+                      imageSrc: imageElement?.src || 'N/A',
+                      
+                      // Status da requisição (se disponível)
+                      imageCurrentSrc: currentTarget?.currentSrc || 'N/A',
+                      
+                      // Timestamp do erro
+                      timestamp: new Date().toISOString(),
+                      
+                      // Informações do navegador
+                      userAgent: navigator.userAgent,
+                      
+                      // Informações da rede (se disponível)
+                      connection: (navigator as any).connection ? {
+                        effectiveType: (navigator as any).connection.effectiveType,
+                        downlink: (navigator as any).connection.downlink,
+                        rtt: (navigator as any).connection.rtt
+                      } : 'N/A'
+                    });
+                    
+                    // Tentar verificar se é erro de CORS, rede ou outro
+                    if (imageElement?.src) {
+                      console.log('🔍 Diagnóstico do erro:');
+                      
+                      // Verificar se a URL é válida
+                      try {
+                        const url = new URL(imageElement.src);
+                        console.log('🔗 URL válida:', url.href);
+                        console.log('🌐 Protocolo:', url.protocol);
+                        console.log('🏠 Host:', url.host);
+                        console.log('📂 Pathname:', url.pathname);
+                        
+                        // Verificar se é Google Sheets
+                        if (url.host.includes('docs.google.com') || url.host.includes('googleusercontent.com')) {
+                          console.log('📊 Tipo: Google Sheets export');
+                          console.log('💡 Possíveis causas:');
+                          console.log('   - Planilha sem permissões de export');
+                          console.log('   - Rate limiting do Google');
+                          console.log('   - Configurações de compartilhamento restritivas');
+                          console.log('   - Problema temporário na API do Google');
+                        } else if (url.host.includes('drive.google.com')) {
+                          console.log('📁 Tipo: Google Drive thumbnail');
+                          console.log('💡 Possíveis causas:');
+                          console.log('   - Arquivo sem permissões públicas');
+                          console.log('   - Thumbnail não disponível');
+                          console.log('   - Problema de autenticação');
+                        } else {
+                          console.log('🌐 Tipo: URL externa');
+                          console.log('💡 Possíveis causas:');
+                          console.log('   - Arquivo não encontrado (404)');
+                          console.log('   - Problema de CORS');
+                          console.log('   - Servidor fora do ar');
+                        }
+                      } catch (urlError) {
+                        console.error('❌ URL inválida:', urlError);
+                      }
+                    }
+                    
+                    // Tentar fazer um teste de conectividade
+                    if (thumbnailUrl) {
+                      console.log('🧪 Testando conectividade...');
+                      fetch(thumbnailUrl, { method: 'HEAD' })
+                        .then(response => {
+                          console.log('🌐 Status da requisição de teste:', response.status);
+                          console.log('🔒 Headers da resposta:', Object.fromEntries(response.headers.entries()));
+                          
+                          if (!response.ok) {
+                            console.log('❌ Servidor retornou erro:', response.status, response.statusText);
+                          } else {
+                            console.log('✅ URL acessível, problema pode ser de renderização');
+                          }
+                        })
+                        .catch(fetchError => {
+                          console.log('❌ Erro na requisição de teste:', fetchError.message);
+                          if (fetchError.message.includes('CORS')) {
+                            console.log('🚫 Problema de CORS detectado');
+                          } else if (fetchError.message.includes('Failed to fetch')) {
+                            console.log('🚫 Problema de conectividade ou bloqueio');
+                          }
+                        });
+                    }
+                    
                     setThumbnailError(true);
                     setThumbnailUrl(null);
                   }}

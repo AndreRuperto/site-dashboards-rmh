@@ -149,23 +149,87 @@ const PDFForm: React.FC<PDFFormProps> = ({
 
       if (document) { // ✅ CORRIGIDO: usar 'document' em vez de 'editingDocument'
         // ✅ EDITANDO DOCUMENTO EXISTENTE
-        const updates: Partial<PDFDocument> = {
-          title: formData.title.trim(),
-          description: formData.description.trim(),
-          category: categoryToUse
-        };
+        
+        // Se foi selecionado um novo arquivo, fazer upload primeiro
+        if (selectedFile) {
+          try {
+            setUploadStatus('uploading');
+            setUploadProgress(0);
+            
+            // Simular progresso para feedback visual
+            const progressInterval = setInterval(() => {
+              setUploadProgress(prev => {
+                if (prev >= 90) {
+                  clearInterval(progressInterval);
+                  return 90;
+                }
+                return prev + 10;
+              });
+            }, 200);
 
-        // Se mudou a URL, incluir nos updates
-        if (formData.fileUrl !== document?.fileUrl) {
-          updates.fileUrl = formData.fileUrl.trim();
+            // Usar a função uploadFile do contexto
+            const uploadedDocument = await uploadFile(selectedFile, {
+              title: formData.title.trim(),
+              description: formData.description.trim(),
+              category: categoryToUse,
+              isActive: true
+            });
+            
+            clearInterval(progressInterval);
+            setUploadProgress(100);
+            setUploadStatus('success');
+            
+            // Atualizar o documento com os novos dados incluindo o novo arquivo
+            const updates: Partial<PDFDocument> = {
+              title: formData.title.trim(),
+              description: formData.description.trim(),
+              category: categoryToUse,
+              fileName: uploadedDocument.fileName,
+              fileUrl: uploadedDocument.fileUrl
+            };
+
+            onSubmit(updates);
+            
+            toast({
+              title: "Sucesso",
+              description: "Documento e arquivo atualizados com sucesso!",
+            });
+
+            // Fechar modal
+            setTimeout(() => {
+              onClose();
+            }, 1000);
+
+          } catch (error) {
+            setUploadStatus('error');
+            console.error('Erro no upload:', error);
+            toast({
+              title: "Erro no Upload",
+              description: error instanceof Error ? error.message : "Falha ao enviar arquivo",
+              variant: "destructive"
+            });
+            return;
+          }
+        } else {
+          // Edição sem novo arquivo - apenas atualizar metadados
+          const updates: Partial<PDFDocument> = {
+            title: formData.title.trim(),
+            description: formData.description.trim(),
+            category: categoryToUse
+          };
+
+          // Se mudou a URL, incluir nos updates
+          if (formData.fileUrl !== document?.fileUrl) {
+            updates.fileUrl = formData.fileUrl.trim();
+          }
+
+          // Se mudou o nome do arquivo, incluir nos updates
+          if (formData.fileName !== document?.fileName) {
+            updates.fileName = formData.fileName.trim();
+          }
+
+          onSubmit(updates);
         }
-
-        // Se mudou o nome do arquivo, incluir nos updates
-        if (formData.fileName !== document?.fileName) {
-          updates.fileName = formData.fileName.trim();
-        }
-
-        onSubmit(updates);
       } else {
         // ✅ CRIANDO NOVO DOCUMENTO
         if (uploadType === 'file' && selectedFile) {
@@ -460,9 +524,9 @@ const PDFForm: React.FC<PDFFormProps> = ({
             </div>
           )}
 
-          {/* Para edição, mostrar arquivo atual */}
+          {/* Para edição, mostrar arquivo atual + opção de substituir */}
           {document && (
-            <div className="space-y-2">
+            <div className="space-y-4">
               <Label>Arquivo Atual</Label>
               <div className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg">
                 <FileText className="h-4 w-4 text-rmh-primary" />
@@ -476,6 +540,126 @@ const PDFForm: React.FC<PDFFormProps> = ({
                   Ver Arquivo
                 </Button>
               </div>
+              
+              {/* Opção para substituir arquivo */}
+              <div className="space-y-3">
+                <Label>Substituir Arquivo</Label>
+                <div className="flex space-x-4">
+                  <Button
+                    type="button"
+                    variant={uploadType === 'file' ? 'default' : 'outline'}
+                    onClick={() => setUploadType('file')}
+                    className="flex items-center space-x-2"
+                  >
+                    <Upload className="h-4 w-4" />
+                    <span>Novo Upload</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={uploadType === 'url' ? 'default' : 'outline'}
+                    onClick={() => setUploadType('url')}
+                    className="flex items-center space-x-2"
+                  >
+                    <Link className="h-4 w-4" />
+                    <span>Nova URL</span>
+                  </Button>
+                </div>
+              </div>
+
+              {/* Upload de novo arquivo */}
+              {uploadType === 'file' && (
+                <div className="space-y-3">
+                  <Label htmlFor="file-edit">Selecionar Novo Arquivo</Label>
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2">
+                      <Input
+                        id="file-edit"
+                        type="file"
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.webp"
+                        onChange={handleFileChange}
+                        className="flex-1"
+                        disabled={uploadStatus === 'uploading'}
+                      />
+                      {selectedFile && uploadStatus === 'idle' && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedFile(null);
+                            setUploadStatus('idle');
+                          }}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Status do Upload */}
+                    {selectedFile && (
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-2 text-sm">
+                          {uploadStatus === 'uploading' && (
+                            <div className="flex items-center space-x-2 text-blue-600">
+                              <Upload className="h-4 w-4 animate-pulse" />
+                              <span>Enviando... {Math.round(uploadProgress)}%</span>
+                            </div>
+                          )}
+                          {uploadStatus === 'success' && (
+                            <div className="flex items-center space-x-2 text-green-600">
+                              <CheckCircle className="h-4 w-4" />
+                              <span>Arquivo enviado com sucesso!</span>
+                            </div>
+                          )}
+                          {uploadStatus === 'error' && (
+                            <div className="flex items-center space-x-2 text-red-600">
+                              <AlertCircle className="h-4 w-4" />
+                              <span>Erro no upload. Tente novamente.</span>
+                            </div>
+                          )}
+                          {uploadStatus === 'idle' && (
+                            <div className="flex items-center space-x-2 text-gray-600">
+                              <FileText className="h-4 w-4" />
+                              <span>{selectedFile.name}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Barra de Progresso */}
+                        {uploadStatus === 'uploading' && (
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div 
+                              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                              style={{ width: `${uploadProgress}%` }}
+                            ></div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <p className="text-xs text-gray-500">
+                      Tipos permitidos: PDF, DOC, XLS, PPT, imagens • Máximo: 10MB
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Nova URL */}
+              {uploadType === 'url' && (
+                <div className="space-y-2">
+                  <Label htmlFor="newFileUrl">Nova URL do Arquivo</Label>
+                  <Input
+                    id="newFileUrl"
+                    type="url"
+                    value={formData.fileUrl}
+                    onChange={(e) => setFormData(prev => ({ ...prev, fileUrl: e.target.value }))}
+                    placeholder="https://exemplo.com/novo-documento.pdf"
+                  />
+                  <p className="text-xs text-gray-500">
+                    Cole a URL do novo arquivo (Google Drive, Dropbox, etc.)
+                  </p>
+                </div>
+              )}
             </div>
           )}
 

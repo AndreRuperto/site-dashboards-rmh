@@ -14,9 +14,11 @@ const path = require('path');
 const fs = require('fs/promises');
 const { google } = require('googleapis');
 const multer = require('multer');
+const puppeteer = require('puppeteer');
 
 const app = express();
 app.use('/documents', express.static(path.join(__dirname, 'public', 'documents')));
+app.use('/thumbnails', express.static(path.join(__dirname, 'public', 'thumbnails')));
 
 // ✅ Corrige MIME types para arquivos estáticos
 express.static.mime.define({
@@ -246,28 +248,30 @@ app.use(
         defaultSrc: ["'self'"],
         connectSrc: [
           "'self'",
-          // ✅ ADICIONAR LOCALHOST PARA DESENVOLVIMENTO
           process.env.NODE_ENV !== 'production' ? "http://localhost:3001" : null,
           process.env.NODE_ENV !== 'production' ? "http://127.0.0.1:3001" : null,
           "https://*.railway.app",
           "https://api.resend.com",
           "https://app.fabric.microsoft.com",
-          // ✅ ADICIONAR DOMÍNIO DE PRODUÇÃO
-          "https://sistema.resendemh.com.br"
+          "https://sistema.resendemh.com.br",
+          "https://docs.google.com",
+          "https://drive.google.com",
+          "https://*.googleusercontent.com"
         ].filter(Boolean), // Remove valores null
         frameSrc: [
           "'self'",
           "https://app.fabric.microsoft.com",
           "https://app.powerbi.com",
-          "https://msit.powerbi.com" 
+          "https://msit.powerbi.com",
+          "https://docs.google.com",
+          "https://drive.google.com"
         ],
         scriptSrc: [
           "'self'",
           "'unsafe-inline'",
           "'unsafe-eval'",
           "https://app.fabric.microsoft.com",
-          // ✅ ADICIONAR CDN DO PDF.js WORKER
-          "https://cdnjs.cloudflare.com"  // <- ESTA É A LINHA IMPORTANTE
+          "https://cdnjs.cloudflare.com"
         ],
         // ✅ ADICIONAR worker-src ESPECÍFICO
         workerSrc: [
@@ -470,6 +474,42 @@ const authMiddleware = async (req, res, next) => {
     res.status(401).json({ error: 'Token inválido' });
   }
 };
+
+app.get('/api/thumbnail', async (req, res) => {
+  const sheetId = req.query.sheetId;
+  if (!sheetId) return res.status(400).send('Faltando sheetId');
+
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
+
+    const browser = await puppeteer.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 720 });
+    await page.goto(url, { waitUntil: 'networkidle2' });
+    await new Promise(resolve => setTimeout(resolve, 2000)); // tempo para carregar a planilha
+
+    // Caminho absoluto para salvar a miniatura corretamente
+    const thumbnailDir = path.resolve(__dirname, '../public/thumbnails');
+    const imagePath = path.join(thumbnailDir, `${sheetId}.png`);
+
+    // Garante que a pasta existe
+    await fs.mkdir(thumbnailDir, { recursive: true });
+
+    await page.screenshot({ path: imagePath });
+    await browser.close();
+
+    // Retorna o caminho público acessível no frontend
+    res.json({ thumbnailUrl: `/thumbnails/${sheetId}.png` });
+
+  } catch (error) {
+    console.error('❌ Erro ao gerar thumbnail:', error);
+    res.status(500).send('Erro ao gerar a miniatura');
+  }
+});
+
+app.listen(3001, () => {
+  console.log('Servidor rodando em http://localhost:3001');
+});
 
 // ROTAS ATUALIZADAS PARA A NOVA ESTRUTURA DA TABELA "documentos"
 
