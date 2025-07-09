@@ -12,13 +12,117 @@ const crypto = require('crypto');
 const { Pool } = require('pg');
 const path = require('path');
 const fs = require('fs/promises');
-const { google } = require('googleapis');
 const multer = require('multer');
 const puppeteer = require('puppeteer');
+const fsSync = require('fs');
 
 const app = express();
-app.use('/documents', express.static(path.join(__dirname, 'public', 'documents')));
-app.use('/thumbnails', express.static(path.join(__dirname, 'public', 'thumbnails')));
+
+function getDocumentsPath() {
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  let documentsPath;
+  
+  if (isProduction) {
+    // Produção: backend/dist/documents
+    documentsPath = path.join(__dirname, 'dist', 'documents');
+  } else {
+    // Desenvolvimento: raiz/public/documents (assumindo que server.js está em backend/)
+    documentsPath = path.join(__dirname, '..', 'public', 'documents');
+  }
+  
+  console.log(`📁 Ambiente: ${isProduction ? 'PRODUÇÃO' : 'DESENVOLVIMENTO'}`);
+  console.log(`📂 Caminho dos documentos: ${documentsPath}`);
+  
+  // Verificar se o diretório existe, se não, tentar alternativas
+  if (!fsSync.existsSync(documentsPath)) {
+    console.log(`⚠️ Diretório principal não encontrado: ${documentsPath}`);
+    
+    // Tentar alternativas
+    const alternatives = [
+      path.join(__dirname, 'public', 'documents'),  // backend/public/documents
+      path.join(__dirname, '..', 'dist', 'documents'), // raiz/dist/documents
+      path.join(process.cwd(), 'public', 'documents'), // process.cwd()/public/documents
+      path.join(process.cwd(), 'dist', 'documents')    // process.cwd()/dist/documents
+    ];
+    
+    for (const altPath of alternatives) {
+      if (fsSync.existsSync(altPath)) {
+        console.log(`✅ Diretório alternativo encontrado: ${altPath}`);
+        documentsPath = altPath;
+        break;
+      }
+    }
+    
+    // Se ainda não encontrou, criar o diretório
+    if (!fsSync.existsSync(documentsPath)) {
+      console.log(`📁 Criando diretório: ${documentsPath}`);
+      fsSync.mkdirSync(documentsPath, { recursive: true });
+    }
+  }
+  
+  return documentsPath;
+}
+
+function getThumbnailsPath() {
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  let thumbnailsPath;
+  
+  if (isProduction) {
+    thumbnailsPath = path.join(__dirname, 'dist', 'thumbnails');
+  } else {
+    thumbnailsPath = path.join(__dirname, '..', 'public', 'thumbnails');
+  }
+  
+  // Criar se não existir
+  if (!fsSync.existsSync(thumbnailsPath)) {
+    const alternatives = [
+      path.join(__dirname, 'public', 'thumbnails'),
+      path.join(__dirname, '..', 'dist', 'thumbnails'),
+      path.join(process.cwd(), 'public', 'thumbnails'),
+      path.join(process.cwd(), 'dist', 'thumbnails')
+    ];
+    
+    for (const altPath of alternatives) {
+      if (fsSync.existsSync(path.dirname(altPath))) {
+        thumbnailsPath = altPath;
+        break;
+      }
+    }
+    
+    fsSync.mkdirSync(thumbnailsPath, { recursive: true });
+  }
+  
+  return thumbnailsPath;
+}
+
+// Obter caminhos corretos
+const DOCUMENTS_PATH = getDocumentsPath();
+const THUMBNAILS_PATH = getThumbnailsPath();
+
+// ✅ MIDDLEWARE DE ARQUIVOS ESTÁTICOS CORRIGIDO
+app.use('/documents', (req, res, next) => {
+  console.log(`📂 Requisição de arquivo: ${req.url}`);
+  console.log(`📍 Buscando em: ${DOCUMENTS_PATH}`);
+  next();
+}, express.static(DOCUMENTS_PATH, {
+  setHeaders: (res, filePath) => {
+    console.log(`📄 Servindo arquivo: ${path.basename(filePath)}`);
+    // Configurar headers para melhor compatibilidade
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET');
+  },
+  // Configurações adicionais
+  dotfiles: 'ignore',
+  etag: false,
+  extensions: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif'],
+  index: false,
+  maxAge: '1d',
+  redirect: false
+}));
+
+app.use('/thumbnails', express.static(THUMBNAILS_PATH));
 
 // ✅ Corrige MIME types para arquivos estáticos
 express.static.mime.define({
@@ -38,13 +142,18 @@ express.static.mime.define({
 // Configuração do multer para upload de arquivos
 const storage = multer.diskStorage({
   destination: async (req, file, cb) => {
-    const uploadDir = path.join(__dirname, 'public', 'documents');
+    // Usar o caminho dinâmico baseado no ambiente
+    const uploadDir = DOCUMENTS_PATH;
+    
+    console.log(`📁 Upload destination: ${uploadDir}`);
     
     // Criar diretório se não existir
     try {
       await fs.mkdir(uploadDir, { recursive: true });
+      console.log(`✅ Diretório confirmado: ${uploadDir}`);
     } catch (err) {
-      console.error('Erro ao criar diretório:', err);
+      console.error('❌ Erro ao criar diretório:', err);
+      return cb(err);
     }
     
     cb(null, uploadDir);
@@ -54,6 +163,8 @@ const storage = multer.diskStorage({
     const timestamp = Date.now();
     const originalName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
     const fileName = `${timestamp}_${originalName}`;
+    
+    console.log(`📄 Gerando nome do arquivo: ${fileName}`);
     cb(null, fileName);
   }
 });
@@ -672,25 +783,112 @@ app.delete('/api/documents/:id', authMiddleware, async (req, res) => {
 app.get('/api/documents/:id/download', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-
+    console.log(`📥 DOWNLOAD: Iniciando download do documento ID: ${id} para usuário: ${req.user.nome}`);
+    
     const result = await pool.query(`
-      SELECT url_arquivo, nome_arquivo FROM documentos
+      SELECT url_arquivo, nome_arquivo, titulo FROM documentos
       WHERE id = $1 AND ativo = true
     `, [id]);
-
-    if (result.rows.length === 0)
+    
+    if (result.rows.length === 0) {
+      console.log(`❌ DOWNLOAD: Documento ${id} não encontrado`);
       return res.status(404).json({ error: 'Documento não encontrado' });
-
+    }
+    
     const documento = result.rows[0];
-
+    
+    // ✅ INCREMENTAR CONTADOR
     await pool.query(`
       UPDATE documentos SET qtd_downloads = COALESCE(qtd_downloads, 0) + 1
       WHERE id = $1
     `, [id]);
-
-    res.redirect(documento.url_arquivo);
+    
+    console.log(`✅ DOWNLOAD: Contador incrementado para "${documento.titulo}"`);
+    
+    // ✅ VERIFICAR SE É URL EXTERNA OU ARQUIVO LOCAL
+    if (documento.url_arquivo.startsWith('http')) {
+      // URL externa (Google Drive, etc.) - fazer redirect
+      console.log(`🌐 DOWNLOAD: URL externa, redirecionando para: ${documento.url_arquivo}`);
+      return res.redirect(documento.url_arquivo);
+    } else {
+      // Arquivo local - servir diretamente do diretório correto
+      const relativePath = documento.url_arquivo.replace(/^\/documents\//, '');
+      const filePath = path.join(DOCUMENTS_PATH, relativePath);
+      
+      console.log(`📁 DOWNLOAD: Tentando servir arquivo local:`);
+      console.log(`   - URL no banco: ${documento.url_arquivo}`);
+      console.log(`   - Caminho relativo: ${relativePath}`);
+      console.log(`   - Caminho completo: ${filePath}`);
+      console.log(`   - Diretório base: ${DOCUMENTS_PATH}`);
+      
+      // Verificar se arquivo existe
+      try {
+        await fs.access(filePath);
+        console.log(`✅ DOWNLOAD: Arquivo encontrado!`);
+      } catch (error) {
+        console.log(`❌ DOWNLOAD: Arquivo não encontrado: ${filePath}`);
+        
+        // Tentar listar arquivos no diretório para debug
+        try {
+          const files = await fs.readdir(DOCUMENTS_PATH);
+          console.log(`📋 Arquivos disponíveis em ${DOCUMENTS_PATH}:`, files);
+        } catch (listError) {
+          console.log(`❌ Erro ao listar diretório: ${listError.message}`);
+        }
+        
+        return res.status(404).json({ 
+          error: 'Arquivo não encontrado no servidor',
+          debug: {
+            urlArquivo: documento.url_arquivo,
+            caminhoCompleto: filePath,
+            diretorioBase: DOCUMENTS_PATH
+          }
+        });
+      }
+      
+      // Configurar headers para download
+      const fileName = documento.nome_arquivo || documento.titulo;
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.setHeader('Content-Type', 'application/octet-stream');
+      
+      // Servir arquivo
+      return res.sendFile(filePath, (err) => {
+        if (err) {
+          console.error(`❌ Erro ao enviar arquivo: ${err.message}`);
+          if (!res.headersSent) {
+            res.status(500).json({ error: 'Erro ao enviar arquivo' });
+          }
+        } else {
+          console.log(`✅ Arquivo enviado com sucesso: ${fileName}`);
+        }
+      });
+    }
+    
   } catch (error) {
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    console.error('❌ Erro no download:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  }
+});
+
+app.get('/api/debug/files', authMiddleware, async (req, res) => {
+  try {
+    const files = await fs.readdir(DOCUMENTS_PATH);
+    res.json({
+      documentsPath: DOCUMENTS_PATH,
+      thumbnailsPath: THUMBNAILS_PATH,
+      environment: process.env.NODE_ENV || 'development',
+      files: files,
+      currentWorkingDirectory: process.cwd(),
+      serverDirectory: __dirname
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      error: 'Erro ao listar arquivos',
+      documentsPath: DOCUMENTS_PATH,
+      errorMessage: error.message 
+    });
   }
 });
 
@@ -1472,659 +1670,149 @@ app.get('/health', async (req, res) => {
 app.get('/ping', (req, res) => {
   res.status(200).send('pong');
 });
-// ===============================================
-// CONFIGURAÇÃO CORRIGIDA PARA PROCESSOS - server.js
-// ===============================================
-
-// Configurações da Google Sheets API
-const SHEETS_CONFIG = {
-  SPREADSHEET_ID: '1Og951U-NWhx_Hmi3CcKa8hu5sh3RJuCAR37HespiEe0',
-  ABAS: {
-    PENDENTES: {
-      nome: 'Processos Pendentes',
-      range: 'Processos Pendentes!A:M'
-    },
-    ENVIADOS: {
-      nome: 'Processos Enviados', 
-      range: 'Processos Enviados!A:N' // Inclui coluna N para data de envio
-    }
-  },
-  GOOGLE_SERVICE_ACCOUNT_EMAIL: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-  GOOGLE_PRIVATE_KEY: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-};
-
-// Configurar Google Sheets
-const getGoogleSheetsInstance = () => {
-  let auth;
-  
-  // Opção A: Usar arquivo JSON
-  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-    const credentialsPath = path.resolve(process.env.GOOGLE_APPLICATION_CREDENTIALS);
-    auth = new google.auth.GoogleAuth({
-      keyFile: credentialsPath,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
-  } 
-  // Opção B: Usar variáveis de ambiente
-  else if (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
-    auth = new google.auth.GoogleAuth({
-      credentials: {
-        client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-        private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-      },
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
-  } else {
-    throw new Error('Credenciais do Google não configuradas');
-  }
-
-  return google.sheets({ version: 'v4', auth });
-};
 
 // ===============================================
 // ROTAS PARA PROCESSOS - ESTRUTURA CORRIGIDA
 // ===============================================
 
-async function moverProcessoParaEnviados(numeroProcesso, dadosProcesso, dataEnvio) {
-  let linhaEncontrada = -1;
-  let dadosLinha = null;
-  let processoAdicionadoNaAbaEnviados = false;
-
+async function moverProcessoParaEnviados(numeroProcesso, idProcessoPlanilha, dataEnvio) {
+  const client = await pool.connect();
+  
   try {
-    console.log(`📋 MOVENDO: Processo ${numeroProcesso} para aba de enviados`);
-    console.log(`🔍 DEBUG: Procurando ID do processo: "${dadosProcesso.idProcessoPlanilha}"`);
+    await client.query('BEGIN');
     
-    const sheets = getGoogleSheetsInstance();
+    console.log(`📋 INICIANDO transferência do processo ${numeroProcesso} para tabela de enviados`);
 
-    // ✅ ETAPA 1: Buscar dinamicamente o processo na aba pendentes
-    const responsePendentes = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
-      range: 'Processos Pendentes!A:M',
-    });
-    
-    const rowsPendentes = responsePendentes.data.values;
-    if (!rowsPendentes) {
-      throw new Error('Aba de processos pendentes não encontrada');
-    }
-
-    console.log(`📊 DEBUG: Total de linhas na planilha ATUAL: ${rowsPendentes.length}`);
-
-    // Buscar o processo por ID
-    for (let i = 1; i < rowsPendentes.length; i++) {
-      if (rowsPendentes[i][0] === dadosProcesso.idProcessoPlanilha) {
-        linhaEncontrada = i + 1; // +1 para índice do Google Sheets
-        dadosLinha = rowsPendentes[i];
-        console.log(`✅ ENCONTRADO DINAMICAMENTE: ID "${dadosProcesso.idProcessoPlanilha}" na linha ATUAL ${linhaEncontrada}`);
-        break;
-      }
-    }
-    
-    if (linhaEncontrada === -1) {
-      // Debug detalhado se não encontrar
-      console.log(`📊 DEBUG: IDs atualmente na planilha:`);
-      for (let i = 1; i < Math.min(rowsPendentes.length, 6); i++) {
-        console.log(`   Linha ${i + 1}: ID "${rowsPendentes[i][0]}" - Cliente: "${rowsPendentes[i][3] || 'N/A'}"`);
-      }
-      
-      throw new Error(`Processo com ID "${dadosProcesso.idProcessoPlanilha}" não encontrado na aba pendentes`);
-    }
-    
-    console.log(`📍 ENCONTRADO: Processo na linha ATUAL ${linhaEncontrada} da aba pendentes`);
-    
-    // ✅ ETAPA 2: Verificar se aba enviados existe
-    const metadataResponse = await sheets.spreadsheets.get({
-      spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID
-    });
-    
-    const abas = metadataResponse.data.sheets;
-    const abaEnviados = abas.find(aba => 
-      aba.properties.title === 'Processos Enviados'
+    // 1. Buscar o processo na tabela de pendentes
+    const resultadoBusca = await client.query(
+      `SELECT * FROM processo_emails_pendentes WHERE id_processo = $1`,
+      [idProcessoPlanilha]
     );
-    
-    if (!abaEnviados) {
-      console.log('📝 CRIANDO: Aba "Processos Enviados" não existe, criando...');
-      await criarAbaProcessosEnviados(sheets);
+
+    if (resultadoBusca.rows.length === 0) {
+      throw new Error(`Processo com ID ${idProcessoPlanilha} não encontrado em pendentes`);
     }
-    
-    // ✅ ETAPA 3: Preparar dados para aba enviados
-    const dadosParaEnviados = [
-      ...dadosLinha,
-      new Date(dataEnvio).toLocaleDateString('pt-BR') // Data de envio
-    ];
-    
-    // ✅ ETAPA 4: PRIMEIRO - Adicionar à aba enviados
-    console.log('📝 ADICIONANDO: Processo na aba enviados...');
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
-      range: 'Processos Enviados!A:N',
-      valueInputOption: 'USER_ENTERED',
-      resource: {
-        values: [dadosParaEnviados]
-      }
-    });
-    
-    processoAdicionadoNaAbaEnviados = true;
-    console.log(`✅ ADICIONADO: Processo inserido na aba enviados`);
-    
-    // ✅ ETAPA 5: Verificar se foi adicionado corretamente
-    const responseEnviados = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
-      range: 'Processos Enviados!A:N',
-    });
-    
-    const rowsEnviados = responseEnviados.data.values;
-    let processoEncontradoNaAbaEnviados = false;
-    
-    // Buscar o processo na aba enviados
-    for (let i = 1; i < rowsEnviados.length; i++) {
-      if (rowsEnviados[i][0] === dadosProcesso.idProcessoPlanilha) {
-        processoEncontradoNaAbaEnviados = true;
-        break;
-      }
+
+    const dados = resultadoBusca.rows[0];
+
+    // 2. ✅ VERIFICAR SE JÁ EXISTE NA TABELA DE ENVIADOS (evitar duplicatas)
+    const jaEnviado = await client.query(
+      `SELECT id_processo FROM processo_emails_enviados WHERE id_processo = $1`,
+      [dados.id_processo]
+    );
+
+    if (jaEnviado.rows.length > 0) {
+      throw new Error(`Processo ${numeroProcesso} já existe na tabela de enviados`);
     }
-    
-    if (!processoEncontradoNaAbaEnviados) {
-      throw new Error('Falha na verificação: processo não foi encontrado na aba enviados após inserção');
-    }
-    
-    console.log(`✅ VERIFICADO: Processo confirmado na aba enviados`);
-    
-    // ✅ ETAPA 6: Buscar novamente a linha atual do processo (pode ter mudado!)
-    console.log('🔄 BUSCANDO: Linha atual do processo antes de remover...');
-    
-    const responsePendentesAtual = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
-      range: 'Processos Pendentes!A:M',
-    });
-    
-    const rowsPendentesAtual = responsePendentesAtual.data.values;
-    let linhaAtualParaRemover = -1;
-    
-    // Buscar a posição atual do processo
-    for (let i = 1; i < rowsPendentesAtual.length; i++) {
-      if (rowsPendentesAtual[i][0] === dadosProcesso.idProcessoPlanilha) {
-        linhaAtualParaRemover = i + 1;
-        console.log(`✅ LINHA ATUAL: Processo ainda está na linha ${linhaAtualParaRemover}`);
-        break;
-      }
-    }
-    
-    if (linhaAtualParaRemover === -1) {
-      console.log(`✅ JÁ REMOVIDO: Processo já foi removido por outro processo concorrente - OK!`);
-      return {
-        success: true,
-        numeroProcesso,
-        linhaOriginal: linhaEncontrada,
-        linhaFinal: 'já removido por outro processo',
-        dataEnvio: new Date(dataEnvio).toLocaleDateString('pt-BR'),
-        verificado: true,
-        status: 'já removido'
-      };
-    }
-    
-    // ✅ ETAPA 7: Verificação de segurança - confirmar que é o processo correto
-    const dadosLinhaAtual = rowsPendentesAtual[linhaAtualParaRemover - 1];
-    if (dadosLinhaAtual[0] !== dadosProcesso.idProcessoPlanilha) {
-      console.log(`⚠️ ERRO: Linha ${linhaAtualParaRemover} contém processo diferente!`);
-      console.log(`   Esperado: ${dadosProcesso.idProcessoPlanilha}`);
-      console.log(`   Encontrado: ${dadosLinhaAtual[0]}`);
-      
-      throw new Error(`Inconsistência: linha ${linhaAtualParaRemover} contém processo diferente do esperado`);
-    }
-    
-    // ✅ ETAPA 8: Remover da aba pendentes com tratamento de erro
-    console.log(`🗑️ REMOVENDO: Processo da aba pendentes (linha confirmada: ${linhaAtualParaRemover})...`);
-    
-    try {
-      // Primeiro limpar o conteúdo da linha
-      await sheets.spreadsheets.values.clear({
-        spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
-        range: `Processos Pendentes!A${linhaAtualParaRemover}:M${linhaAtualParaRemover}`
-      });
-      
-      // Depois remover a linha vazia
-      const deleteRequest = {
-        deleteDimension: {
-          range: {
-            sheetId: 0, // ID da aba Processos Pendentes
-            dimension: 'ROWS',
-            startIndex: linhaAtualParaRemover - 1,
-            endIndex: linhaAtualParaRemover
-          }
-        }
-      };
-      
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
-        resource: {
-          requests: [deleteRequest]
-        }
-      });
-      
-      console.log(`🗑️ REMOVIDO: Processo removido da aba pendentes (linha ${linhaAtualParaRemover})`);
-      
-    } catch (removeError) {
-      console.error(`❌ ERRO ao remover linha ${linhaAtualParaRemover}:`, removeError.message);
-      
-      // ✅ VERIFICAÇÃO PÓS-ERRO: Confirmar se o processo ainda existe
-      const verificacaoFinal = await sheets.spreadsheets.values.get({
-        spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
-        range: 'Processos Pendentes!A:M',
-      });
-      
-      const rowsVerificacao = verificacaoFinal.data.values;
-      let processoAindaExiste = false;
-      
-      for (let i = 1; i < rowsVerificacao.length; i++) {
-        if (rowsVerificacao[i][0] === dadosProcesso.idProcessoPlanilha) {
-          processoAindaExiste = true;
-          console.log(`⚠️ PROCESSO AINDA EXISTE na linha ${i + 1} após erro de remoção`);
-          break;
-        }
-      }
-      
-      if (!processoAindaExiste) {
-        console.log(`✅ VERIFICAÇÃO: Processo não existe mais na aba pendentes - removido com sucesso por outro meio`);
-      } else {
-        console.error(`❌ ERRO CRÍTICO: Processo ainda existe na aba pendentes após falha na remoção`);
-        throw new Error(`Falha ao remover processo da aba pendentes: ${removeError.message}`);
-      }
-    }
-    
-    // ✅ SUCESSO COMPLETO
+
+    // 3. Inserir na tabela de enviados (com nova coluna de data_envio)
+    await client.query(
+      `INSERT INTO processo_emails_enviados (
+        id_processo, numero_unico, cpf_assistido, nome_assistido, emails, telefones,
+        id_atendimento_vinculado, tipo_atendimento, natureza_processo, data_autuacao,
+        ex_adverso, instancia, objeto_atendimento, data_envio
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+      )`,
+      [
+        dados.id_processo, dados.numero_unico, dados.cpf_assistido, dados.nome_assistido,
+        dados.emails, dados.telefones, dados.id_atendimento_vinculado, dados.tipo_atendimento,
+        dados.natureza_processo, dados.data_autuacao, dados.ex_adverso, dados.instancia,
+        dados.objeto_atendimento, dataEnvio
+      ]
+    );
+
+    // 4. Remover da tabela de pendentes
+    await client.query(
+      `DELETE FROM processo_emails_pendentes WHERE id_processo = $1`,
+      [idProcessoPlanilha]
+    );
+
+    await client.query('COMMIT');
+    console.log(`✅ SUCESSO: Processo ${numeroProcesso} movido para "processo_emails_enviados"`);
+
     return {
       success: true,
       numeroProcesso,
-      linhaOriginal: linhaEncontrada,
-      linhaFinal: linhaAtualParaRemover,
-      dataEnvio: new Date(dataEnvio).toLocaleDateString('pt-BR'),
-      verificado: true,
+      id: idProcessoPlanilha,
+      dataEnvio,
       status: 'movido com sucesso'
     };
     
   } catch (error) {
-    console.error('❌ Erro ao mover processo:', error);
-    
-    // ✅ ROLLBACK ROBUSTO: Se já adicionou na aba enviados mas falhou depois
-    if (processoAdicionadoNaAbaEnviados) {
-      try {
-        console.log('🔄 ROLLBACK: Tentando remover processo da aba enviados devido ao erro...');
-        
-        const responseEnviados = await sheets.spreadsheets.values.get({
-          spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
-          range: 'Processos Enviados!A:N',
-        });
-        
-        const rowsEnviados = responseEnviados.data.values;
-        
-        // Buscar de trás para frente (mais provável que seja o último adicionado)
-        for (let i = rowsEnviados.length - 1; i >= 1; i--) {
-          if (rowsEnviados[i][0] === dadosProcesso.idProcessoPlanilha) {
-            // Obter o sheetId da aba enviados
-            const metadataResponse = await sheets.spreadsheets.get({
-              spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID
-            });
-            
-            const abaEnviados = metadataResponse.data.sheets.find(aba => 
-              aba.properties.title === 'Processos Enviados'
-            );
-            
-            const sheetIdEnviados = abaEnviados ? abaEnviados.properties.sheetId : 1;
-            
-            const deleteRequestRollback = {
-              deleteDimension: {
-                range: {
-                  sheetId: sheetIdEnviados,
-                  dimension: 'ROWS',
-                  startIndex: i,
-                  endIndex: i + 1
-                }
-              }
-            };
-            
-            await sheets.spreadsheets.batchUpdate({
-              spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
-              resource: {
-                requests: [deleteRequestRollback]
-              }
-            });
-            
-            console.log('✅ ROLLBACK: Processo removido da aba enviados com sucesso');
-            break;
-          }
-        }
-        
-      } catch (rollbackError) {
-        console.error('❌ ERRO NO ROLLBACK:', rollbackError);
-        console.error('⚠️ ATENÇÃO: Processo pode estar duplicado nas duas abas! Verificação manual necessária.');
-      }
-    }
-    
-    throw error;
+    await client.query('ROLLBACK');
+    console.error('❌ ERRO ao mover processo:', error);
+    return {
+      success: false,
+      numeroProcesso,
+      id: idProcessoPlanilha,
+      erro: error.message
+    };
+  } finally {
+    client.release();
   }
 }
 
 // Buscar dados da planilha com mapeamento correto - VERSÃO CORRIGIDA
-app.get('/api/processos/planilha', authMiddleware, async (req, res) => {
+app.get('/api/processos', authMiddleware, async (req, res) => {
   try {
-    console.log('📊 PROCESSOS: Buscando dados da planilha...');
+    const result = await pool.query(`
+      SELECT 
+        id_processo AS idProcessoPlanilha,
+        numero_unico AS numeroProcesso,
+        cpf_assistido AS cpfAssistido,
+        nome_assistido AS cliente,
+        emails AS emailCliente,
+        telefones,
+        id_atendimento_vinculado AS idAtendimento,
+        tipo_atendimento AS tipoProcesso,
+        natureza_processo,
+        data_autuacao AS dataAjuizamento,
+        ex_adverso AS exAdverso,
+        instancia,
+        objeto_atendimento AS objetoAtendimento
+      FROM processo_emails_pendentes
+      ORDER BY id_processo DESC
+    `);
 
-    const sheets = getGoogleSheetsInstance();
-    
-    // ✅ BUSCAR ABA PENDENTES (A:L)
-    const responsePendentes = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
-      range: 'Processos Pendentes!A:L',
-    });
-
-    // ✅ BUSCAR ABA ENVIADOS (A:M)
-    const responseEnviados = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
-      range: 'Processos Enviados!A:M',
-    });
-
-    const rowsPendentes = responsePendentes.data.values || [];
-    const rowsEnviados = responseEnviados.data.values || [];
-    
-    if (rowsPendentes.length === 0 && rowsEnviados.length === 0) {
-      console.log('📋 PROCESSOS: Nenhum dado encontrado nas planilhas');
-      return res.json({ processos: [] });
-    }
-
-    console.log(`📊 PLANILHAS: ${rowsPendentes.length - 1} pendentes, ${rowsEnviados.length - 1} enviados`);
-
-    const processos = [];
-
-    // ✅ PROCESSAR ABA PENDENTES (A:L)
-    if (rowsPendentes.length > 1) {
-      const headersPendentes = rowsPendentes[0];
-      const dataRowsPendentes = rowsPendentes.slice(1);
-
-      console.log('📋 Cabeçalhos aba pendentes:', headersPendentes);
-
-      dataRowsPendentes.forEach((row, index) => {
-        if (row[0] && row[3]) { // Tem ID e cliente
-          const processo = {
-            id: row[0], // ✅ USAR ID real da planilha
-            idProcessoPlanilha: row[0],       // A: ID do processo
-            numeroProcesso: row[1] || '',     // B: Número único
-            cpfAssistido: row[2] || '',       // C: CPF do assistido
-            cliente: row[3] || '',            // D: Nome do assistido
-            emailCliente: row[4] || '',       // E: Email
-            telefones: row[5] || '',          // F: Telefones
-            idAtendimento: row[6] || '',      // G: ID do atendimento vinculado
-            tipoProcesso: row[7] || '',       // H: Natureza do processo
-            dataAjuizamento: row[8] || '',    // I: Data de autuação
-            exAdverso: row[9] || '',          // J: Ex-adverso
-            instancia: row[10] || '',         // K: Instância
-            objetoAtendimento: row[11] || '', // L: Objeto do atendimento
-            
-            // ✅ STATUS DE EMAIL: ABA PENDENTES = EMAIL NÃO ENVIADO
-            emailEnviado: false,              // Sempre false na aba pendentes
-            dataUltimoEmail: null,            // Sempre null na aba pendentes
-            
-            // Campos derivados
-            status: definirStatusProcesso(row[7], row[8]),
-            ultimoAndamento: row[8] || '',
-            responsavel: extrairResponsavel(row[9]),
-            valorCausa: 'A definir', // Não tem na aba pendentes
-            origem: 'pendentes'
-          };
-
-          processos.push(processo);
-        }
-      });
-    }
-
-    // ✅ PROCESSAR ABA ENVIADOS (A:M)
-    if (rowsEnviados.length > 1) {
-      const headersEnviados = rowsEnviados[0];
-      const dataRowsEnviados = rowsEnviados.slice(1);
-
-      console.log('📋 Cabeçalhos aba enviados:', headersEnviados);
-
-      dataRowsEnviados.forEach((row, index) => {
-        if (row[0] && row[3]) { // Tem ID e cliente
-          const processo = {
-            id: row[0], // ✅ USAR ID real da planilha
-            idProcessoPlanilha: row[0],       // A: ID Processo
-            numeroProcesso: row[1] || '',     // B: Número Processo
-            cpfAssistido: row[2] || '',       // C: CPF
-            cliente: row[3] || '',            // D: Cliente
-            emailCliente: row[4] || '',       // E: Email
-            telefones: row[5] || '',          // F: Telefones
-            idAtendimento: row[6] || '',      // G: ID Atendimento
-            tipoProcesso: row[7] || '',       // H: Natureza
-            dataAjuizamento: row[8] || '',    // I: Data Autuação
-            exAdverso: row[9] || '',          // J: Ex-adverso
-            instancia: row[10] || '',         // K: Instância
-            objetoAtendimento: row[11] || '', // L: Objeto
-            
-            // ✅ STATUS DE EMAIL: ABA ENVIADOS = EMAIL ENVIADO + DATA
-            emailEnviado: true,               // Sempre true na aba enviados
-            dataUltimoEmail: row[12] || null, // M: Data Envio Email
-            
-            // Campos derivados
-            status: 'Email Enviado',
-            ultimoAndamento: row[8] || '',
-            responsavel: extrairResponsavel(row[9]),
-            valorCausa: 'A definir', // Não especificado na estrutura
-            origem: 'enviados'
-          };
-
-          processos.push(processo);
-        }
-      });
-    }
-
-    // ✅ REMOVER DUPLICATAS (priorizar aba enviados se existir o mesmo ID)
-    const processosUnicos = [];
-    const idsProcessados = new Set();
-
-    // Primeiro adicionar os da aba enviados (têm prioridade)
-    processos.filter(p => p.origem === 'enviados').forEach(processo => {
-      if (!idsProcessados.has(processo.id)) {
-        processosUnicos.push(processo);
-        idsProcessados.add(processo.id);
-      }
-    });
-
-    // Depois adicionar os da aba pendentes que não existem na aba enviados
-    processos.filter(p => p.origem === 'pendentes').forEach(processo => {
-      if (!idsProcessados.has(processo.id)) {
-        processosUnicos.push(processo);
-        idsProcessados.add(processo.id);
-      }
-    });
-
-    console.log(`✅ PROCESSOS: ${processosUnicos.length} processos únicos carregados`);
-    
-    // ✅ ESTATÍSTICAS DETALHADAS
-    const estatisticas = {
-      total: processosUnicos.length,
-      comEmailEnviado: processosUnicos.filter(p => p.emailEnviado).length,
-      semEmailEnviado: processosUnicos.filter(p => !p.emailEnviado).length,
-      comDataEnvio: processosUnicos.filter(p => p.dataUltimoEmail).length
-    };
-    
-    console.log(`📊 ESTATÍSTICAS:`, estatisticas);
-
-    // ✅ DEBUG: Mostrar alguns exemplos
-    if (processosUnicos.length > 0) {
-      console.log('📋 Exemplo dos primeiros 3 processos:');
-      processosUnicos.slice(0, 3).forEach((processo, i) => {
-        console.log(`   ${i + 1}. ${processo.cliente} - Email enviado: ${processo.emailEnviado} - Data: ${processo.dataUltimoEmail || 'N/A'} - Origem: ${processo.origem}`);
-      });
-    }
+    const processos = result.rows.map((row, index) => ({
+      id: row.idprocessoplanilha || index + 1, // ✅ Garantir que tem ID único
+      idProcessoPlanilha: row.idprocessoplanilha, 
+      numeroProcesso: row.numeroprocesso, 
+      cpfAssistido: row.cpfassistido, 
+      cliente: row.cliente,
+      emailCliente: row.emailcliente, 
+      telefones: row.telefones,
+      idAtendimento: row.idatendimento, 
+      tipoProcesso: row.tipoprocesso, 
+      naturezaProcesso: row.natureza_processo,
+      dataAjuizamento: row.dataajuizamento, 
+      exAdverso: row.exadverso, 
+      instancia: row.instancia,
+      objetoAtendimento: row.objetoatendimento, 
+      emailEnviado: false,
+      dataUltimoEmail: null,
+      origem: 'banco',
+      status: row.tipoprocesso 
+        ? `${row.tipoprocesso} - ${row.dataajuizamento || 'Sem data'}`
+        : 'Aguardando análise',
+      ultimoAndamento: row.dataajuizamento || '', 
+      responsavel: row.exadverso || 'Não informado', 
+      valorCausa: 'A definir',
+      observacoes: ''
+    }));
 
     res.json({
-      processos: processosUnicos,
-      total: processosUnicos.length,
-      ultimaAtualizacao: new Date().toISOString(),
-      estatisticas,
-      estruturaPlanilha: {
-        aba_pendentes: {
-          colunas: rowsPendentes[0] || [],
-          totalLinhas: rowsPendentes.length - 1,
-          range: 'A:L'
-        },
-        aba_enviados: {
-          colunas: rowsEnviados[0] || [],
-          totalLinhas: rowsEnviados.length - 1,
-          range: 'A:M'
-        }
-      }
+      processos,
+      total: processos.length,
+      origem: 'banco_de_dados',
+      ultimaAtualizacao: new Date().toISOString()
     });
-
   } catch (error) {
-    console.error('❌ Erro ao buscar dados da planilha:', error);
-    
-    let errorMessage = 'Erro ao buscar dados da planilha';
-    let errorDetails = undefined;
-    
-    if (error.message.includes('range')) {
-      errorMessage = 'Erro de configuração: range da planilha inválido';
-    } else if (error.message.includes('Spreadsheet')) {
-      errorMessage = 'Planilha não encontrada ou sem permissão de acesso';
-    } else if (error.message.includes('credentials') || error.message.includes('authentication')) {
-      errorMessage = 'Erro de autenticação com Google Sheets';
-    }
-    
-    if (process.env.NODE_ENV === 'development') {
-      errorDetails = {
-        message: error.message,
-        stack: error.stack,
-        spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID
-      };
-    }
-    
-    res.status(500).json({
-      error: errorMessage,
-      details: errorDetails
-    });
+    console.error('❌ Erro ao buscar processos do banco:', error);
+    res.status(500).json({ error: 'Erro ao buscar dados do banco de dados' });
   }
 });
-
-async function criarAbaProcessosEnviados(sheets) {
-  try {
-    console.log('📝 CRIANDO: Aba "Processo Enviados"');
-    
-    // Criar nova aba
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
-      resource: {
-        requests: [{
-          addSheet: {
-            properties: {
-              title: SHEETS_CONFIG.ABAS.ENVIADOS.nome,
-              gridProperties: {
-                rowCount: 1000,
-                columnCount: 14 // A até N
-              }
-            }
-          }
-        }]
-      }
-    });
-    
-    // Adicionar cabeçalhos
-    const cabecalhos = [
-      'ID Processo',      // A
-      'Número Processo',  // B
-      'CPF',             // C
-      'Cliente',         // D
-      'Email',           // E
-      'Telefones',       // F
-      'ID Atendimento',  // G
-      'Natureza',        // H
-      'Data Autuação',   // I
-      'Ex-adverso',      // J
-      'Instância',       // K
-      'Objeto',          // L
-      'Status',
-      'Data Envio Email' // N - NOVA COLUNA
-    ];
-    
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
-      range: `${SHEETS_CONFIG.ABAS.ENVIADOS.nome}!A1:N1`,
-      valueInputOption: 'USER_ENTERED',
-      resource: {
-        values: [cabecalhos]
-      }
-    });
-    
-    // Aplicar formatação ao cabeçalho
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
-      resource: {
-        requests: [{
-          repeatCell: {
-            range: {
-              sheetId: null, // Será preenchido pela API
-              startRowIndex: 0,
-              endRowIndex: 1,
-              startColumnIndex: 0,
-              endColumnIndex: 14
-            },
-            cell: {
-              userEnteredFormat: {
-                backgroundColor: { red: 0.086, green: 0.353, blue: 0.365 }, // #165A5D
-                textFormat: {
-                  foregroundColor: { red: 1, green: 1, blue: 1 }, // Branco
-                  bold: true
-                }
-              }
-            },
-            fields: 'userEnteredFormat(backgroundColor,textFormat)'
-          }
-        }]
-      }
-    });
-    
-    console.log('✅ CRIADA: Aba "Processo Enviados" com cabeçalhos');
-    
-  } catch (error) {
-    console.error('❌ Erro ao criar aba enviados:', error);
-    throw error;
-  }
-}
-
-function definirStatusProcesso(natureza, dataAutuacao) {
-  if (!dataAutuacao) return 'Indefinido';
-  
-  try {
-    const hoje = new Date();
-    const dataProcesso = new Date(dataAutuacao.split('/').reverse().join('-')); // Converter DD/MM/YYYY
-    const diasDecorridos = Math.floor((hoje - dataProcesso) / (1000 * 60 * 60 * 24));
-    
-    if (diasDecorridos <= 30) return 'Em Andamento';
-    if (diasDecorridos <= 90) return 'Aguardando';
-    return 'Em Andamento';
-  } catch (error) {
-    return 'Em Andamento'; // Default se houver erro na conversão
-  }
-}
-
-function extrairResponsavel(exAdverso) {
-  if (!exAdverso) return 'Não informado';
-  
-  if (exAdverso.length > 50) {
-    return exAdverso.substring(0, 50) + '...';
-  }
-  
-  return exAdverso;
-}
-
-function extrairProveito(valorCausa) {
-  if (!valorCausa) return 'Não informado';
-  
-  if (valorCausa.length > 50) {
-    return valorCausa.substring(0, 50) + '...';
-  }
-  
-  return valorCausa;
-}
 
 // backend/routes/upload.js
 app.post('/api/upload-document', upload.single('file'), (req, res) => {
@@ -2138,55 +1826,6 @@ app.post('/api/upload-document', upload.single('file'), (req, res) => {
     success: true, 
     fileUrl: `/documents/${file.originalname}` 
   });
-});
-
-// Atualizar planilha com controle de email (ADICIONAR COLUNAS)
-app.patch('/api/processos/atualizar-email', authMiddleware, async (req, res) => {
-  try {
-    const { processoId, emailEnviado, dataEnvio } = req.body;
-
-    console.log(`📝 PROCESSOS: Atualizando status email - Processo ${processoId}`);
-
-    const sheets = getGoogleSheetsInstance();
-    
-    // Como sua planilha não tem colunas de controle de email, vamos adicionar nas colunas N e O
-    const row = processoId + 1; // +1 por causa do header
-    
-    const updates = [
-      {
-        range: `Processos Pendentes!N${row}`, // Coluna N: Email Enviado
-        values: [[emailEnviado ? 'SIM' : 'NÃO']],
-      },
-      {
-        range: `Processos Pendentes!O${row}`, // Coluna O: Data Último Email
-        values: [[dataEnvio ? new Date(dataEnvio).toLocaleDateString('pt-BR') : '']],
-      }
-    ];
-
-    await sheets.spreadsheets.values.batchUpdate({
-      spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
-      resource: {
-        valueInputOption: 'USER_ENTERED',
-        data: updates,
-      },
-    });
-
-    console.log(`✅ PROCESSOS: Status atualizado na planilha - Processo ${processoId}`);
-
-    res.json({
-      success: true,
-      processoId,
-      emailEnviado,
-      dataEnvio
-    });
-
-  } catch (error) {
-    console.error('❌ Erro ao atualizar planilha:', error);
-    res.status(500).json({
-      error: 'Erro ao atualizar planilha',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  }
 });
 
 // Enviar email individual com template adaptado
@@ -2488,63 +2127,6 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
     console.error('❌ Erro ao enviar email:', error);
     res.status(500).json({
       error: 'Erro ao enviar email',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  }
-});
-
-app.get('/api/processos/enviados', authMiddleware, async (req, res) => {
-  try {
-    console.log('📊 PROCESSOS ENVIADOS: Buscando da aba "Processo Enviados"');
-
-    const sheets = getGoogleSheetsInstance();
-    
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
-      range: SHEETS_CONFIG.ABAS.ENVIADOS.range,
-    });
-
-    const rows = response.data.values;
-    
-    if (!rows || rows.length === 0) {
-      return res.json({ processosEnviados: [] });
-    }
-
-    const headers = rows[0];
-    const dataRows = rows.slice(1);
-
-    const processosEnviados = dataRows.map((row, index) => ({
-      id: index + 1,
-      idProcessoPlanilha: row[0] || '',
-      numeroProcesso: row[1] || '',
-      cpfAssistido: row[2] || '',
-      cliente: row[3] || '',
-      emailCliente: row[4] || '',
-      telefones: row[5] || '',
-      idAtendimento: row[6] || '',
-      tipoProcesso: row[7] || '',
-      dataAjuizamento: row[8] || '',
-      exAdverso: row[9] || '',
-      instancia: row[10] || '',
-      objetoAtendimento: row[11] || '',
-      observacoes: row[12] || '',
-      dataEnvioEmail: row[13] || '', // Nova coluna
-      emailEnviado: true, // Sempre true nesta aba
-      status: 'Email Enviado'
-    })).filter(processo => processo.numeroProcesso && processo.cliente);
-
-    console.log(`✅ PROCESSOS ENVIADOS: ${processosEnviados.length} processos na aba enviados`);
-
-    res.json({
-      processosEnviados,
-      total: processosEnviados.length,
-      ultimaAtualizacao: new Date().toISOString()
-    });
-
-  } catch (error) {
-    console.error('❌ Erro ao buscar processos enviados:', error);
-    res.status(500).json({
-      error: 'Erro ao buscar processos enviados',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
@@ -2940,81 +2522,6 @@ app.post('/api/emails/massa', authMiddleware, async (req, res) => {
       error: 'Erro no envio em massa',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
-  }
-});
-
-async function limparLinhasVaziasPlanilha() {
-  try {
-    console.log('🧹 LIMPEZA: Verificando linhas vazias na aba pendentes...');
-    
-    const sheets = getGoogleSheetsInstance();
-    
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
-      range: 'Processos Pendentes!A:M',
-    });
-    
-    const rows = response.data.values;
-    if (!rows || rows.length <= 1) {
-      console.log('🧹 LIMPEZA: Nenhuma linha para verificar');
-      return;
-    }
-
-    // Encontrar linhas vazias (sem ID na coluna A)
-    const linhasVazias = [];
-    for (let i = 1; i < rows.length; i++) {
-      if (!rows[i] || !rows[i][0] || rows[i][0].trim() === '') {
-        linhasVazias.push(i + 1); // +1 para índice do Google Sheets
-      }
-    }
-
-    if (linhasVazias.length === 0) {
-      console.log('🧹 LIMPEZA: Nenhuma linha vazia encontrada');
-      return;
-    }
-
-    console.log(`🧹 LIMPEZA: Encontradas ${linhasVazias.length} linhas vazias:`, linhasVazias);
-
-    // Remover linhas vazias (de trás para frente para não alterar os índices)
-    for (let i = linhasVazias.length - 1; i >= 0; i--) {
-      const linha = linhasVazias[i];
-      
-      const deleteRequest = {
-        deleteDimension: {
-          range: {
-            sheetId: 0,
-            dimension: 'ROWS',
-            startIndex: linha - 1,
-            endIndex: linha
-          }
-        }
-      };
-      
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
-        resource: {
-          requests: [deleteRequest]
-        }
-      });
-      
-      console.log(`🧹 LIMPEZA: Linha vazia ${linha} removida`);
-    }
-
-    console.log('✅ LIMPEZA: Concluída');
-
-  } catch (error) {
-    console.error('❌ Erro na limpeza de linhas vazias:', error);
-  }
-}
-
-// ✅ ENDPOINT PARA LIMPEZA MANUAL
-app.post('/api/processos/limpar-vazias', authMiddleware, async (req, res) => {
-  try {
-    await limparLinhasVaziasPlanilha();
-    res.json({ success: true, message: 'Limpeza concluída' });
-  } catch (error) {
-    console.error('❌ Erro na limpeza:', error);
-    res.status(500).json({ error: 'Erro na limpeza', details: error.message });
   }
 });
 

@@ -8,14 +8,22 @@ import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 import Header from '@/components/Header';
 import PDFCard from '@/components/PDFCard';
-import PDFForm from '@/components/PDFForm'; // O componente que criamos
+import PDFForm from '@/components/PDFForm';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { isAdmin } from '@/types';
+import ConfirmationDialog from '@/components/ConfirmationDialog';
 
 const DocumentsPage = () => {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingDocument, setEditingDocument] = useState<PDFDocument | null>(null);
+  
+  // ✅ ESTADOS PARA O MODAL DE CONFIRMAÇÃO
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    documentId: '',
+    documentTitle: ''
+  });
 
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -52,6 +60,7 @@ const DocumentsPage = () => {
     selectedCategory === 'all' ? undefined : selectedCategory
   );
 
+  // ✅ NOVA FUNÇÃO SEM window.confirm
   const handleDeleteDocument = async (id: string) => {
     if (!canEdit) {
       toast({
@@ -62,21 +71,40 @@ const DocumentsPage = () => {
       return;
     }
 
-    if (window.confirm('Tem certeza que deseja excluir este documento?')) {
-      try {
-        await deleteDocument(id);
-        toast({
-          title: "Sucesso",
-          description: "Documento excluído com sucesso"
-        });
-      } catch (error) {
-        toast({
-          title: "Erro",
-          description: "Erro ao excluir documento",
-          variant: "destructive"
-        });
-      }
+    // Encontrar o documento para mostrar o título na confirmação
+    const document = filteredDocuments.find(doc => doc.id === id);
+    
+    setConfirmDialog({
+      isOpen: true,
+      documentId: id,
+      documentTitle: document?.title || 'documento'
+    });
+  };
+
+  // ✅ FUNÇÃO PARA CONFIRMAR A EXCLUSÃO
+  const handleConfirmDelete = async () => {
+    try {
+      await deleteDocument(confirmDialog.documentId);
+      toast({
+        title: "Sucesso",
+        description: "Documento excluído com sucesso"
+      });
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Erro ao excluir documento",
+        variant: "destructive"
+      });
     }
+  };
+
+  // ✅ FUNÇÃO PARA FECHAR O MODAL
+  const handleCloseConfirmDialog = () => {
+    setConfirmDialog({
+      isOpen: false,
+      documentId: '',
+      documentTitle: ''
+    });
   };
 
   const handleNewDocument = () => {
@@ -298,9 +326,21 @@ const DocumentsPage = () => {
           onSubmit={handleFormSubmit}
           document={editingDocument}
           categories={categories}
-          uploadFile={uploadFile} // Passar a função de upload
+          uploadFile={uploadFile}
         />
       )}
+
+      {/* ✅ MODAL DE CONFIRMAÇÃO */}
+      <ConfirmationDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={handleCloseConfirmDialog}
+        onConfirm={handleConfirmDelete}
+        title="Confirmar Exclusão"
+        description={`Tem certeza que deseja excluir o documento "${confirmDialog.documentTitle}"? Esta ação não pode ser desfeita.`}
+        confirmText="Excluir"
+        cancelText="Cancelar"
+        variant="destructive"
+      />
     </div>
   );
 };

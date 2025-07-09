@@ -299,17 +299,71 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
     return () => clearTimeout(timeoutId);
   }, [document.fileUrl]);
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!isValidFileUrl(document.fileUrl)) {
       alert('Arquivo não disponível para download');
       return;
     }
     
-    const link = window.document.createElement('a');
-    link.href = document.fileUrl;
-    link.download = document.fileName;
-    link.target = '_blank';
-    link.click();
+    try {
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        alert('Você precisa estar logado para baixar arquivos');
+        return;
+      }
+
+      console.log('📥 Iniciando download autenticado...');
+
+      // ✅ FAZER REQUISIÇÃO AUTENTICADA
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'}/api/documents/${document.id}/download`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          alert('Sessão expirada. Faça login novamente.');
+          return;
+        }
+        throw new Error(`Erro ${response.status}: ${response.statusText}`);
+      }
+
+      // ✅ VERIFICAR SE É REDIRECT (URL EXTERNA)
+      if (response.redirected) {
+        window.open(response.url, '_blank');
+        return;
+      }
+
+      // ✅ SE FOR ARQUIVO LOCAL, BAIXAR COMO BLOB
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      
+      const link = window.document.createElement('a');
+      link.href = url;
+      // ✅ CORRIGIR: usar 'title' em vez de 'fileName'
+      link.download = document.title || 'documento';
+      link.style.display = 'none';
+      
+      // ✅ CORRIGIR: usar document do DOM, não do PDFDocument
+      window.document.body.appendChild(link);
+      link.click();
+      window.document.body.removeChild(link);
+      
+      // ✅ LIMPAR MEMORIA
+      window.URL.revokeObjectURL(url);
+
+      console.log('✅ Download concluído com sucesso');
+
+    } catch (error) {
+      console.error('❌ Erro no download:', error);
+      alert('Erro ao baixar arquivo. Tente novamente.');
+    }
   };
 
   const handleView = () => {

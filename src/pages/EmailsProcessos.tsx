@@ -108,13 +108,42 @@ const EmailsProcessos = () => {
     return response;
   };
 
+  // Função para formatar data para dd/MM/yyyy
+  const formatarData = (data: string): string => {
+    if (!data) return '';
+    
+    // Se já está no formato dd/MM/yyyy, retornar como está
+    if (data.includes('/') && data.split('/').length === 3) {
+      const parts = data.split('/');
+      if (parts[0].length <= 2) {
+        return data; // Já está no formato correto
+      }
+    }
+    
+    // Se está no formato ISO (yyyy-MM-dd) ou outro formato
+    try {
+      const dataObj = new Date(data);
+      if (isNaN(dataObj.getTime())) {
+        return data; // Se não conseguir converter, retorna original
+      }
+      
+      const dia = dataObj.getDate().toString().padStart(2, '0');
+      const mes = (dataObj.getMonth() + 1).toString().padStart(2, '0');
+      const ano = dataObj.getFullYear();
+      
+      return `${dia}/${mes}/${ano}`;
+    } catch (error) {
+      return data; // Se houver erro, retorna original
+    }
+  };
+
   // Carregar dados da planilha
   const carregarProcessos = async () => {
     try {
       setCarregandoInicial(true);
       console.log('📊 Carregando dados dos processos da planilha...');
       
-      const response = await fetchWithAuth(`${API_BASE_URL}/api/processos/planilha`);
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/processos`);
       
       if (!response.ok) {
         throw new Error("Erro ao carregar dados dos processos");
@@ -127,13 +156,12 @@ const EmailsProcessos = () => {
       
       toast({
         title: "Dados atualizados!",
-        description: `${data.processos?.length || 0} processos carregados da planilha`,
+        description: `${data.processos?.length || 0} processos carregados`,
       });
     } catch (error) {
       console.error("❌ Erro ao carregar processos:", error);
       toast({
         title: "Erro ao carregar dados",
-        description: "Verifique a conexão com a planilha.",
         variant: "destructive"
       });
     } finally {
@@ -422,13 +450,13 @@ const EmailsProcessos = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Setor</label>
+                  <label className="block text-sm font-medium mb-2">Tipo de processo</label>
                   <select
                     value={filtroSetor}
                     onChange={(e) => setFiltroSetor(e.target.value)}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
-                    <option value="todos">Todos os setores</option>
+                    <option value="todos">Todos os tipos</option>
                     {setoresUnicos.map(setor => (
                       <option key={setor} value={setor}>{setor}</option>
                     ))}
@@ -580,7 +608,7 @@ const EmailsProcessos = () => {
                                 Email Enviado
                               </Badge>
                             ) : (
-                              <Badge className="bg-red-100 hover:bg-red-100 text-red-800">
+                              <Badge className="bg-yellow-100 hover:bg-yellow-100 text-yellow-800">
                                 <Clock className="h-3 w-3 mr-1" />
                                 Email Pendente
                               </Badge>
@@ -595,10 +623,13 @@ const EmailsProcessos = () => {
                               <strong>Email:</strong> {processo.emailCliente}
                             </div>
                             <div>
+                              <strong>Tipo:</strong> {processo.tipoProcesso}
+                            </div>
+                            <div>
                               <strong>ID do atendimento:</strong> {processo.idAtendimento}
                             </div>
                             <div>
-                              <strong>Ajuizamento:</strong> {processo.dataAjuizamento}
+                              <strong>Ajuizamento:</strong> {formatarData(processo.dataAjuizamento)}
                             </div>
                           </div>
                           
@@ -749,7 +780,7 @@ const EmailsProcessos = () => {
                     <label className="text-sm font-medium text-gray-600">Data de Autuação</label>
                     <p className="flex items-center gap-2">
                       <Calendar className="h-4 w-4" />
-                      {processoDetalhado.dataAjuizamento}
+                      {formatarData(processoDetalhado.dataAjuizamento)}
                     </p>
                   </div>
                   <div>
