@@ -676,11 +676,33 @@ app.post('/api/documents/upload', authMiddleware, upload.single('file'), async (
 
     if (!file) return res.status(400).json({ error: 'Arquivo não enviado' });
 
-    const fileName = file.filename;
-    const fileUrl = `/documents/${fileName}`;
+    const { title, description, category } = req.body;
+    const userId = req.user.id; // vem do token
 
-    res.status(200).json({
-      success: true,
+    const fileName = file.originalname;
+    const fileUrl = `/documents/${file.filename}`;
+
+    const result = await pool.query(`
+      INSERT INTO documentos (
+        titulo, descricao, categoria, nome_arquivo, url_arquivo,
+        tamanho_arquivo, tipo_mime, enviado_por, ativo
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
+      RETURNING *
+    `, [
+      title || file.originalname,
+      description || '',
+      category || 'Geral',
+      file.originalname,
+      fileUrl,
+      file.size,
+      file.mimetype,
+      userId
+    ]);
+
+    const documento = result.rows[0];
+
+    res.status(201).json({
+      documento,
       fileName,
       fileUrl,
       tamanhoArquivo: file.size,
@@ -692,6 +714,7 @@ app.post('/api/documents/upload', authMiddleware, upload.single('file'), async (
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
+
 
 // ======================= CRIAR DOCUMENTO VIA URL =======================
 app.post('/api/documents', authMiddleware, async (req, res) => {
@@ -769,7 +792,7 @@ app.put('/api/documents/:id/upload', authMiddleware, upload.single('file'), asyn
       WHERE id = $8
       RETURNING *
     `, [
-      title, description, category, file.originalname,
+      title, description, category, file.filename,
       fileUrl, file.size, file.mimetype, docId
     ]);
 
@@ -777,7 +800,13 @@ app.put('/api/documents/:id/upload', authMiddleware, upload.single('file'), asyn
       return res.status(404).json({ error: 'Documento não encontrado' });
     }
 
-    res.status(200).json(result.rows[0]);
+    res.status(200).json({
+      documento: result.rows[0],
+      fileName: file.filename,
+      fileUrl,
+      tamanhoArquivo: file.size,
+      tipoMime: file.mimetype
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Erro ao atualizar documento' });

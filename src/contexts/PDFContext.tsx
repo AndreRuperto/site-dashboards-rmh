@@ -343,21 +343,15 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       let response: Response;
 
       if (existingId) {
-        // Atualização de arquivo de documento existente
         response = await fetch(`${API_BASE_URL}/api/documents/${existingId}/upload`, {
           method: 'PUT',
-          headers: {
-            Authorization: `Bearer ${token}`
-          },
+          headers: { Authorization: `Bearer ${token}` },
           body: formData
         });
       } else {
-        // Upload novo
         response = await fetch(`${API_BASE_URL}/api/documents/upload`, {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`
-          },
+          headers: { Authorization: `Bearer ${token}` },
           body: formData
         });
       }
@@ -368,19 +362,24 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       const data = await response.json();
+      const rawDoc = data.documento || data.document;
+
+      if (!rawDoc) {
+        throw new Error('Resposta inválida: documento não encontrado na resposta do backend.');
+      }
 
       const updatedDocument: PDFDocument = {
-        id: existingId || data.document?.id || `api_${Date.now()}`,
-        title: documentData.title || file.name,
-        description: documentData.description || '',
-        category: documentData.category || 'Geral',
-        fileName: data.fileName,
-        fileUrl: data.fileUrl,
-        uploadedBy: 'api@user.com',
-        uploadedAt: new Date(),
-        isActive: true,
-        mimeType: data.tipoMime,
-        fileSize: data.tamanhoArquivo
+        id: existingId || rawDoc.id || `api_${Date.now()}`,
+        title: rawDoc.titulo || documentData.title || file.name,
+        description: rawDoc.descricao || documentData.description || '',
+        category: rawDoc.categoria || documentData.category || 'Geral',
+        fileName: rawDoc.nome_arquivo || file.name,
+        fileUrl: rawDoc.url_arquivo,
+        uploadedBy: rawDoc.enviado_por || 'api@user.com',
+        uploadedAt: new Date(rawDoc.data_upload || Date.now()),
+        isActive: rawDoc.ativo ?? true,
+        mimeType: rawDoc.tipo_mime,
+        fileSize: rawDoc.tamanho_arquivo
       };
 
       if (existingId) {
@@ -399,7 +398,6 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (err) {
       console.error('❌ Erro no upload:', err);
 
-      // Fallback para ambiente local
       const fallbackDoc: PDFDocument = {
         id: existingId || `local_${Date.now()}`,
         title: documentData.title || file.name,
@@ -425,7 +423,6 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return fallbackDoc;
     }
   };
-
 
   // ✅ Filtrar documentos
   const getFilteredDocuments = (category?: string, searchTerm?: string) => {

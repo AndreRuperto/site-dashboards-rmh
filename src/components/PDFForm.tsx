@@ -36,7 +36,6 @@ const PDFForm: React.FC<PDFFormProps> = ({
     title: '',
     description: '',
     category: '',
-    newCategory: '',
     fileName: '',
     fileUrl: ''
   });
@@ -54,7 +53,6 @@ const PDFForm: React.FC<PDFFormProps> = ({
         title: document.title,
         description: document.description,
         category: document.category,
-        newCategory: '',
         fileName: document.fileName,
         fileUrl: document.fileUrl
       });
@@ -69,7 +67,6 @@ const PDFForm: React.FC<PDFFormProps> = ({
         title: '',
         description: '',
         category: '',
-        newCategory: '',
         fileName: '',
         fileUrl: ''
       });
@@ -136,7 +133,7 @@ const PDFForm: React.FC<PDFFormProps> = ({
     setIsSubmitting(true);
 
     try {
-      const categoryToUse = formData.newCategory.trim() || formData.category;
+      const categoryToUse = formData.category;
       
       if (!categoryToUse) {
         toast({
@@ -320,7 +317,7 @@ const PDFForm: React.FC<PDFFormProps> = ({
   };
 
   const isValid = formData.title.trim() && 
-                  (formData.category || formData.newCategory.trim()) &&
+                  (formData.category) &&
                   ((uploadType === 'file' && (selectedFile || document)) ||
                    (uploadType === 'url' && formData.fileUrl.trim()));
 
@@ -362,10 +359,10 @@ const PDFForm: React.FC<PDFFormProps> = ({
           {/* Categoria */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="category">Categoria Existente</Label>
+              <Label htmlFor="category">Categoria</Label>
               <Select 
                 value={formData.category} 
-                onValueChange={(value) => setFormData(prev => ({ ...prev, category: value, newCategory: '' }))}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione uma categoria" />
@@ -378,16 +375,6 @@ const PDFForm: React.FC<PDFFormProps> = ({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="newCategory">Nova Categoria</Label>
-              <Input
-                id="newCategory"
-                value={formData.newCategory}
-                onChange={(e) => setFormData(prev => ({ ...prev, newCategory: e.target.value, category: '' }))}
-                placeholder="Digite nova categoria"
-              />
             </div>
           </div>
 

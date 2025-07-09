@@ -18,6 +18,16 @@ const DocumentsPage = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingDocument, setEditingDocument] = useState<PDFDocument | null>(null);
   
+  const categories = [
+    "Institucional",
+    "Pessoas",
+    "TI / Acessos",
+    "Escalas e Rotinas",
+    "Documentos Operacionais",
+    "RH / Benefícios",
+    "Capacitação"
+  ];
+
   // ✅ ESTADOS PARA O MODAL DE CONFIRMAÇÃO
   const [confirmDialog, setConfirmDialog] = useState({
     isOpen: false,
@@ -33,7 +43,6 @@ const DocumentsPage = () => {
     addDocument, 
     updateDocument, 
     uploadFile,
-    categories,
     isLoading,
     error 
   } = usePDFs();
@@ -325,7 +334,15 @@ const DocumentsPage = () => {
           onClose={handleFormClose}
           onSubmit={handleFormSubmit}
           document={editingDocument}
-          categories={categories}
+          categories={[
+            "Institucional",
+            "Pessoas",
+            "TI / Acessos",
+            "Escalas e Rotinas",
+            "Documentos Operacionais",
+            "RH / Benefícios",
+            "Capacitação"
+          ]}
           uploadFile={uploadFile}
         />
       )}
