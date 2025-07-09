@@ -492,7 +492,7 @@ app.get('/api/thumbnail', async (req, res) => {
     await new Promise(resolve => setTimeout(resolve, 2000)); // tempo para carregar a planilha
 
     // Caminho absoluto para salvar a miniatura corretamente
-    const thumbnailDir = path.resolve(__dirname, '../public/thumbnails');
+    const thumbnailDir = path.join(__dirname, 'public', 'thumbnails');
     const imagePath = path.join(thumbnailDir, `${sheetId}.png`);
 
     // Garante que a pasta existe
