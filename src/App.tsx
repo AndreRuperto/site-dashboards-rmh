@@ -15,7 +15,7 @@ import DocumentsPage from "@/pages/Documents"; // ✅ NOVO: Página de documento
 import NotFound from "./pages/NotFound";
 import AdminUserControl from '@/pages/AdminUserControl';
 import EmailsProcessos from '@/pages/EmailsProcessos';
-import ConfigurarConta from '@/pages/ConfigurarConta';
+import ConfiguracoesPessoais from '@/pages/ConfiguracoesPessoais';
 import Organograma from '@/pages/Organograma';
 
 const queryClient = new QueryClient();
@@ -134,16 +134,10 @@ const AppContent = () => {
             path="/admin/settings" 
             element={
               <ProtectedRoute requireAdmin={true}>
-                <div className="min-h-screen flex items-center justify-center bg-gray-50">
-                  <div className="text-center p-8">
-                    <h1 className="text-2xl font-bold text-gray-800 mb-4">🚧 Em Desenvolvimento</h1>
-                    <p className="text-gray-600">Configurações do Sistema em breve...</p>
-                  </div>
-                </div>
+                <ConfiguracoesPessoais />
               </ProtectedRoute>
             } 
           />
-
           {/* REDIRECIONAMENTOS */}
           <Route path="/admin" element={<Navigate to="/admin/usuarios" replace />} />
           <Route path="/admin/emails" element={<Navigate to="/emails-processos" replace />} />
@@ -181,7 +175,7 @@ const App = () => {
           <AuthProvider>
             <Routes>
               {/* ROTA PÚBLICA - Configurar Conta (não precisa de autenticação) */}
-              <Route path="/configurar-conta/:token" element={<ConfigurarConta />} />
+              <Route path="/configurar-conta/:token" element={<ConfiguracoesPessoais />} />
               
               {/* TODAS AS OUTRAS ROTAS (autenticadas) */}
               <Route path="/*" element={<AppContent />} />

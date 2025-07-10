@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, User, Eye, Edit, Trash2, Download, FileText, BarChart3, Image, AlertCircle, Loader2 } from 'lucide-react';
+import { Calendar, User, Eye, Edit, Trash2, Download, FileText, BarChart3, Image, AlertCircle, Loader2, ExternalLink } from 'lucide-react';
 import { PDFDocument } from '@/contexts/PDFContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -55,6 +55,16 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
     if (url.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) return 'image';
     if (url.includes('.pdf') || url.includes('pdf')) return 'pdf';
     return 'unknown';
+  };
+
+  const isExternalLink = (url: string): boolean => {
+    const fileType = getFileType(url);
+    return fileType === 'google-sheet' || fileType === 'google-doc';
+  };
+
+  // Função para abrir link externo
+  const handleOpenLink = () => {
+    window.open(document.fileUrl, '_blank', 'noopener,noreferrer');
   };
 
   // Get file icon and label
@@ -346,8 +356,8 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
       
       const link = window.document.createElement('a');
       link.href = url;
-      // ✅ CORRIGIR: usar 'title' em vez de 'fileName'
-      link.download = document.title || 'documento';
+      // ✅ CORRIGIDO: usar fileName primeiro, depois title como fallback
+      link.download = document.fileName || document.title || 'documento';
       link.style.display = 'none';
       
       // ✅ CORRIGIR: usar document do DOM, não do PDFDocument
@@ -610,15 +620,29 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
                 Ver
               </Button>
 
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleDownload}
-                disabled={!isValidFileUrl(document.fileUrl)}
-                className="border-rmh-primary text-rmh-primary hover:bg-rmh-primary hover:text-white h-9 px-3 disabled:opacity-50 transition-all duration-200"
-              >
-                <Download className="h-4 w-4" />
-              </Button>
+              {isExternalLink(document.fileUrl) ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleOpenLink}
+                  disabled={!isValidFileUrl(document.fileUrl)}
+                  className="border-rmh-primary text-rmh-primary hover:bg-rmh-primary hover:text-white h-9 px-3 disabled:opacity-50 transition-all duration-200"
+                  title="Abrir no Google"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDownload}
+                  disabled={!isValidFileUrl(document.fileUrl)}
+                  className="border-rmh-primary text-rmh-primary hover:bg-rmh-primary hover:text-white h-9 px-3 disabled:opacity-50 transition-all duration-200"
+                  title="Baixar arquivo"
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
+              )}
 
               {canEdit && onEdit && (
                 <Button

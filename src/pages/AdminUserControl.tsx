@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { TokensExpiradosTab } from './TokensExpiradosTab';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import Header from '@/components/Header';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import EmailsProcessos from './EmailsProcessos';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -796,6 +797,7 @@ const AdminUserControl: React.FC = () => {
 
   return (
     <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
+      <Header />
       {/* Header */}
       <div className="space-y-4">
         <Button

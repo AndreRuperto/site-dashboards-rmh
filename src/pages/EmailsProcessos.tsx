@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import Header from '@/components/Header'; // ✅ ADICIONADO O IMPORT DO HEADER
+import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import Header from '@/components/Header';
 import { 
   Mail, 
   Send, 
@@ -61,6 +62,7 @@ interface ProcessoData {
   ultimoAndamento: string;
   responsavel: string;
   origem: string;
+  statusEmail?: 'Pendente' | 'Enviado';
 }
 
 const EmailsProcessos = () => {
@@ -76,6 +78,13 @@ const EmailsProcessos = () => {
   const [filtroPessoa, setFiltroPessoa] = useState('todos');
   const [termoBusca, setTermoBusca] = useState('');
   const [processoDetalhado, setProcessoDetalhado] = useState<ProcessoData | null>(null);
+  
+  // Estados para paginação
+  const [paginaAtual, setPaginaAtual] = useState(1);
+  const [dataInicioFiltro, setDataInicioFiltro] = useState('');
+  const [dataFimFiltro, setDataFimFiltro] = useState('');
+  const itensPorPagina = 10;
+  
   const { toast } = useToast();
 
   // ✅ VERIFICAR PERMISSÕES - Só protocolo pode enviar emails
@@ -137,31 +146,59 @@ const EmailsProcessos = () => {
     }
   };
 
+  function extrairEmailValido(emailString) {
+    if (!emailString) return null;
+
+    const emails = emailString.split(/[, ]+/).map(e => e.trim());
+    const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    return emails.find(email => regex.test(email)) || null;
+  }
+
   // Carregar dados da planilha
   const carregarProcessos = async () => {
     try {
       setCarregandoInicial(true);
-      console.log('📊 Carregando dados dos processos da planilha...');
-      
-      const response = await fetchWithAuth(`${API_BASE_URL}/api/processos`);
-      
-      if (!response.ok) {
-        throw new Error("Erro ao carregar dados dos processos");
+      console.log('📊 Carregando dados dos processos (única rota)...');
+
+      const url = `${API_BASE_URL}/api/processos`;
+      const response = await fetchWithAuth(url);
+
+      console.log('📋 Response:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries())
+      });
+
+      const contentType = response.headers.get('content-type');
+      if (!response.ok || !contentType?.includes('application/json')) {
+        const text = await response.text();
+        console.error('❌ Erro ou resposta inválida:', text.substring(0, 200));
+        throw new Error('A API não retornou JSON');
       }
 
       const data = await response.json();
-      setProcessos(data.processos || []);
-      
-      console.log(`✅ ${data.processos?.length || 0} processos carregados`);
-      
+      const todosProcessos = (data.processos || [])
+        .map(processo => ({
+          ...processo,
+          emailCliente: extrairEmailValido(processo.emailCliente)
+        }))
+        .filter(processo => !!processo.emailCliente);
+
+      setProcessos(todosProcessos);
+
+      console.log(`✅ ${todosProcessos.length} processos com email válido carregados`);
+
       toast({
         title: "Dados atualizados!",
-        description: `${data.processos?.length || 0} processos carregados`,
+        description: `${todosProcessos.length} processos com email válido carregados`,
       });
+
     } catch (error) {
       console.error("❌ Erro ao carregar processos:", error);
       toast({
         title: "Erro ao carregar dados",
+        description: error.message || "Erro desconhecido",
         variant: "destructive"
       });
     } finally {
@@ -174,41 +211,134 @@ const EmailsProcessos = () => {
     carregarProcessos();
   }, []);
 
-  // Estatísticas
-  const stats = {
-    total: processos.length,
-    comEmail: processos.filter(p => p.emailEnviado).length,
-    semEmail: processos.filter(p => !p.emailEnviado).length,
-    emAndamento: processos.filter(p => p.status === 'Em Andamento').length,
-    deferidos: processos.filter(p => p.status === 'Deferido').length,
-    indeferidos: processos.filter(p => p.status === 'Indeferido').length,
-    emailsHoje: processos.filter(p => 
-      p.dataUltimoEmail && 
-      new Date(p.dataUltimoEmail).toDateString() === new Date().toDateString()
-    ).length
-  };
-
   // Obter setores únicos dos processos
   const setoresUnicos = [...new Set(processos.map(p => p.tipoProcesso).filter(Boolean))];
   
   // Obter responsáveis únicos
   const responsaveisUnicos = [...new Set(processos.map(p => p.responsavel).filter(Boolean))];
 
+  const verificarDataNoIntervalo = (dataProcesso: string, dataInicio: string, dataFim: string): boolean => {
+  if (!dataInicio && !dataFim) return true;
+  
+  try {
+    // Converter data do processo para Date
+    let dataProc: Date;
+    if (dataProcesso.includes('/')) {
+      // Formato dd/MM/yyyy
+      const [dia, mes, ano] = dataProcesso.split('/');
+      dataProc = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+    } else {
+      // Formato ISO ou outro
+      dataProc = new Date(dataProcesso);
+    }
+    
+    // Se não conseguiu converter, ignorar filtro de data
+    if (isNaN(dataProc.getTime())) {
+      console.log('Data inválida:', dataProcesso);
+      return true;
+    }
+    
+    // Verificar intervalo
+    if (dataInicio) {
+      const inicio = new Date(dataInicio + 'T00:00:00'); // Força início do dia
+      if (dataProc < inicio) return false;
+    }
+    
+    if (dataFim) {
+      const fim = new Date(dataFim + 'T23:59:59'); // Força final do dia
+      if (dataProc > fim) return false;
+    }
+    
+    console.log('Verificando:', {
+      dataProcesso,
+      dataProc: dataProc.toISOString().split('T')[0],
+      dataInicio,
+      dataFim,
+      resultado: true
+    });
+    
+    return true;
+  } catch (error) {
+    console.log('Erro ao verificar data:', error, 'Data processo:', dataProcesso);
+    return true;
+  }
+  };
+
   // Filtrar processos
   const processosFiltrados = processos.filter(processo => {
     const matchSetor = filtroSetor === 'todos' || processo.tipoProcesso === filtroSetor;
     const matchStatus = filtroStatus === 'todos' || processo.status === filtroStatus;
-    const matchEmail = filtroEmail === 'todos' || 
-      (filtroEmail === 'enviado' && processo.emailEnviado) ||
-      (filtroEmail === 'nao_enviado' && !processo.emailEnviado);
+    const matchEmail = filtroEmail === 'todos' || processo.statusEmail === filtroEmail;
     const matchPessoa = filtroPessoa === 'todos' || processo.responsavel === filtroPessoa;
     const matchBusca = termoBusca === '' || 
-      processo.cliente.toLowerCase().includes(termoBusca.toLowerCase()) ||
-      processo.numeroProcesso.toLowerCase().includes(termoBusca.toLowerCase()) ||
-      processo.tipoProcesso.toLowerCase().includes(termoBusca.toLowerCase());
-    
-    return matchSetor && matchStatus && matchEmail && matchPessoa && matchBusca;
+      processo.cliente?.toLowerCase().includes(termoBusca.toLowerCase()) ||
+      processo.numeroProcesso?.toLowerCase().includes(termoBusca.toLowerCase());
+    const matchData = verificarDataNoIntervalo(processo.dataAjuizamento, dataInicioFiltro, dataFimFiltro);
+
+    return matchSetor && matchStatus && matchEmail && matchPessoa && matchBusca && matchData;
   });
+
+  const stats = {
+    total: processosFiltrados.length,
+    comEmail: processosFiltrados.filter(p => p.emailEnviado).length,
+    semEmail: processosFiltrados.filter(p => !p.emailEnviado).length,
+    emailsHoje: processosFiltrados.filter(p => 
+      p.dataUltimoEmail && 
+      new Date(p.dataUltimoEmail).toDateString() === new Date().toDateString()
+    ).length
+  };
+
+  // Calcular dados da paginação
+  const totalItens = processosFiltrados.length;
+  const totalPaginas = Math.ceil(totalItens / itensPorPagina);
+  const indiceInicial = (paginaAtual - 1) * itensPorPagina;
+  const indiceFinal = indiceInicial + itensPorPagina;
+
+  // Processos da página atual
+  const processosPaginaAtual = useMemo(() => {
+    return processosFiltrados.slice(indiceInicial, indiceFinal);
+  }, [processosFiltrados, indiceInicial, indiceFinal]);
+
+  // Função para ir para uma página específica
+  const irParaPagina = (pagina: number) => {
+    if (pagina >= 1 && pagina <= totalPaginas) {
+      setPaginaAtual(pagina);
+    }
+  };
+
+  // Resetar página quando os filtros mudarem
+  useEffect(() => {
+    setPaginaAtual(1);
+  }, [processosFiltrados.length]);
+
+  // Função para gerar números das páginas a serem exibidas
+  const gerarPaginasExibicao = () => {
+    const paginas = [];
+    const maxPaginasVisiveis = 5;
+    
+    if (totalPaginas <= maxPaginasVisiveis) {
+      // Se tem poucas páginas, mostra todas
+      for (let i = 1; i <= totalPaginas; i++) {
+        paginas.push(i);
+      }
+    } else {
+      // Lógica para mostrar páginas com ellipsis
+      const metade = Math.floor(maxPaginasVisiveis / 2);
+      let inicio = Math.max(1, paginaAtual - metade);
+      let fim = Math.min(totalPaginas, inicio + maxPaginasVisiveis - 1);
+      
+      // Ajustar se estamos perto do final
+      if (fim - inicio < maxPaginasVisiveis - 1) {
+        inicio = Math.max(1, fim - maxPaginasVisiveis + 1);
+      }
+      
+      for (let i = inicio; i <= fim; i++) {
+        paginas.push(i);
+      }
+    }
+    
+    return paginas;
+  };
 
   // Funções de seleção (só para protocolo)
   const toggleSelecionarTodos = () => {
@@ -441,7 +571,7 @@ const EmailsProcessos = () => {
                     <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                     <input
                       type="text"
-                      placeholder="Cliente, processo ou tipo..."
+                      placeholder="Cliente ou número do processo"
                       value={termoBusca}
                       onChange={(e) => setTermoBusca(e.target.value)}
                       className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -465,15 +595,34 @@ const EmailsProcessos = () => {
 
                 <div>
                   <label className="block text-sm font-medium mb-2">Status</label>
-                  <select
-                    value={filtroEmail}
-                    onChange={(e) => setFiltroEmail(e.target.value)}
+                  <select 
+                    value={filtroEmail} 
+                    onChange={(e) => setFiltroEmail(e.target.value)} 
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
                     <option value="todos">Todos</option>
-                    <option value="enviado">Email Enviado</option>
-                    <option value="nao_enviado">Email Não Enviado</option>
+                    <option value="Enviado">Email Enviado</option>
+                    <option value="Pendente">Email Pendente</option>
                   </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Data início</label>
+                  <input
+                    type="date"
+                    value={dataInicioFiltro}
+                    onChange={(e) => setDataInicioFiltro(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Data fim</label>
+                  <input
+                    type="date"
+                    value={dataFimFiltro}
+                    onChange={(e) => setDataFimFiltro(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
                 </div>
               </div>
             </CardContent>
@@ -536,23 +685,13 @@ const EmailsProcessos = () => {
             </Alert>
           )}
 
-          {/* Aviso para não-protocolo */}
-          {!podeEnviarEmails && (
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                <strong>Visualização:</strong> Você pode consultar o status dos emails, mas apenas o setor de protocolo pode enviar emails.
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Lista de Processos Resumida */}
-          <Card>
-            <CardHeader>
+          {/* Lista de Processos com Paginação */}
+          <Card className="h-[600px] flex flex-col">
+            <CardHeader className="flex-shrink-0">
               <div className="flex justify-between items-center">
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5" />
-                  Processos ({processosFiltrados.length})
+                  Processos ({totalItens})
                 </CardTitle>
                 {podeEnviarEmails && (
                   <div className="flex items-center space-x-2">
@@ -577,9 +716,11 @@ const EmailsProcessos = () => {
                 )}
               </div>
             </CardHeader>
-            <CardContent>
+            
+            {/* Conteúdo Scrollável */}
+            <CardContent className="flex-1 overflow-y-auto">
               <div className="space-y-4">
-                {processosFiltrados.map((processo) => (
+                {processosPaginaAtual.map((processo) => (
                   <div
                     key={processo.id}
                     className={`border rounded-lg p-4 transition-all ${
@@ -635,7 +776,7 @@ const EmailsProcessos = () => {
                           
                           {processo.dataUltimoEmail && (
                             <div className="mt-2 text-xs text-green-600">
-                              Último email enviado em: {processo.dataUltimoEmail}
+                              Email enviado em: {formatarData(processo.dataUltimoEmail)}
                             </div>
                           )}
                         </div>
@@ -667,13 +808,60 @@ const EmailsProcessos = () => {
                 ))}
               </div>
               
-              {processosFiltrados.length === 0 && (
+              {processosPaginaAtual.length === 0 && (
                 <div className="text-center py-8 text-gray-500">
                   <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
                   <p>Nenhum processo encontrado com os filtros aplicados</p>
                 </div>
               )}
             </CardContent>
+
+            {/* Footer com Paginação */}
+            {totalPaginas > 1 && (
+              <div className="flex-shrink-0 p-4 border-t bg-gray-50">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="text-sm text-gray-600 flex-shrink-0">
+                    {indiceInicial + 1} a {Math.min(indiceFinal, totalItens)} de {totalItens}
+                  </div>
+                  
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`px-3 py-1 text-xs ${paginaAtual === 1 ? 'opacity-50 pointer-events-none' : ''}`}
+                      onClick={() => irParaPagina(paginaAtual - 1)}
+                    >
+                      Anterior
+                    </Button>
+                    
+                    {gerarPaginasExibicao().map((pagina) => (
+                      <Button
+                        key={pagina}
+                        variant={pagina === paginaAtual ? "default" : "outline"}
+                        size="sm"
+                        className="px-2 py-1 text-xs min-w-[32px] cursor-pointer"
+                        onClick={() => irParaPagina(pagina)}
+                      >
+                        {pagina}
+                      </Button>
+                    ))}
+                    
+                    {totalPaginas > 5 && paginaAtual < totalPaginas - 2 && (
+                      <span className="px-2 text-gray-400">...</span>
+                    )}
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`px-3 py-1 text-xs ${paginaAtual === totalPaginas ? 'opacity-50 pointer-events-none' : ''}`}
+                      onClick={() => irParaPagina(paginaAtual + 1)}
+                    >
+                      Próxima
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
           </Card>
         </div>
       </main>
@@ -689,63 +877,49 @@ const EmailsProcessos = () => {
           </DialogHeader>
           
           {processoDetalhado && (
-            <div className="space-y-6">
-              {/* Informações principais */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-3">
+              {/* Objeto do Atendimento - PRIMEIRO */}
+              {processoDetalhado.objetoAtendimento && (
                 <Card>
                   <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <FileText className="h-5 w-5" />
+                      Objeto do Atendimento
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-gray-700 leading-relaxed">
+                      {processoDetalhado.objetoAtendimento}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Informações principais */}
+              <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
+                <Card>
+                  <CardHeader className="pb-3">
                     <CardTitle className="flex items-center gap-2 text-lg">
                       <User className="h-5 w-5" />
                       Dados do Cliente
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div>
-                      <label className="text-sm font-medium text-gray-600">Telefones</label>
-                      <p className="flex items-center gap-2">
-                        <Phone className="h-4 w-4" />
-                        {processoDetalhado.telefones}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                      <Mail className="h-5 w-5" />
-                      Controle de Email
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div>
-                      <label className="text-sm font-medium text-gray-600">Status do Email</label>
-                      <div className="flex items-center gap-2">
-                        {processoDetalhado.emailEnviado ? (
-                          <Badge className="bg-green-100 text-green-800">
-                            <Check className="h-3 w-3 mr-1" />
-                            Email Enviado
-                          </Badge>
-                        ) : (
-                          <Badge className="bg-red-100 text-red-800">
-                            <Clock className="h-3 w-3 mr-1" />
-                            Email Pendente
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                    {processoDetalhado.dataUltimoEmail && (
+                  <CardContent className="pt-0">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label className="text-sm font-medium text-gray-600">Data do Último Envio</label>
+                        <label className="text-sm font-medium text-gray-600">Email</label>
                         <p className="flex items-center gap-2">
-                          <Calendar className="h-4 w-4" />
-                          {processoDetalhado.dataUltimoEmail}
+                          <Mail className="h-4 w-4" />
+                          {processoDetalhado.emailCliente}
                         </p>
                       </div>
-                    )}
-                    <div>
-                      <label className="text-sm font-medium text-gray-600">Origem</label>
-                      <p>{processoDetalhado.origem === 'enviados' ? 'Aba Enviados' : 'Aba Pendentes'}</p>
+                      <div>
+                        <label className="text-sm font-medium text-gray-600">Telefones</label>
+                        <p className="flex items-center gap-2">
+                          <Phone className="h-4 w-4" />
+                          {processoDetalhado.telefones}
+                        </p>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -787,60 +961,17 @@ const EmailsProcessos = () => {
                     <label className="text-sm font-medium text-gray-600">Instância</label>
                     <p>{processoDetalhado.instancia}</p>
                   </div>
+                  {processoDetalhado.exAdverso && (
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Ex-adverso</label>
+                      <p>{processoDetalhado.exAdverso}</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
-              {/* Objeto do Atendimento */}
-              {processoDetalhado.objetoAtendimento && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                      <FileText className="h-5 w-5" />
-                      Objeto do Atendimento
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-gray-700 leading-relaxed">
-                      {processoDetalhado.objetoAtendimento}
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Informações Adicionais */}
-              {(processoDetalhado.exAdverso || processoDetalhado.responsavel || processoDetalhado.observacoes) && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                      <Building className="h-5 w-5" />
-                      Informações Adicionais
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {processoDetalhado.exAdverso && (
-                      <div>
-                        <label className="text-sm font-medium text-gray-600">Ex-adverso</label>
-                        <p>{processoDetalhado.exAdverso}</p>
-                      </div>
-                    )}
-                    {processoDetalhado.responsavel && (
-                      <div>
-                        <label className="text-sm font-medium text-gray-600">Responsável</label>
-                        <p>{processoDetalhado.responsavel}</p>
-                      </div>
-                    )}
-                    {processoDetalhado.observacoes && (
-                      <div>
-                        <label className="text-sm font-medium text-gray-600">Observações</label>
-                        <p className="text-gray-700 leading-relaxed">{processoDetalhado.observacoes}</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
               {/* Ações */}
-              <div className="flex justify-end gap-2 pt-4 border-t">
+              <div className="flex justify-end gap-2">
                 <Button
                   onClick={() => setProcessoDetalhado(null)}
                   variant="outline"
@@ -868,4 +999,4 @@ const EmailsProcessos = () => {
   );
 };
 
-export default EmailsProcessos
+export default EmailsProcessos;

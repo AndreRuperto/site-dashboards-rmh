@@ -828,16 +828,61 @@ app.delete('/api/documents/:id', authMiddleware, async (req, res) => {
   }
 });
 
+function getContentType(extension) {
+  const mimeTypes = {
+    '.pdf': 'application/pdf',
+    '.doc': 'application/msword',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.xls': 'application/vnd.ms-excel',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.ppt': 'application/vnd.ms-powerpoint',
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    '.txt': 'text/plain',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.zip': 'application/zip',
+    '.rar': 'application/x-rar-compressed',
+    '.csv': 'text/csv'
+  };
+  
+  return mimeTypes[extension.toLowerCase()] || 'application/octet-stream';
+}
+
+function getFileExtension(mimeType) {
+  const extensions = {
+    'application/pdf': 'pdf',
+    'application/msword': 'doc',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+    'application/vnd.ms-excel': 'xls',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+    'application/vnd.ms-powerpoint': 'ppt',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+    'text/plain': 'txt',
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/gif': 'gif',
+    'application/zip': 'zip',
+    'application/x-rar-compressed': 'rar',
+    'text/csv': 'csv'
+  };
+  
+  return extensions[mimeType] || 'bin';
+}
+
 // ======================= DOWNLOAD COM CONTADOR =======================
 app.get('/api/documents/:id/download', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    console.log(`📥 DOWNLOAD: Iniciando download do documento ID: ${id} para usuário: ${req.user.nome}`);
     
-    const result = await pool.query(`
-      SELECT url_arquivo, nome_arquivo, titulo FROM documentos
-      WHERE id = $1 AND ativo = true
-    `, [id]);
+    console.log(`📥 DOWNLOAD: Solicitado para documento ${id} por usuário ${req.user.nome}`);
+    
+    // Buscar documento
+    const result = await pool.query(
+      'SELECT * FROM documentos WHERE id = $1 AND ativo = true',
+      [id]
+    );
     
     if (result.rows.length === 0) {
       console.log(`❌ DOWNLOAD: Documento ${id} não encontrado`);
@@ -845,30 +890,32 @@ app.get('/api/documents/:id/download', authMiddleware, async (req, res) => {
     }
     
     const documento = result.rows[0];
+    console.log(`📄 DOWNLOAD: Processando "${documento.titulo}"`);
     
-    // ✅ INCREMENTAR CONTADOR
-    await pool.query(`
-      UPDATE documentos SET qtd_downloads = COALESCE(qtd_downloads, 0) + 1
-      WHERE id = $1
-    `, [id]);
+    // ✅ DEBUG: Log completo do documento
+    console.log('🔍 DEBUG DOCUMENTO:', {
+      titulo: documento.titulo,
+      nome_arquivo: documento.nome_arquivo,
+      url_arquivo: documento.url_arquivo,
+      tipo_mime: documento.tipo_mime
+    });
     
-    console.log(`✅ DOWNLOAD: Contador incrementado para "${documento.titulo}"`);
+    // Verificar se é URL externa ou arquivo local
+    const isExternalUrl = documento.url_arquivo.startsWith('http://') || 
+                         documento.url_arquivo.startsWith('https://');
     
-    // ✅ VERIFICAR SE É URL EXTERNA OU ARQUIVO LOCAL
-    if (documento.url_arquivo.startsWith('http')) {
-      // URL externa (Google Drive, etc.) - fazer redirect
+    if (isExternalUrl) {
+      // URLs externas - fazer redirect
       console.log(`🌐 DOWNLOAD: URL externa, redirecionando para: ${documento.url_arquivo}`);
       return res.redirect(documento.url_arquivo);
     } else {
-      // Arquivo local - servir diretamente do diretório correto
+      // Arquivo local - servir com headers corretos
       const relativePath = documento.url_arquivo.replace(/^\/documents\//, '');
       const filePath = path.join(DOCUMENTS_PATH, relativePath);
       
       console.log(`📁 DOWNLOAD: Tentando servir arquivo local:`);
       console.log(`   - URL no banco: ${documento.url_arquivo}`);
-      console.log(`   - Caminho relativo: ${relativePath}`);
       console.log(`   - Caminho completo: ${filePath}`);
-      console.log(`   - Diretório base: ${DOCUMENTS_PATH}`);
       
       // Verificar se arquivo existe
       try {
@@ -876,29 +923,55 @@ app.get('/api/documents/:id/download', authMiddleware, async (req, res) => {
         console.log(`✅ DOWNLOAD: Arquivo encontrado!`);
       } catch (error) {
         console.log(`❌ DOWNLOAD: Arquivo não encontrado: ${filePath}`);
-        
-        // Tentar listar arquivos no diretório para debug
-        try {
-          const files = await fs.readdir(DOCUMENTS_PATH);
-          console.log(`📋 Arquivos disponíveis em ${DOCUMENTS_PATH}:`, files);
-        } catch (listError) {
-          console.log(`❌ Erro ao listar diretório: ${listError.message}`);
-        }
-        
         return res.status(404).json({ 
-          error: 'Arquivo não encontrado no servidor',
-          debug: {
-            urlArquivo: documento.url_arquivo,
-            caminhoCompleto: filePath,
-            diretorioBase: DOCUMENTS_PATH
-          }
+          error: 'Arquivo não encontrado no servidor'
         });
       }
       
-      // Configurar headers para download
+      // ✅ HEADERS CORRIGIDOS PARA DOWNLOAD
       const fileName = documento.nome_arquivo || documento.titulo;
-      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-      res.setHeader('Content-Type', 'application/octet-stream');
+      const fileExt = path.extname(fileName) || path.extname(filePath);
+      const finalFileName = fileExt ? fileName : `${fileName}.${getFileExtension(documento.tipo_mime || 'application/octet-stream')}`;
+      
+      // ✅ DEBUG: Log detalhado dos nomes e extensões
+      console.log('🔍 DEBUG NOMES:', {
+        nome_arquivo_banco: documento.nome_arquivo,
+        titulo: documento.titulo,
+        fileName_escolhido: fileName,
+        extensao_detectada: fileExt,
+        extensao_do_path: path.extname(filePath),
+        finalFileName: finalFileName,
+        tipo_mime: documento.tipo_mime
+      });
+      
+      // Determinar Content-Type baseado na extensão ou mime type
+      const contentType = documento.tipo_mime || getContentType(fileExt) || 'application/octet-stream';
+      
+      console.log(`📋 DOWNLOAD: Configurando headers:`);
+      console.log(`   - Nome final: ${finalFileName}`);
+      console.log(`   - Content-Type: ${contentType}`);
+      console.log(`   - Content-Disposition: attachment; filename*=UTF-8''${encodeURIComponent(finalFileName)}`);
+      
+      // ✅ CONFIGURAR HEADERS CORRETAMENTE
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(finalFileName)}`);
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Pragma', 'no-cache');
+      
+      // ✅ DEBUG: Verificar se os headers foram definidos
+      console.log('🔍 DEBUG HEADERS DEFINIDOS:', {
+        'Content-Disposition': res.getHeader('Content-Disposition'),
+        'Content-Type': res.getHeader('Content-Type')
+      });
+      
+      // Adicionar informações de tamanho se disponível
+      try {
+        const stats = await fs.stat(filePath);
+        res.setHeader('Content-Length', stats.size);
+        console.log(`📊 DOWNLOAD: Tamanho do arquivo: ${stats.size} bytes`);
+      } catch (error) {
+        console.warn(`⚠️ Não foi possível obter estatísticas do arquivo: ${error.message}`);
+      }
       
       // Servir arquivo
       return res.sendFile(filePath, (err) => {
@@ -908,7 +981,8 @@ app.get('/api/documents/:id/download', authMiddleware, async (req, res) => {
             res.status(500).json({ error: 'Erro ao enviar arquivo' });
           }
         } else {
-          console.log(`✅ Arquivo enviado com sucesso: ${fileName}`);
+          console.log(`✅ Arquivo "${finalFileName}" enviado com sucesso`);
+          console.log('🎯 DOWNLOAD FINALIZADO - Headers enviados ao browser');
         }
       });
     }
@@ -1805,48 +1879,77 @@ async function moverProcessoParaEnviados(numeroProcesso, idProcessoPlanilha, dat
 // Buscar dados da planilha com mapeamento correto - VERSÃO CORRIGIDA
 app.get('/api/processos', authMiddleware, async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT 
-        id_processo AS idProcessoPlanilha,
-        numero_unico AS numeroProcesso,
-        cpf_assistido AS cpfAssistido,
-        nome_assistido AS cliente,
-        emails AS emailCliente,
-        telefones,
-        id_atendimento_vinculado AS idAtendimento,
-        tipo_atendimento AS tipoProcesso,
-        natureza_processo,
-        data_autuacao AS dataAjuizamento,
-        ex_adverso AS exAdverso,
-        instancia,
-        objeto_atendimento AS objetoAtendimento
-      FROM processo_emails_pendentes
-      ORDER BY id_processo DESC
-    `);
+    const query = `
+      SELECT * FROM (
+        SELECT 
+          id_processo AS idProcessoPlanilha,
+          numero_unico AS numeroProcesso,
+          cpf_assistido AS cpfAssistido,
+          nome_assistido AS cliente,
+          emails AS emailCliente,
+          telefones,
+          id_atendimento_vinculado AS idAtendimento,
+          tipo_atendimento AS tipoProcesso,
+          natureza_processo,
+          data_autuacao AS dataAjuizamento,
+          ex_adverso AS exAdverso,
+          instancia,
+          objeto_atendimento AS objetoAtendimento,
+          false AS emailEnviado,
+          null AS dataUltimoEmail,
+          'Pendente' AS statusEmail
+        FROM processo_emails_pendentes
+
+        UNION ALL
+
+        SELECT 
+          id_processo AS idProcessoPlanilha,
+          numero_unico AS numeroProcesso,
+          cpf_assistido AS cpfAssistido,
+          nome_assistido AS cliente,
+          emails AS emailCliente,
+          telefones,
+          id_atendimento_vinculado AS idAtendimento,
+          tipo_atendimento AS tipoProcesso,
+          natureza_processo,
+          data_autuacao AS dataAjuizamento,
+          ex_adverso AS exAdverso,
+          instancia,
+          objeto_atendimento AS objetoAtendimento,
+          true AS emailEnviado,
+          data_envio AS dataUltimoEmail,
+          'Enviado' AS statusEmail
+        FROM processo_emails_enviados
+      ) AS todos
+      ORDER BY dataAjuizamento DESC;
+    `;
+
+    const result = await pool.query(query);
 
     const processos = result.rows.map((row, index) => ({
-      id: row.idprocessoplanilha || index + 1, // ✅ Garantir que tem ID único
-      idProcessoPlanilha: row.idprocessoplanilha, 
-      numeroProcesso: row.numeroprocesso, 
-      cpfAssistido: row.cpfassistido, 
+      id: row.idprocessoplanilha || index + 1,
+      idProcessoPlanilha: row.idprocessoplanilha,
+      numeroProcesso: row.numeroprocesso,
+      cpfAssistido: row.cpfassistido,
       cliente: row.cliente,
-      emailCliente: row.emailcliente, 
+      emailCliente: row.emailcliente,
       telefones: row.telefones,
-      idAtendimento: row.idatendimento, 
-      tipoProcesso: row.tipoprocesso, 
+      idAtendimento: row.idatendimento,
+      tipoProcesso: row.tipoprocesso,
       naturezaProcesso: row.natureza_processo,
-      dataAjuizamento: row.dataajuizamento, 
-      exAdverso: row.exadverso, 
+      dataAjuizamento: row.dataajuizamento,
+      exAdverso: row.exadverso,
       instancia: row.instancia,
-      objetoAtendimento: row.objetoatendimento, 
-      emailEnviado: false,
-      dataUltimoEmail: null,
+      objetoAtendimento: row.objetoatendimento,
+      emailEnviado: row.emailenviado,
+      dataUltimoEmail: row.dataultimoemail,
+      statusEmail: row.statusemail,
       origem: 'banco',
       status: row.tipoprocesso 
         ? `${row.tipoprocesso} - ${row.dataajuizamento || 'Sem data'}`
         : 'Aguardando análise',
-      ultimoAndamento: row.dataajuizamento || '', 
-      responsavel: row.exadverso || 'Não informado', 
+      ultimoAndamento: row.dataajuizamento || '',
+      responsavel: row.exadverso || 'Não informado',
       valorCausa: 'A definir',
       observacoes: ''
     }));
@@ -1858,7 +1961,7 @@ app.get('/api/processos', authMiddleware, async (req, res) => {
       ultimaAtualizacao: new Date().toISOString()
     });
   } catch (error) {
-    console.error('❌ Erro ao buscar processos do banco:', error);
+    console.error('❌ Erro ao buscar processos do banco:', error.message, error.stack);
     res.status(500).json({ error: 'Erro ao buscar dados do banco de dados' });
   }
 });
@@ -2481,7 +2584,7 @@ app.post('/api/emails/massa', authMiddleware, async (req, res) => {
           
           const resultadoMovimentacao = await moverProcessoParaEnviados(
             processo.numeroProcesso,
-            processo,
+            processo.idProcessoPlanilha,
             new Date().toISOString()
           );
           
@@ -2959,13 +3062,17 @@ app.get('/api/auth/validar-email/:token', async (req, res) => {
       [token]
     );
 
-    if (tokenResult.rows.length === 0) {
-      return res.status(400).send(`
+    // Função para gerar o template HTML padrão
+    const gerarTemplate = (titulo, icone, conteudo, botaoTexto = '🏠 Voltar ao Início', botaoUrl = null) => {
+      const urlBotao = botaoUrl || `${process.env.API_BASE_URL || 'http://localhost:3001'}`;
+      
+      return `
         <html>
         <head>
           <meta charset="UTF-8">
-          <title>Token Não Encontrado - RMH</title>
+          <title>${titulo} - RMH</title>
           <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;600&family=Ruda:wght@900&display=swap" rel="stylesheet">
+          <link rel="icon" type="image/png" href="/logo.png" sizes="32x32">
           <style>
             body { 
               font-family: 'Raleway', sans-serif; 
@@ -2978,6 +3085,11 @@ app.get('/api/auth/validar-email/:token', async (req, res) => {
               background: #f9f9f9; padding: 40px; border-radius: 16px; 
               box-shadow: 0 10px 30px rgba(0,0,0,0.08); text-align: center; 
               max-width: 500px; margin: 20px;
+              animation: slideIn 0.5s ease-out;
+            }
+            @keyframes slideIn {
+              from { opacity: 0; transform: translateY(-20px); }
+              to { opacity: 1; transform: translateY(0); }
             }
             .header {
               background-color: #165A5D;
@@ -2992,52 +3104,123 @@ app.get('/api/auth/validar-email/:token', async (req, res) => {
               margin: 0;
               letter-spacing: 0.5px;
             }
-            .icon { font-size: 48px; margin-bottom: 10px; }
-            h2 { color: #0d3638; margin: 20px 0; font-family: 'Ruda', sans-serif; }
-            p { color: #555; line-height: 1.6; margin: 15px 0; }
-            .reason { 
-              background: #EFEFEF; padding: 15px; border-radius: 10px; 
-              border-left: 4px solid #165A5D; margin: 20px 0; text-align: left;
+            .icon { 
+              font-size: 48px; 
+              margin-bottom: 10px; 
+              animation: bounce 1s;
+            }
+            @keyframes bounce {
+              0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+              40% { transform: translateY(-10px); }
+              60% { transform: translateY(-5px); }
+            }
+            h2 { 
+              color: #0d3638; 
+              margin: 20px 0; 
+              font-family: 'Ruda', sans-serif; 
+            }
+            p { 
+              color: #555; 
+              line-height: 1.6; 
+              margin: 15px 0; 
+            }
+            .info-box { 
+              background: #EFEFEF; 
+              padding: 15px; 
+              border-radius: 10px; 
+              border-left: 4px solid #165A5D; 
+              margin: 20px 0; 
+              text-align: left;
+            }
+            .success-box {
+              background: #e8f5e8; 
+              padding: 15px; 
+              border-radius: 10px; 
+              border-left: 4px solid #27ae60; 
+              margin: 20px 0;
+            }
+            .warning-box {
+              background: #fff3cd; 
+              padding: 15px; 
+              border-radius: 10px; 
+              border-left: 4px solid #f39c12; 
+              margin: 20px 0;
+            }
+            .error-box {
+              background: #fdf2f2; 
+              padding: 15px; 
+              border-radius: 10px; 
+              border-left: 4px solid #e74c3c; 
+              margin: 20px 0;
             }
             .contact { 
-              background: #e3f2fd; padding: 15px; border-radius: 10px; 
-              margin: 20px 0; border-left: 4px solid #165A5D;
+              background: #e3f2fd; 
+              padding: 15px; 
+              border-radius: 10px; 
+              margin: 20px 0; 
+              border-left: 4px solid #165A5D;
             }
             .button {
-              background: #165A5D; color: white; padding: 15px 30px;
-              text-decoration: none; border-radius: 8px; display: inline-block;
-              margin: 20px 10px; transition: all 0.3s; font-weight: 600;
+              background: #165A5D; 
+              color: white; 
+              padding: 15px 30px;
+              text-decoration: none; 
+              border-radius: 8px; 
+              display: inline-block;
+              margin: 20px 10px; 
+              transition: all 0.3s; 
+              font-weight: 600;
             }
-            .button:hover { background: #0d3638; }
+            .button:hover { 
+              background: #0d3638; 
+              transform: translateY(-2px);
+            }
+            .badge {
+              display: inline-block;
+              padding: 6px 12px;
+              background-color: #165A5D;
+              color: white;
+              border-radius: 20px;
+              font-size: 14px;
+              font-weight: 600;
+              margin: 10px 0;
+            }
           </style>
         </head>
         <body>
           <div class="container">
             <div class="header">
-              <div class="icon">🔍</div>
-              <h1>Token Não Encontrado</h1>
+              <div class="icon">${icone}</div>
+              <h1>${titulo}</h1>
             </div>
-            <h2>Link de Validação Inválido</h2>
-            <p>Este link de validação não foi encontrado em nossa base de dados.</p>
-            
-            <div class="reason">
-              <strong>❌ Motivo:</strong> Token inexistente ou inválido
-            </div>
-            
-            <div class="contact">
-              <strong>💡 O que fazer:</strong><br>
-              • Verifique se copiou o link completo<br>
-              • Solicite um novo link de verificação<br>
-              • Entre em contato com o administrador
-            </div>
-            
-            <a href="${process.env.API_BASE_URL || 'http://localhost:3001'}" class="button">
-              🏠 Voltar ao Início
+            ${conteudo}
+            <a href="${urlBotao}" class="button">
+              ${botaoTexto}
             </a>
           </div>
         </body>
         </html>
-      `);
+      `;
+    };
+
+    if (tokenResult.rows.length === 0) {
+      const conteudo = `
+        <h2>Link de Validação Inválido</h2>
+        <p>Este link de validação não foi encontrado em nossa base de dados.</p>
+        
+        <div class="error-box">
+          <strong>❌ Motivo:</strong> Token inexistente ou inválido
+        </div>
+        
+        <div class="contact">
+          <strong>💡 O que fazer:</strong><br>
+          • Verifique se copiou o link completo<br>
+          • Solicite um novo link de verificação<br>
+          • Entre em contato com o administrador
+        </div>
+      `;
+      
+      return res.status(400).send(gerarTemplate('Token Não Encontrado', '🔍', conteudo));
     }
 
     const verification = tokenResult.rows[0];
@@ -3058,254 +3241,73 @@ app.get('/api/auth/validar-email/:token', async (req, res) => {
 
     // VERIFICAR CONDIÇÕES DE ERRO
     if (usuarioJaVerificado) {
-      return res.status(400).send(`
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>Conta Já Ativada - RMH</title>
-          <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;600&family=Ruda:wght@900&display=swap" rel="stylesheet">
-          <style>
-            body { 
-              font-family: 'Raleway', sans-serif; 
-              background-color: #DADADA;
-              color: #0d3638;
-              margin: 0; padding: 20px; min-height: 100vh;
-              display: flex; align-items: center; justify-content: center;
-            }
-            .container { 
-              background: #f9f9f9; padding: 40px; border-radius: 16px; 
-              box-shadow: 0 10px 30px rgba(0,0,0,0.08); text-align: center; 
-              max-width: 500px; margin: 20px;
-            }
-            .header {
-              background-color: #165A5D;
-              margin: -40px -40px 30px -40px;
-              padding: 30px 40px;
-              border-radius: 16px 16px 0 0;
-              color: white;
-            }
-            .header h1 {
-              font-family: 'Ruda', sans-serif;
-              font-size: 24px;
-              margin: 0;
-              letter-spacing: 0.5px;
-            }
-            .icon { font-size: 48px; margin-bottom: 10px; }
-            h2 { color: #0d3638; margin: 20px 0; font-family: 'Ruda', sans-serif; }
-            p { color: #555; line-height: 1.6; margin: 15px 0; }
-            .info { 
-              background: #EFEFEF; padding: 15px; border-radius: 10px; 
-              border-left: 4px solid #165A5D; margin: 20px 0;
-            }
-            .button {
-              background: #165A5D; color: white; padding: 15px 30px;
-              text-decoration: none; border-radius: 8px; display: inline-block;
-              margin: 20px 10px; transition: all 0.3s; font-weight: 600;
-            }
-            .button:hover { background: #0d3638; }
-            .success-badge {
-              display: inline-block;
-              padding: 6px 12px;
-              background-color: #165A5D;
-              color: white;
-              border-radius: 20px;
-              font-size: 14px;
-              font-weight: 600;
-              margin: 10px 0;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <div class="icon">✅</div>
-              <h1>Conta Já Ativada</h1>
-            </div>
-            <h2>Olá, ${verification.nome}!</h2>
-            <div class="success-badge">${verification.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}</div>
-            <p>Sua conta já foi verificada anteriormente e está ativa.</p>
-            
-            <div class="info">
-              <strong>✨ Status:</strong> Email já verificado<br>
-              <strong>📧 Email:</strong> ${verification.email_pessoal}<br>
-              <strong>🎯 Tipo:</strong> ${verification.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}
-            </div>
-            
-            <p>Você já pode fazer login na plataforma!</p>
-            
-            <a href="${process.env.API_BASE_URL || 'http://localhost:3001'}" class="button">
-              🚀 Acessar Plataforma
-            </a>
-          </div>
-        </body>
-        </html>
-      `);
+      const conteudo = `
+        <h2>Olá, ${verification.nome}!</h2>
+        <div class="badge">${verification.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}</div>
+        <p>Sua conta já foi verificada anteriormente e está ativa.</p>
+        
+        <div class="success-box">
+          <strong>Status:</strong> Email já verificado<br>
+          <strong>Email:</strong> ${verification.email_pessoal}<br>
+          <strong>Tipo:</strong> ${verification.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}
+        </div>
+        
+        <p>Você já pode fazer login na plataforma!</p>
+      `;
+      
+      return res.status(400).send(gerarTemplate('Conta Já Ativada', '✅', conteudo, '🚀 Acessar Plataforma'));
     }
 
     if (jaUsado) {
       const dataUso = new Date(verification.usado_em).toLocaleString('pt-BR');
       
-      return res.status(400).send(`
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>Link Já Utilizado - RMH</title>
-          <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;600&family=Ruda:wght@900&display=swap" rel="stylesheet">
-          <style>
-            body { 
-              font-family: 'Raleway', sans-serif; 
-              background-color: #DADADA;
-              color: #0d3638;
-              margin: 0; padding: 20px; min-height: 100vh;
-              display: flex; align-items: center; justify-content: center;
-            }
-            .container { 
-              background: #f9f9f9; padding: 40px; border-radius: 16px; 
-              box-shadow: 0 10px 30px rgba(0,0,0,0.08); text-align: center; 
-              max-width: 500px; margin: 20px;
-            }
-            .header {
-              background-color: #165A5D;
-              margin: -40px -40px 30px -40px;
-              padding: 30px 40px;
-              border-radius: 16px 16px 0 0;
-              color: white;
-            }
-            .header h1 {
-              font-family: 'Ruda', sans-serif;
-              font-size: 24px;
-              margin: 0;
-              letter-spacing: 0.5px;
-            }
-            .icon { font-size: 48px; margin-bottom: 10px; }
-            h2 { color: #0d3638; margin: 20px 0; font-family: 'Ruda', sans-serif; }
-            p { color: #555; line-height: 1.6; margin: 15px 0; }
-            .reason { 
-              background: #EFEFEF; padding: 15px; border-radius: 10px; 
-              border-left: 4px solid #165A5D; margin: 20px 0; text-align: left;
-            }
-            .contact { 
-              background: #e3f2fd; padding: 15px; border-radius: 10px; 
-              margin: 20px 0; border-left: 4px solid #165A5D;
-            }
-            .button {
-              background: #165A5D; color: white; padding: 15px 30px;
-              text-decoration: none; border-radius: 8px; display: inline-block;
-              margin: 20px 10px; transition: all 0.3s; font-weight: 600;
-            }
-            .button:hover { background: #0d3638; }
-            .warning-badge {
-              display: inline-block;
-              padding: 6px 12px;
-              background-color: #165A5D;
-              color: white;
-              border-radius: 20px;
-              font-size: 14px;
-              font-weight: 600;
-              margin: 10px 0;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <div class="icon">🔒</div>
-              <h1>Link Já Utilizado</h1>
-            </div>
-            <h2>Olá, ${verification.nome}!</h2>
-            <div class="warning-badge">${verification.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}</div>
-            <p>Este link de validação já foi usado anteriormente.</p>
-            
-            <div class="reason">
-              <strong>⚠️ Motivo:</strong> Link já utilizado<br>
-              <strong>📅 Usado em:</strong> ${dataUso}<br>
-              <strong>👤 Usuário:</strong> ${verification.nome}
-            </div>
-            
-            <div class="contact">
-              <strong>💡 O que fazer:</strong><br>
-              • Tente fazer login normalmente<br>
-              • Se não conseguir, solicite um novo link<br>
-              • Entre em contato com o administrador se precisar
-            </div>
-            
-            <a href="${process.env.API_BASE_URL || 'http://localhost:3001'}" class="button">
-              🚀 Tentar Login
-            </a>
-          </div>
-        </body>
-        </html>
-      `);
+      const conteudo = `
+        <h2>Olá, ${verification.nome}!</h2>
+        <div class="badge">${verification.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}</div>
+        <p>Este link de validação já foi usado anteriormente.</p>
+        
+        <div class="warning-box">
+          <strong>Motivo:</strong> Link já utilizado<br>
+          <strong>Usado em:</strong> ${dataUso}<br>
+          <strong>Usuário:</strong> ${verification.nome}
+        </div>
+        
+        <div class="contact">
+          <strong>O que fazer:</strong><br>
+          • Tente fazer login normalmente<br>
+          • Se não conseguir, solicite um novo link<br>
+          • Entre em contato com o administrador se precisar
+        </div>
+      `;
+      
+      return res.status(400).send(gerarTemplate('Link Já Utilizado', '🔒', conteudo, '🚀 Tentar Login'));
     }
 
     if (expirou) {
       const dataExpiracao = new Date(verification.expira_em).toLocaleString('pt-BR');
       const horasAtrasado = Math.floor((agora - new Date(verification.expira_em)) / (1000 * 60 * 60));
       
-      return res.status(400).send(`
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>Link Expirado - RMH</title>
-          <style>
-            body { 
-              font-family: 'Segoe UI', Arial, sans-serif; 
-              background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
-              margin: 0; padding: 0; min-height: 100vh;
-              display: flex; align-items: center; justify-content: center;
-            }
-            .container { 
-              background: white; padding: 40px; border-radius: 15px; 
-              box-shadow: 0 20px 40px rgba(0,0,0,0.1); text-align: center; 
-              max-width: 500px; margin: 20px;
-            }
-            .icon { font-size: 64px; margin-bottom: 20px; }
-            h2 { color: #e74c3c; margin: 20px 0; }
-            p { color: #666; line-height: 1.6; margin: 15px 0; }
-            .reason { 
-              background: #fdf2f2; padding: 15px; border-radius: 8px; 
-              border-left: 4px solid #e74c3c; margin: 20px 0; text-align: left;
-            }
-            .contact { 
-              background: #e3f2fd; padding: 15px; border-radius: 8px; 
-              margin: 20px 0; border-left: 4px solid #2196f3;
-            }
-            .button {
-              background: #165A5D; color: white; padding: 12px 24px;
-              text-decoration: none; border-radius: 6px; display: inline-block;
-              margin: 20px 10px; transition: all 0.3s;
-            }
-            .button:hover { background: #0d3638; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="icon">⏰</div>
-            <h2>Link Expirado</h2>
-            <p>Olá, <strong>${verification.nome}</strong>!</p>
-            <p>Este link de validação expirou e não pode mais ser usado.</p>
-            
-            <div class="reason">
-              <strong>❌ Motivo:</strong> Link expirado<br>
-              <strong>📅 Expirou em:</strong> ${dataExpiracao}<br>
-              <strong>⏳ Há:</strong> ${horasAtrasado} hora(s) atrás<br>
-              <strong>👤 Usuário:</strong> ${verification.nome}
-            </div>
-            
-            <div class="contact">
-              <strong>💡 O que fazer:</strong><br>
-              • Solicite um novo link de verificação<br>
-              • Entre em contato com o administrador<br>
-              • Use a opção "Reenviar código" no login
-            </div>
-            
-            <a href="${process.env.API_BASE_URL || 'http://localhost:3001'}" class="button">
-              🔄 Solicitar Novo Link
-            </a>
-          </div>
-        </body>
-        </html>
-      `);
+      const conteudo = `
+        <h2>Olá, ${verification.nome}!</h2>
+        <div class="badge">${verification.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}</div>
+        <p>Este link de validação expirou e não pode mais ser usado.</p>
+        
+        <div class="error-box">
+          <strong>Motivo:</strong> Link expirado<br>
+          <strong>Expirou em:</strong> ${dataExpiracao}<br>
+          <strong>Há:</strong> ${horasAtrasado} hora(s) atrás<br>
+          <strong>Usuário:</strong> ${verification.nome}
+        </div>
+        
+        <div class="contact">
+          <strong>O que fazer:</strong><br>
+          • Solicite um novo link de verificação<br>
+          • Entre em contato com o administrador<br>
+          • Use a opção "Reenviar código" no login
+        </div>
+      `;
+      
+      return res.status(400).send(gerarTemplate('Link Expirado', '⏰', conteudo, '🔄 Solicitar Novo Link'));
     }
 
     // SE CHEGOU ATÉ AQUI, O TOKEN É VÁLIDO - PROCESSAR VERIFICAÇÃO
@@ -3326,126 +3328,31 @@ app.get('/api/auth/validar-email/:token', async (req, res) => {
     console.log(`✅ Email validado automaticamente para: ${verification.email_pessoal}`);
 
     // PÁGINA DE SUCESSO
-    res.send(`
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <title>Email Verificado - RMH</title>
-        <style>
-          body { 
-            font-family: 'Segoe UI', Arial, sans-serif; 
-            background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
-            margin: 0; padding: 0; min-height: 100vh;
-            display: flex; align-items: center; justify-content: center;
-          }
-          .container { 
-            background: white; padding: 40px; border-radius: 15px; 
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1); text-align: center; 
-            max-width: 500px; margin: 20px;
-            animation: slideIn 0.5s ease-out;
-          }
-          @keyframes slideIn {
-            from { opacity: 0; transform: translateY(-20px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
-          .icon { font-size: 64px; margin-bottom: 20px; animation: bounce 1s; }
-          @keyframes bounce {
-            0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
-            40% { transform: translateY(-10px); }
-            60% { transform: translateY(-5px); }
-          }
-          h2 { color: #27ae60; margin: 20px 0; }
-          p { color: #666; line-height: 1.6; margin: 15px 0; }
-          .success { 
-            background: #e8f5e8; padding: 15px; border-radius: 8px; 
-            border-left: 4px solid #27ae60; margin: 20px 0;
-          }
-          .button {
-            background: #165A5D; color: white; padding: 15px 30px;
-            text-decoration: none; border-radius: 6px; display: inline-block;
-            margin: 20px 10px; transition: all 0.3s; font-weight: bold;
-          }
-          .button:hover { background: #0d3638; transform: translateY(-2px); }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="icon">🎉</div>
-          <h2>Email Verificado com Sucesso!</h2>
-          <p>Parabéns, <strong>${verification.nome}</strong>!</p>
-          <p>Seu email foi verificado automaticamente e sua conta está ativa.</p>
-          
-          <div class="success">
-            <strong>✅ Status:</strong> Conta ativada<br>
-            <strong>📧 Email:</strong> ${verification.email_pessoal}<br>
-            <strong>🎯 Tipo:</strong> ${verification.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}<br>
-            <strong>⏰ Verificado:</strong> ${new Date().toLocaleString('pt-BR')}
-          </div>
-          
-          <p>Agora você pode fazer login na plataforma com suas credenciais!</p>
-          
-          <a href="${process.env.API_BASE_URL || 'http://localhost:3001'}" class="button">
-            🚀 Acessar Plataforma
-          </a>
-        </div>
-      </body>
-      </html>
-    `);
+    const conteudoSucesso = `
+      <h2>Parabéns, ${verification.nome}!</h2>
+      <div class="badge">${verification.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}</div>
+      <p>Seu email foi verificado automaticamente e sua conta está ativa.</p>
+      <p>Agora você pode fazer login na plataforma com suas credenciais!</p>
+    `;
+
+    res.send(gerarTemplate('Email Verificado com Sucesso!', '🎉', conteudoSucesso, 'Acessar Plataforma'));
 
   } catch (error) {
     console.error('❌ Erro na validação automática:', error);
-    res.status(500).send(`
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <title>Erro Interno - RMH</title>
-        <style>
-          body { 
-            font-family: 'Segoe UI', Arial, sans-serif; 
-            background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
-            margin: 0; padding: 0; min-height: 100vh;
-            display: flex; align-items: center; justify-content: center;
-          }
-          .container { 
-            background: white; padding: 40px; border-radius: 15px; 
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1); text-align: center; 
-            max-width: 500px; margin: 20px;
-          }
-          .icon { font-size: 64px; margin-bottom: 20px; }
-          h2 { color: #7f8c8d; margin: 20px 0; }
-          p { color: #666; line-height: 1.6; margin: 15px 0; }
-          .error { 
-            background: #f8f9fa; padding: 15px; border-radius: 8px; 
-            border-left: 4px solid #7f8c8d; margin: 20px 0;
-          }
-          .button {
-            background: #165A5D; color: white; padding: 12px 24px;
-            text-decoration: none; border-radius: 6px; display: inline-block;
-            margin: 20px 10px; transition: all 0.3s;
-          }
-          .button:hover { background: #0d3638; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="icon">⚠️</div>
-          <h2>Erro Interno do Servidor</h2>
-          <p>Ocorreu um erro inesperado ao processar sua solicitação.</p>
-          
-          <div class="error">
-            <strong>🔧 Situação:</strong> Erro interno do sistema<br>
-            <strong>💡 Recomendação:</strong> Tente novamente em alguns instantes
-          </div>
-          
-          <p>Se o problema persistir, entre em contato com o administrador.</p>
-          
-          <a href="${process.env.API_BASE_URL || 'http://localhost:3001'}" class="button">
-            🏠 Voltar ao Início
-          </a>
-        </div>
-      </body>
-      </html>
-    `);
+    
+    const conteudoErro = `
+      <h2>Erro Interno do Servidor</h2>
+      <p>Ocorreu um erro inesperado ao processar sua solicitação.</p>
+      
+      <div class="error-box">
+        <strong>🔧 Situação:</strong> Erro interno do sistema<br>
+        <strong>💡 Recomendação:</strong> Tente novamente em alguns instantes
+      </div>
+      
+      <p>Se o problema persistir, entre em contato com o administrador.</p>
+    `;
+    
+    res.status(500).send(gerarTemplate('Erro Interno', '⚠️', conteudoErro));
   }
 });
 
@@ -4434,10 +4341,12 @@ async function checkUserDashboardAccess(userId, dashboardId) {
         d.id,
         d.titulo,
         d.setor,
+        d.tipo_visibilidade,
         d.powerbi_report_id,
         d.powerbi_group_id,
         u.tipo_usuario,
-        u.setor as user_setor
+        u.setor as user_setor,
+        u.is_coordenador
       FROM dashboards d
       CROSS JOIN usuarios u
       WHERE d.id = $1 
@@ -4446,9 +4355,20 @@ async function checkUserDashboardAccess(userId, dashboardId) {
         AND (
           -- Admin pode ver tudo
           u.tipo_usuario = 'admin'
-          -- Ou mesmo setor
+          
+          -- Dashboard com visibilidade 'geral' - TODOS podem ver
+          OR d.tipo_visibilidade = 'geral'
+          
+          -- Dashboard com visibilidade 'coordenadores' - apenas coordenadores e admins
+          OR (d.tipo_visibilidade = 'coordenadores' AND (u.is_coordenador = true OR u.tipo_usuario = 'admin'))
+          
+          -- Dashboard com visibilidade 'admin' - apenas admins
+          OR (d.tipo_visibilidade = 'admin' AND u.tipo_usuario = 'admin')
+          
+          -- Mesmo setor (para compatibilidade com dashboards antigos)
           OR d.setor = u.setor
-          -- Ou dashboard público
+          
+          -- Dashboards legados com setor 'Geral' ou 'Todos'
           OR d.setor = 'Geral'
           OR d.setor = 'Todos'
         )
@@ -4459,6 +4379,7 @@ async function checkUserDashboardAccess(userId, dashboardId) {
     if (hasAccess) {
       const dashboard = result.rows[0];
       console.log(`✅ Usuário ${userId} tem acesso ao dashboard "${dashboard.titulo}"`);
+      console.log(`📊 Dashboard: setor="${dashboard.setor}", visibilidade="${dashboard.tipo_visibilidade}"`);
       return dashboard;
     } else {
       console.log(`❌ Usuário ${userId} não tem acesso ao dashboard ${dashboardId}`);

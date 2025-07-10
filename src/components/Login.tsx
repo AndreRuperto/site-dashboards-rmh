@@ -65,7 +65,7 @@ const Login: React.FC<LoginProps> = ({
       
       toast({
         title: "Login realizado!",
-        description: "Redirecionando para dashboard...",
+        description: "Redirecionando ...",
       });
       
       setTimeout(() => {
