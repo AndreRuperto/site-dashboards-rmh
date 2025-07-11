@@ -236,9 +236,24 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
 
       console.log(`🎯 Processando arquivo: ${document.title}`);
 
+      // ✅ PRIORIDADE 1: Usar thumbnailUrl salva no documento
+      if (document.thumbnailUrl) {
+        console.log(`✅ Usando miniatura salva: ${document.thumbnailUrl}`);
+        
+        // Verificar se precisa do domínio da API
+        const fullThumbnailUrl = document.thumbnailUrl.startsWith('http')
+          ? document.thumbnailUrl
+          : `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'}${document.thumbnailUrl}`;
+          
+        setThumbnailUrl(fullThumbnailUrl);
+        setIsLoadingThumbnail(false);
+        return;
+      }
+
       const fileType = getFileType(document.fileUrl);
       console.log(`📋 Tipo detectado: ${fileType}`);
       
+      // ✅ PRIORIDADE 2: Gerar miniatura para Google Sheets
       if (fileType === 'google-sheet') {
         const sheetId = document.fileUrl.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1];
         if (sheetId) {
@@ -250,17 +265,19 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
         }
       }
       
+      // ✅ PRIORIDADE 3: Google Docs - CORRIGIDO
       if (fileType === 'google-doc') {
         const docId = document.fileUrl.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1];
         if (docId) {
-          const thumbnailUrl = `https://drive.google.com/thumbnail?id=${docId}&sz=w500-h650`;
-          setThumbnailUrl(thumbnailUrl);
+          const googleDocThumbnailUrl = `https://drive.google.com/thumbnail?id=${docId}&sz=w500-h650`;  // ✅ RENOMEADO
+          setThumbnailUrl(googleDocThumbnailUrl);  // ✅ USANDO VARIÁVEL RENOMEADA
           console.log('✅ Miniatura Google Docs configurada');
           setIsLoadingThumbnail(false);
           return;
         }
       }
       
+      // ✅ PRIORIDADE 4: Imagens
       if (fileType === 'image') {
         setThumbnailUrl(document.fileUrl);
         console.log('✅ Imagem carregada como miniatura');
@@ -268,16 +285,17 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
         return;
       }
       
+      // ✅ PRIORIDADE 5: PDFs
       if (fileType === 'pdf') {
         try {
-          const thumbnailData = await generateHighQualityPDFThumbnail(document.fileUrl);
-          setThumbnailUrl(thumbnailData);
+          const pdfThumbnailData = await generateHighQualityPDFThumbnail(document.fileUrl);  // ✅ RENOMEADO
+          setThumbnailUrl(pdfThumbnailData);  // ✅ USANDO VARIÁVEL RENOMEADA
           console.log('✅ Miniatura PDF HD gerada com sucesso');
         } catch (hdError) {
           console.warn('⚠️ Fallback para miniatura simples:', hdError);
           try {
-            const simpleThumbnail = await generateSimplePDFThumbnail(document.fileUrl);
-            setThumbnailUrl(simpleThumbnail);
+            const simplePdfThumbnail = await generateSimplePDFThumbnail(document.fileUrl);  // ✅ RENOMEADO
+            setThumbnailUrl(simplePdfThumbnail);  // ✅ USANDO VARIÁVEL RENOMEADA
             console.log('✅ Miniatura PDF simples gerada com sucesso');
           } catch (simpleError) {
             console.error('❌ Ambas as versões falharam:', simpleError);
@@ -293,6 +311,7 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
         stack: error.stack,
         name: error.name,
         fileUrl: document.fileUrl,
+        thumbnailUrl: document.thumbnailUrl, // ✅ Esta é a do estado/props, não há conflito
         fileType: getFileType(document.fileUrl)
       });
       setThumbnailError(true);

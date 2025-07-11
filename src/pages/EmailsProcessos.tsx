@@ -84,10 +84,10 @@ const EmailsProcessos = () => {
   const [buscaIdAtendimento, setBuscaIdAtendimento] = useState('');
   
   // Estados para paginação
-  const [paginaAtual, setPaginaAtual] = useState(1);
   const [dataInicioFiltro, setDataInicioFiltro] = useState('');
   const [dataFimFiltro, setDataFimFiltro] = useState('');
-  const itensPorPagina = 10;
+  const [itensPorPagina, setItensPorPagina] = useState(10);
+  const [paginaAtual, setPaginaAtual] = useState(1);
   
   const { toast } = useToast();
 
@@ -308,6 +308,10 @@ const EmailsProcessos = () => {
     return processosFiltrados.slice(indiceInicial, indiceFinal);
   }, [processosFiltrados, indiceInicial, indiceFinal]);
 
+  const handleItensPorPaginaChange = (novoValor: number) => {
+    setItensPorPagina(novoValor);
+    setPaginaAtual(1); // Volta para primeira página
+  };
   // Função para ir para uma página específica
   const irParaPagina = (pagina: number) => {
     if (pagina >= 1 && pagina <= totalPaginas) {
@@ -318,7 +322,7 @@ const EmailsProcessos = () => {
   // Resetar página quando os filtros mudarem
   useEffect(() => {
     setPaginaAtual(1);
-  }, [processosFiltrados.length]);
+  }, [filtroSetor, filtroStatus, filtroEmail, filtroPessoa, termoBusca, buscaIdAtendimento]);
 
   // Função para gerar números das páginas a serem exibidas
   const gerarPaginasExibicao = () => {
@@ -632,7 +636,7 @@ const EmailsProcessos = () => {
               {/* Segunda linha */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2">Data início</label>
+                  <label className="block text-sm font-medium mb-2">Autuação do processo de</label>
                   <input
                     type="date"
                     value={dataInicioFiltro}
@@ -642,7 +646,7 @@ const EmailsProcessos = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Data fim</label>
+                  <label className="block text-sm font-medium mb-2">até</label>
                   <input
                     type="date"
                     value={dataFimFiltro}
@@ -719,27 +723,45 @@ const EmailsProcessos = () => {
                   <FileText className="h-5 w-5" />
                   Processos ({totalItens})
                 </CardTitle>
-                {podeEnviarEmails && (
+                <div className="flex items-center space-x-4">
+                  {/* ✅ NOVO: Seletor de itens por página */}
                   <div className="flex items-center space-x-2">
-                    <Button
-                      onClick={toggleSelecionarTodos}
-                      variant="outline"
-                      size="sm"
+                    <select
+                      value={itensPorPagina}
+                      onChange={(e) => handleItensPorPaginaChange(Number(e.target.value))}
+                      className="px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
                     >
-                      {processosSelecionados.length === processosFiltrados.length ? (
-                        <>
-                          <CheckSquare className="h-4 w-4 mr-2" />
-                          Desmarcar Todos
-                        </>
-                      ) : (
-                        <>
-                          <Square className="h-4 w-4 mr-2" />
-                          Selecionar Todos
-                        </>
-                      )}
-                    </Button>
+                      <option value={5}>5</option>
+                      <option value={10}>10</option>
+                      <option value={20}>20</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                    </select>
+                    <span className="text-sm text-gray-600">por página</span>
                   </div>
-                )}
+                  
+                  {podeEnviarEmails && (
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        onClick={toggleSelecionarTodos}
+                        variant="outline"
+                        size="sm"
+                      >
+                        {processosSelecionados.length === processosFiltrados.length ? (
+                          <>
+                            <CheckSquare className="h-4 w-4 mr-2" />
+                            Desmarcar Todos
+                          </>
+                        ) : (
+                          <>
+                            <Square className="h-4 w-4 mr-2" />
+                            Selecionar Todos
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </div>
             </CardHeader>
             

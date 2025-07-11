@@ -16,6 +16,23 @@ const multer = require('multer');
 const puppeteer = require('puppeteer');
 const fsSync = require('fs');
 
+const envFile = process.env.ENV_FILE || '.env';
+const envPath = path.resolve(__dirname, envFile);
+
+console.log('🔧 Carregando configurações do arquivo:', envPath);
+
+// ✅ CARREGAR O ARQUIVO .env ESPECÍFICO
+require('dotenv').config({ path: envPath });
+
+// ✅ DEBUG: Mostrar qual ambiente está sendo usado
+console.log('🌍 Ambiente atual:', {
+  NODE_ENV: process.env.NODE_ENV,
+  ENV_FILE: envFile,
+  API_BASE_URL: process.env.VITE_API_BASE_URL,
+  DATABASE_URL: process.env.DATABASE_URL ? '***DEFINIDO***' : '❌ NÃO DEFINIDO',
+  PORT: process.env.PORT || 3001
+});
+
 const app = express();
 
 function getDocumentsPath() {
@@ -634,7 +651,7 @@ app.get('/api/documents', authMiddleware, async (req, res) => {
         d.id, d.titulo, d.descricao, d.categoria, d.nome_arquivo,
         d.url_arquivo, d.tamanho_arquivo, d.tipo_mime, d.qtd_downloads,
         d.enviado_por, d.enviado_em, d.ativo, d.criado_em, d.atualizado_em,
-        u.nome as enviado_por_nome
+        u.nome as enviado_por_nome, d.thumbnail_url
       FROM documentos d
       LEFT JOIN usuarios u ON d.enviado_por = u.id
       WHERE d.ativo = true
@@ -656,7 +673,8 @@ app.get('/api/documents', authMiddleware, async (req, res) => {
       enviadoEm: doc.enviado_em,
       ativo: doc.ativo,
       criadoEm: doc.criado_em,
-      atualizadoEm: doc.atualizado_em
+      atualizadoEm: doc.atualizado_em,
+      thumbnailUrl: doc.thumbnail_url  // ✅ JÁ ESTAVA CORRETO
     }));
 
     res.json({
@@ -665,10 +683,12 @@ app.get('/api/documents', authMiddleware, async (req, res) => {
       categorias: [...new Set(documentos.map(d => d.categoria))]
     });
   } catch (error) {
+    console.error('❌ Erro ao buscar documentos:', error);
     res.status(500).json({ error: 'Erro interno do servidor', documentos: [] });
   }
 });
 
+// ======================= UPLOAD DE ARQUIVO FÍSICO =======================
 app.post('/api/documents/upload', authMiddleware, upload.single('file'), async (req, res) => {
   try {
     const file = req.file;
@@ -676,16 +696,17 @@ app.post('/api/documents/upload', authMiddleware, upload.single('file'), async (
     if (!file) return res.status(400).json({ error: 'Arquivo não enviado' });
 
     const { title, description, category } = req.body;
-    const userId = req.user.id; // vem do token
+    const userId = req.user.id;
 
     const fileName = file.originalname;
     const fileUrl = `/documents/${file.filename}`;
 
+    // ✅ CORRIGIDO: Incluir thumbnail_url (NULL para arquivos físicos)
     const result = await pool.query(`
       INSERT INTO documentos (
         titulo, descricao, categoria, nome_arquivo, url_arquivo,
-        tamanho_arquivo, tipo_mime, enviado_por, ativo
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
+        thumbnail_url, tamanho_arquivo, tipo_mime, enviado_por, ativo
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)
       RETURNING *
     `, [
       title || file.originalname,
@@ -693,6 +714,7 @@ app.post('/api/documents/upload', authMiddleware, upload.single('file'), async (
       category || 'Geral',
       file.originalname,
       fileUrl,
+      null,  // ✅ thumbnail_url como NULL para arquivos físicos
       file.size,
       file.mimetype,
       userId
@@ -714,25 +736,30 @@ app.post('/api/documents/upload', authMiddleware, upload.single('file'), async (
   }
 });
 
-
 // ======================= CRIAR DOCUMENTO VIA URL =======================
 app.post('/api/documents', authMiddleware, async (req, res) => {
   try {
-    const { title, description, category, fileName, fileUrl } = req.body;
+    const { title, description, category, fileName, fileUrl, thumbnailUrl } = req.body;  // ✅ ADICIONADO thumbnailUrl
 
     const result = await pool.query(`
       INSERT INTO documentos (
         titulo, descricao, categoria, nome_arquivo, url_arquivo,
-        enviado_por, ativo
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        thumbnail_url, enviado_por, ativo
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, true)
       RETURNING *
     `, [
-      title, description || '', category, fileName || 'Documento via URL',
-      fileUrl, req.user.id, true
+      title, 
+      description || '', 
+      category, 
+      fileName || 'Documento via URL',
+      fileUrl, 
+      thumbnailUrl || null,  // ✅ ADICIONADO - pode ser null
+      req.user.id
     ]);
 
     res.status(201).json({ success: true, documento: result.rows[0] });
   } catch (error) {
+    console.error('❌ Erro ao criar documento:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
@@ -741,10 +768,10 @@ app.post('/api/documents', authMiddleware, async (req, res) => {
 app.put('/api/documents/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, category, fileName } = req.body;
+    const { title, description, category, fileName, fileUrl, thumbnailUrl } = req.body;  // ✅ ADICIONADO fileUrl e thumbnailUrl
 
-    // ✅ Construir a URL com base no nome do arquivo
-    const fileUrl = fileName ? `/documents/${fileName}` : null;
+    // ✅ MELHORADO: Usar fileUrl do body se fornecido, senão construir com fileName
+    const finalFileUrl = fileUrl || (fileName ? `/documents/${fileName}` : null);
 
     const result = await pool.query(`
       UPDATE documentos SET
@@ -753,10 +780,11 @@ app.put('/api/documents/:id', authMiddleware, async (req, res) => {
         categoria = COALESCE($3, categoria),
         nome_arquivo = COALESCE($4, nome_arquivo),
         url_arquivo = COALESCE($5, url_arquivo),
+        thumbnail_url = COALESCE($6, thumbnail_url),  -- ✅ ADICIONADO
         atualizado_em = CURRENT_TIMESTAMP
-      WHERE id = $6 AND ativo = true
+      WHERE id = $7 AND ativo = true
       RETURNING *
-    `, [title, description, category, fileName, fileUrl, id]);
+    `, [title, description, category, fileName, finalFileUrl, thumbnailUrl, id]);  // ✅ ADICIONADO thumbnailUrl
 
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Documento não encontrado ou inativo' });
@@ -770,13 +798,20 @@ app.put('/api/documents/:id', authMiddleware, async (req, res) => {
   }
 });
 
+// ======================= ATUALIZAR ARQUIVO EXISTENTE =======================
 app.put('/api/documents/:id/upload', authMiddleware, upload.single('file'), async (req, res) => {
   const docId = req.params.id;
   const { title, description, category } = req.body;
   const file = req.file;
 
   try {
+    if (!file) {
+      return res.status(400).json({ error: 'Arquivo não enviado' });
+    }
+
     const fileUrl = `/documents/${file.filename}`;
+    
+    // ✅ CORRIGIDO: Resetar thumbnail_url quando upload novo arquivo
     const result = await pool.query(`
       UPDATE documentos
       SET 
@@ -787,6 +822,7 @@ app.put('/api/documents/:id/upload', authMiddleware, upload.single('file'), asyn
         url_arquivo = $5,
         tamanho_arquivo = $6,
         tipo_mime = $7,
+        thumbnail_url = NULL,  -- ✅ RESETAR thumbnail quando upload novo arquivo
         atualizado_em = CURRENT_TIMESTAMP
       WHERE id = $8
       RETURNING *
@@ -806,12 +842,39 @@ app.put('/api/documents/:id/upload', authMiddleware, upload.single('file'), asyn
       tamanhoArquivo: file.size,
       tipoMime: file.mimetype
     });
-  } catch (err) {
-    console.error(err);
+  } catch (error) {
+    console.error('❌ Erro ao atualizar arquivo:', error);
     res.status(500).json({ error: 'Erro ao atualizar documento' });
   }
 });
 
+// ======================= DELETAR DOCUMENTO =======================
+app.delete('/api/documents/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // ✅ MELHORADO: Verificar se documento existe antes de deletar
+    const checkResult = await pool.query(`
+      SELECT id FROM documentos WHERE id = $1 AND ativo = true
+    `, [id]);
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Documento não encontrado ou já foi removido' });
+    }
+
+    await pool.query(`
+      UPDATE documentos SET 
+        ativo = false, 
+        atualizado_em = CURRENT_TIMESTAMP
+      WHERE id = $1
+    `, [id]);
+    
+    res.json({ success: true, message: 'Documento removido com sucesso' });
+  } catch (error) {
+    console.error('❌ Erro ao deletar documento:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
 
 // ======================= DELETAR DOCUMENTO =======================
 app.delete('/api/documents/:id', authMiddleware, async (req, res) => {

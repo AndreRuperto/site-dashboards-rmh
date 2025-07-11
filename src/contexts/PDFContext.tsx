@@ -11,13 +11,12 @@ export interface PDFDocument {
   uploadedBy: string;
   uploadedAt: Date;
   isActive: boolean;
-  // Campos adicionais do banco
   uploadedByName?: string;
   fileSize?: number;
   mimeType?: string;
   downloadCount?: number;
-  createdAt?: string;
-  updatedAt?: string;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 interface PDFContextType {
@@ -100,11 +99,12 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // ✅ Função para buscar documentos da API
   const fetchDocuments = async () => {
+    setIsLoading(true);
+    setError(null);
+    
     try {
-      setIsLoading(true);
-      setError(null);
-
       const token = localStorage.getItem('authToken');
+      
       if (!token) {
         console.log('📄 Sem token - usando dados locais');
         setDocuments(initialDocuments);
@@ -134,23 +134,46 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       const data = await response.json();
-
-      const documentsWithDates = (data.documentos || []).map((doc: any) => ({
+      
+      // ✅ MAPEAR documentos com conversões seguras para Date
+      const documentsWithDates: PDFDocument[] = (data.documentos || []).map((doc: any) => ({
         id: doc.id,
-        title: doc.titulo,
-        description: doc.descricao,
-        category: doc.categoria,
-        fileName: doc.nomeArquivo,
-        fileUrl: doc.urlArquivo,
-        uploadedAt: doc.enviadoEm ? new Date(doc.enviadoEm) : new Date(),
-        createdAt: doc.criadoEm,
-        updatedAt: doc.atualizadoEm,
-        uploadedBy: doc.enviadoPor,
-        uploadedByName: doc.enviadoPorNome,
-        isActive: doc.ativo,
-        downloadCount: doc.qtdDownloads,
-        mimeType: doc.tipoMime,
-        size: doc.tamanhoArquivo
+        title: doc.titulo || doc.title,
+        description: doc.descricao || doc.description || '',
+        category: doc.categoria || doc.category,
+        fileName: doc.nomeArquivo || doc.nome_arquivo || doc.fileName,
+        fileUrl: doc.urlArquivo || doc.url_arquivo || doc.fileUrl,
+        thumbnailUrl: doc.thumbnail_url || doc.thumbnailUrl,
+        uploadedBy: doc.enviadoPor || doc.enviado_por || doc.uploadedBy,
+        
+        // ✅ CONVERSÕES SEGURAS para Date
+        uploadedAt: (() => {
+          if (doc.enviadoEm) return new Date(doc.enviadoEm);
+          if (doc.enviado_em) return new Date(doc.enviado_em);
+          if (doc.data_upload) return new Date(doc.data_upload);
+          if (doc.uploadedAt) return new Date(doc.uploadedAt);
+          return new Date(); // Fallback
+        })(),
+        
+        createdAt: (() => {
+          if (doc.criadoEm) return new Date(doc.criadoEm);
+          if (doc.criado_em) return new Date(doc.criado_em);
+          if (doc.createdAt) return new Date(doc.createdAt);
+          return undefined; // Opcional
+        })(),
+        
+        updatedAt: (() => {
+          if (doc.atualizadoEm) return new Date(doc.atualizadoEm);
+          if (doc.atualizado_em) return new Date(doc.atualizado_em);
+          if (doc.updatedAt) return new Date(doc.updatedAt);
+          return undefined; // Opcional
+        })(),
+        
+        uploadedByName: doc.enviadoPorNome || doc.enviado_por_nome || doc.uploadedByName,
+        isActive: doc.ativo ?? doc.isActive ?? true,
+        downloadCount: doc.qtdDownloads || doc.qtd_downloads || doc.downloadCount || 0,
+        mimeType: doc.tipoMime || doc.tipo_mime || doc.mimeType,
+        fileSize: doc.tamanhoArquivo || doc.tamanho_arquivo || doc.fileSize
       }));
 
       setDocuments(documentsWithDates);
@@ -168,7 +191,6 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-
   // ✅ Função para adicionar documento
   const addDocument = async (documentData: Omit<PDFDocument, 'id' | 'uploadedAt' | 'createdAt' | 'updatedAt'>) => {
     try {
@@ -176,14 +198,11 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       
       if (!token) {
         const newDocument: PDFDocument = {
+          ...documentData,
           id: `local_${Date.now()}`,
-          title: documentData.title || 'Documento sem título',
-          description: documentData.description || '',
-          category: documentData.category || 'Geral',
-          fileName: documentData.fileName || 'arquivo.pdf',
-          fileUrl: documentData.fileUrl || URL.createObjectURL(new Blob()), // Fallback
-          uploadedBy: 'local@user.com',
           uploadedAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
           isActive: true
         };
 
@@ -207,25 +226,62 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       const data = await response.json();
-      const newDocument = {
-        ...data.document,
-        uploadedAt: new Date(data.document.uploadedAt || data.document.uploaded_at)
+      
+      // ✅ CORRIGIDO: Backend retorna data.documento, não data.document
+      const rawDoc = data.documento; // Removido || data.document porque backend sempre retorna data.documento
+
+      // ✅ CONSTRUIR documento com conversões Date e mapeamento correto
+      const newDocument: PDFDocument = {
+        id: rawDoc?.id || `api_${Date.now()}`,
+        title: rawDoc?.titulo || documentData.title,
+        description: rawDoc?.descricao || documentData.description,
+        category: rawDoc?.categoria || documentData.category,
+        fileName: rawDoc?.nome_arquivo || documentData.fileName,
+        fileUrl: rawDoc?.url_arquivo || documentData.fileUrl,
+        thumbnailUrl: rawDoc?.thumbnail_url || documentData.thumbnailUrl, // ✅ CORRIGIDO
+        uploadedBy: rawDoc?.enviado_por || documentData.uploadedBy,
+        
+        // ✅ CONVERSÕES SEGURAS para Date
+        uploadedAt: (() => {
+          if (rawDoc?.enviado_em) return new Date(rawDoc.enviado_em);
+          if (rawDoc?.data_upload) return new Date(rawDoc.data_upload);
+          return new Date();
+        })(),
+        
+        createdAt: (() => {
+          if (rawDoc?.criado_em) return new Date(rawDoc.criado_em);
+          return new Date();
+        })(),
+        
+        updatedAt: (() => {
+          if (rawDoc?.atualizado_em) return new Date(rawDoc.atualizado_em);
+          return new Date();
+        })(),
+        
+        isActive: rawDoc?.ativo ?? documentData.isActive ?? true,
+        uploadedByName: rawDoc?.enviado_por_nome,
+        mimeType: rawDoc?.tipo_mime,
+        fileSize: rawDoc?.tamanho_arquivo,
+        downloadCount: rawDoc?.qtd_downloads || 0
       };
 
       setDocuments(prev => [newDocument, ...prev]);
-      
       console.log(`✅ Documento "${documentData.title}" criado com sucesso`);
       
     } catch (err) {
       console.error('❌ Erro ao adicionar documento:', err);
       
-      // ✅ Fallback: adicionar localmente mesmo se a API falhar
-      const newDocument: PDFDocument = {
+      // ✅ CORRIGIDO: Fallback com thumbnailUrl incluída
+      const fallbackDocument: PDFDocument = {
         ...documentData,
         id: `local_${Date.now()}`,
-        uploadedAt: new Date()
+        uploadedAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        isActive: true
       };
-      setDocuments(prev => [newDocument, ...prev]);
+      
+      setDocuments(prev => [fallbackDocument, ...prev]);
       console.log('📄 Documento adicionado localmente (fallback)');
     }
   };
@@ -236,10 +292,17 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const token = localStorage.getItem('authToken');
       
       if (!token) {
-        // ✅ Fallback local
+        // ✅ Fallback local - manter tipos consistentes
         setDocuments(prev => 
           prev.map(doc => 
-            doc.id === id ? { ...doc, ...updates } : doc
+            doc.id === id ? { 
+              ...doc, 
+              ...updates,
+              // ✅ Garantir que uploadedAt sempre existe como Date
+              uploadedAt: updates.uploadedAt || doc.uploadedAt || new Date(),
+              // ✅ Atualizar updatedAt como Date
+              updatedAt: new Date()
+            } : doc
           )
         );
         console.log('📄 Documento atualizado localmente');
@@ -261,9 +324,40 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       const data = await response.json();
-      const updatedDocument = {
-        ...data.document,
-        uploadedAt: new Date(data.document.uploadedAt || data.document.uploaded_at)
+      const rawDoc = data.document || data.documento;
+
+      // ✅ CONSTRUIR documento com conversões seguras de tipos
+      const updatedDocument: PDFDocument = {
+        id: id,
+        title: rawDoc?.titulo || rawDoc?.title || updates.title || 'Documento sem título',
+        description: rawDoc?.descricao || rawDoc?.description || updates.description || '',
+        category: rawDoc?.categoria || rawDoc?.category || updates.category || 'Geral',
+        fileName: rawDoc?.nome_arquivo || rawDoc?.fileName || updates.fileName || 'arquivo.pdf',
+        fileUrl: rawDoc?.url_arquivo || rawDoc?.fileUrl || updates.fileUrl || '',
+        uploadedBy: rawDoc?.enviado_por || rawDoc?.uploadedBy || 'api@user.com',
+        
+        // ✅ CONVERSÕES SEGURAS para Date
+        uploadedAt: (() => {
+          if (rawDoc?.data_upload) return new Date(rawDoc.data_upload);
+          if (rawDoc?.uploadedAt) return new Date(rawDoc.uploadedAt);
+          if (updates.uploadedAt) return new Date(updates.uploadedAt);
+          return new Date();
+        })(),
+        
+        createdAt: (() => {
+          if (rawDoc?.criado_em) return new Date(rawDoc.criado_em);
+          if (rawDoc?.createdAt) return new Date(rawDoc.createdAt);
+          return undefined; // Opcional na interface
+        })(),
+        
+        updatedAt: new Date(), // ✅ Sempre definir como Date atual
+        
+        isActive: rawDoc?.ativo ?? rawDoc?.isActive ?? true,
+        uploadedByName: rawDoc?.enviado_por_nome || rawDoc?.uploadedByName,
+        mimeType: rawDoc?.tipo_mime || rawDoc?.mimeType,
+        fileSize: rawDoc?.tamanho_arquivo || rawDoc?.fileSize,
+        downloadCount: rawDoc?.qtd_downloads || rawDoc?.downloadCount,
+        thumbnailUrl: rawDoc?.thumbnail_url || rawDoc?.thumbnailUrl
       };
 
       setDocuments(prev => 
@@ -277,13 +371,21 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (err) {
       console.error('❌ Erro ao atualizar documento:', err);
       
-      // ✅ Fallback: atualizar localmente
+      // ✅ Fallback: atualizar localmente com tipos corretos
       setDocuments(prev => 
         prev.map(doc => 
-          doc.id === id ? { ...doc, ...updates } : doc
+          doc.id === id ? { 
+            ...doc, 
+            ...updates,
+            // ✅ Garantir tipos Date
+            uploadedAt: updates.uploadedAt ? new Date(updates.uploadedAt) : doc.uploadedAt || new Date(),
+            updatedAt: new Date()
+          } : doc
         )
       );
       console.log('📄 Documento atualizado localmente (fallback)');
+      
+      throw err;
     }
   };
 

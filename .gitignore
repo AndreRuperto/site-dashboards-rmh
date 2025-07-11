@@ -29,3 +29,11 @@ dist-ssr
 
 # Arquivos CSV
 *.csv
+
+*.png
+*.jpeg
+*.jpg
+*.gif
+.env
+.env1
+*.jfif
