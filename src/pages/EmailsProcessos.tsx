@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
+import { Label } from '@/components/ui/label';
 import { useNavigate } from 'react-router-dom';
+import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -33,7 +35,8 @@ import {
   TrendingUp,
   BarChart3,
   Plus,
-  Settings
+  Settings,
+  Hash
 } from 'lucide-react';
 
 // Configurações da API
@@ -78,6 +81,7 @@ const EmailsProcessos = () => {
   const [filtroPessoa, setFiltroPessoa] = useState('todos');
   const [termoBusca, setTermoBusca] = useState('');
   const [processoDetalhado, setProcessoDetalhado] = useState<ProcessoData | null>(null);
+  const [buscaIdAtendimento, setBuscaIdAtendimento] = useState('');
   
   // Estados para paginação
   const [paginaAtual, setPaginaAtual] = useState(1);
@@ -270,12 +274,17 @@ const EmailsProcessos = () => {
     const matchStatus = filtroStatus === 'todos' || processo.status === filtroStatus;
     const matchEmail = filtroEmail === 'todos' || processo.statusEmail === filtroEmail;
     const matchPessoa = filtroPessoa === 'todos' || processo.responsavel === filtroPessoa;
+    const matchIdAtendimento = buscaIdAtendimento === '' || 
+    (processo.idAtendimento && 
+     processo.idAtendimento.toLowerCase().includes(buscaIdAtendimento.toLowerCase())) ||
+    (processo.idProcessoPlanilha && 
+     processo.idProcessoPlanilha.toLowerCase().includes(buscaIdAtendimento.toLowerCase()));
     const matchBusca = termoBusca === '' || 
       processo.cliente?.toLowerCase().includes(termoBusca.toLowerCase()) ||
       processo.numeroProcesso?.toLowerCase().includes(termoBusca.toLowerCase());
     const matchData = verificarDataNoIntervalo(processo.dataAjuizamento, dataInicioFiltro, dataFimFiltro);
 
-    return matchSetor && matchStatus && matchEmail && matchPessoa && matchBusca && matchData;
+    return matchSetor && matchStatus && matchEmail && matchPessoa && matchBusca && matchData && matchIdAtendimento;
   });
 
   const stats = {
@@ -564,17 +573,17 @@ const EmailsProcessos = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              {/* Primeira linha */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2">Nome do processo</label>
+                  <label className="block text-sm font-medium mb-2">Cliente ou número do processo</label>
                   <div className="relative">
                     <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                     <input
                       type="text"
-                      placeholder="Cliente ou número do processo"
                       value={termoBusca}
                       onChange={(e) => setTermoBusca(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
                     />
                   </div>
                 </div>
@@ -584,7 +593,7 @@ const EmailsProcessos = () => {
                   <select
                     value={filtroSetor}
                     onChange={(e) => setFiltroSetor(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
                   >
                     <option value="todos">Todos os tipos</option>
                     {setoresUnicos.map(setor => (
@@ -598,20 +607,37 @@ const EmailsProcessos = () => {
                   <select 
                     value={filtroEmail} 
                     onChange={(e) => setFiltroEmail(e.target.value)} 
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
                   >
                     <option value="todos">Todos</option>
                     <option value="Enviado">Email Enviado</option>
                     <option value="Pendente">Email Pendente</option>
                   </select>
                 </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">ID do Atendimento</label>
+                  <div className="relative">
+                    <Hash className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                    <input
+                      type="text"
+                      value={buscaIdAtendimento}
+                      onChange={(e) => setBuscaIdAtendimento(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Segunda linha */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-2">Data início</label>
                   <input
                     type="date"
                     value={dataInicioFiltro}
                     onChange={(e) => setDataInicioFiltro(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
                   />
                 </div>
 
@@ -621,7 +647,7 @@ const EmailsProcessos = () => {
                     type="date"
                     value={dataFimFiltro}
                     onChange={(e) => setDataFimFiltro(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
                   />
                 </div>
               </div>

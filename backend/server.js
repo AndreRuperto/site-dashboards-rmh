@@ -289,11 +289,10 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 // CORS configurado corretamente
 const isProduction = process.env.NODE_ENV === 'production';
-const isRailway = process.env.RAILWAY_ENVIRONMENT;
 
 let allowedOrigins;
 
-if (isProduction || isRailway) {
+if (isProduction) {
   allowedOrigins = [
     'https://sistema.resendemh.com.br',
   ].filter(Boolean); // Remove valores null/undefined
