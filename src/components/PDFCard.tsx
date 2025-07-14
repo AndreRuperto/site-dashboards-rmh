@@ -27,6 +27,7 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
   const [thumbnailError, setThumbnailError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  console.log('📄 Documento:', document.title, 'Visibilidade:', document.visibilidade);
 
   const formatDate = (date: Date) => {
     return new Intl.DateTimeFormat('pt-BR', {
@@ -257,10 +258,19 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
       if (fileType === 'google-sheet') {
         const sheetId = document.fileUrl.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1];
         if (sheetId) {
-          const response = await fetch(`/api/thumbnail?sheetId=${sheetId}`);
-          const data = await response.json();
-          setThumbnailUrl(data.thumbnailUrl);
-          console.log(`✅ Miniatura Puppeteer carregada - ${data.thumbnailUrl}`);
+          console.log(`🎯 Gerando thumbnail para Google Sheet: ${sheetId}, Doc ID: ${document.id}`);
+          
+          // ✅ PASSAR O DOCUMENT ID PARA SALVAR NO BANCO
+          const response = await fetch(`/api/thumbnail?sheetId=${sheetId}&documentId=${document.id}`);
+          
+          if (response.ok) {
+            const data = await response.json();
+            setThumbnailUrl(data.thumbnailUrl);
+            console.log(`✅ Miniatura Puppeteer carregada e salva no banco - ${data.thumbnailUrl}`);
+          } else {
+            console.error(`❌ Erro ao gerar thumbnail:`, await response.text());
+            throw new Error('Falha ao gerar thumbnail');
+          }
           return;
         }
       }

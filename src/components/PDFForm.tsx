@@ -37,7 +37,8 @@ const PDFForm: React.FC<PDFFormProps> = ({
     description: '',
     category: '',
     fileName: '',
-    fileUrl: ''
+    fileUrl: '',
+    visibilidade: 'todos'
   });
   
   const [uploadType, setUploadType] = useState<UploadType>('file');
@@ -54,7 +55,8 @@ const PDFForm: React.FC<PDFFormProps> = ({
         description: document.description,
         category: document.category,
         fileName: document.fileName,
-        fileUrl: document.fileUrl
+        fileUrl: document.fileUrl,
+        visibilidade: document.visibilidade || 'todos'
       });
       
       // Se for URL, definir como upload por URL
@@ -68,7 +70,8 @@ const PDFForm: React.FC<PDFFormProps> = ({
         description: '',
         category: '',
         fileName: '',
-        fileUrl: ''
+        fileUrl: '',
+        visibilidade: 'todos'
       });
       setSelectedFile(null);
       setUploadType('file');
@@ -171,7 +174,8 @@ const PDFForm: React.FC<PDFFormProps> = ({
                 title: formData.title.trim(),
                 description: formData.description.trim(),
                 category: categoryToUse,
-                isActive: true
+                isActive: true,
+                visibilidade: formData.visibilidade
               },
               document?.id // <-- passa o ID do documento existente
             );
@@ -216,7 +220,8 @@ const PDFForm: React.FC<PDFFormProps> = ({
           const updates: Partial<PDFDocument> = {
             title: formData.title.trim(),
             description: formData.description.trim(),
-            category: categoryToUse
+            category: categoryToUse,
+            visibilidade: formData.visibilidade
           };
 
           // Se mudou a URL, incluir nos updates
@@ -239,7 +244,8 @@ const PDFForm: React.FC<PDFFormProps> = ({
             title: formData.title.trim(),
             description: formData.description.trim(),
             category: categoryToUse,
-            isActive: true
+            isActive: true,
+            visibilidade: formData.visibilidade
           };
 
           setUploadStatus('uploading');
@@ -293,7 +299,8 @@ const PDFForm: React.FC<PDFFormProps> = ({
             category: categoryToUse,
             fileName: formData.fileName || 'Documento via URL',
             fileUrl: formData.fileUrl.trim(),
-            isActive: true
+            isActive: true,
+            visibilidade: formData.visibilidade
           };
 
           onSubmit(documentData);
@@ -356,7 +363,7 @@ const PDFForm: React.FC<PDFFormProps> = ({
             />
           </div>
 
-          {/* Categoria */}
+          {/* Categoria e Visibilidade */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="category">Categoria</Label>
@@ -373,6 +380,22 @@ const PDFForm: React.FC<PDFFormProps> = ({
                       {category}
                     </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="visibilidade">Visibilidade</Label>
+              <Select 
+                value={formData.visibilidade || 'todos'} 
+                onValueChange={(value) => setFormData(prev => ({ ...prev, visibilidade: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a visibilidade" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os usuários</SelectItem>
+                  <SelectItem value="clt_associados">Apenas CLT/Associados</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -271,6 +271,7 @@ const pool = new Pool({
   query_timeout: 30000,
   statement_timeout: 30000,
   idle_in_transaction_session_timeout: 30000,
+  options: '-c timezone=America/Sao_Paulo'
 });
 
 // Event listeners para debug da conexão
@@ -602,38 +603,329 @@ const authMiddleware = async (req, res, next) => {
   }
 };
 
+// Função para fazer login automático no Google
+// Função para verificar se a planilha é pública e gerar thumbnail
+async function checkPublicAccessAndGenerate(page, sheetId) {
+  console.log(`🔍 Verificando acesso público para: ${sheetId}`);
+  
+  try {
+    // ✅ TENTATIVA 1: Export direto público
+    const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=png&size=LARGE&gid=0`;
+    console.log(`🔗 Testando export público: ${exportUrl}`);
+    
+    const response = await page.goto(exportUrl, { 
+      waitUntil: 'networkidle0', 
+      timeout: 15000 
+    });
+    
+    const currentUrl = page.url();
+    console.log(`🔍 URL atual: ${currentUrl}`);
+    
+    // Se foi redirecionado para login = planilha privada
+    if (currentUrl.includes('accounts.google.com')) {
+      console.log(`🔒 Planilha PRIVADA - redirecionado para login`);
+      return { isPublic: false, method: null };
+    }
+    
+    // Se response é OK e não foi redirecionado = export funcionou
+    if (response.ok()) {
+      console.log(`✅ Export público FUNCIONOU!`);
+      return { isPublic: true, method: 'export-direto' };
+    }
+    
+    // ✅ TENTATIVA 2: URL de visualização pública
+    const viewUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit#gid=0`;
+    console.log(`👁️ Testando visualização pública: ${viewUrl}`);
+    
+    await page.goto(viewUrl, { 
+      waitUntil: 'networkidle2', 
+      timeout: 15000 
+    });
+    
+    const viewCurrentUrl = page.url();
+    console.log(`🔍 URL após visualização: ${viewCurrentUrl}`);
+    
+    // Se foi redirecionado para login = planilha privada
+    if (viewCurrentUrl.includes('accounts.google.com')) {
+      console.log(`🔒 Planilha PRIVADA - requer autenticação`);
+      return { isPublic: false, method: null };
+    }
+    
+    // Verificar se elementos da planilha carregaram
+    try {
+      await page.waitForSelector('.grid-container, .waffle, .docs-sheet-container', { 
+        timeout: 10000 
+      });
+      console.log(`✅ Planilha PÚBLICA carregada com sucesso!`);
+      return { isPublic: true, method: 'visualizacao-publica' };
+    } catch (waitError) {
+      console.log(`⚠️ Elementos não carregaram, mas não foi redirecionado para login`);
+      return { isPublic: true, method: 'visualizacao-limitada' };
+    }
+    
+  } catch (error) {
+    console.log(`❌ Erro ao verificar acesso:`, error.message);
+    return { isPublic: false, method: null, error: error.message };
+  }
+}
+
+// Função para gerar thumbnail padrão para planilhas privadas
+async function generateDefaultThumbnail(imagePath, sheetId, title = 'Planilha Privada') {
+  const sharp = require('sharp');
+  const path = require('path');
+  
+  console.log(`🎨 Gerando thumbnail simples...`);
+  
+  // SVG bem simples - só visual da planilha verde
+  const svgImage = `
+    <svg width="400" height="300" xmlns="http://www.w3.org/2000/svg">
+      <!-- Background verde claro -->
+      <rect width="400" height="300" fill="#d4f7d4"/>
+      
+      <!-- Grid da planilha -->
+      <g stroke="#28a745" stroke-width="1" fill="none">
+        <line x1="50" y1="60" x2="350" y2="60"/>
+        <line x1="50" y1="90" x2="350" y2="90"/>
+        <line x1="50" y1="120" x2="350" y2="120"/>
+        <line x1="50" y1="150" x2="350" y2="150"/>
+        <line x1="50" y1="180" x2="350" y2="180"/>
+        <line x1="50" y1="210" x2="350" y2="210"/>
+        <line x1="50" y1="240" x2="350" y2="240"/>
+        
+        <line x1="50" y1="60" x2="50" y2="240"/>
+        <line x1="100" y1="60" x2="100" y2="240"/>
+        <line x1="150" y1="60" x2="150" y2="240"/>
+        <line x1="200" y1="60" x2="200" y2="240"/>
+        <line x1="250" y1="60" x2="250" y2="240"/>
+        <line x1="300" y1="60" x2="300" y2="240"/>
+        <line x1="350" y1="60" x2="350" y2="240"/>
+      </g>
+    </svg>
+  `;
+
+  // Criar a base verde com grid
+  const baseImage = await sharp(Buffer.from(svgImage))
+    .png()
+    .toBuffer();
+
+  // Caminho para o cadeado
+  const cadeadoPath = path.join(__dirname, '..', 'public', 'cadeado.png');
+  console.log(`Cadeado localizado em: ${cadeadoPath}`);
+  
+  try {
+  // Redimensionar o cadeado para 20x20 pixels bem pequeno
+    const cadeadoResized = await sharp(cadeadoPath)
+      .resize(20, 20)
+      .png()
+      .toBuffer();
+    
+    // Compor a imagem base com o cadeado bem pequeno no canto superior direito
+    await sharp(baseImage)
+      .composite([
+        {
+          input: cadeadoResized,
+          top: 5,
+          left: 375,
+        }
+      ])
+      .png()
+      .toFile(imagePath);
+      
+    console.log(`✅ Thumbnail criado com cadeado sobreposto`);
+    
+  } catch (error) {
+    console.log(`⚠️ Erro ao sobrepor cadeado, salvando só o grid:`, error.message);
+    
+    // Fallback: salvar só a imagem base se der erro com o cadeado
+    await sharp(baseImage)
+      .toFile(imagePath);
+      
+    console.log(`✅ Thumbnail simples criado (sem cadeado)`);
+  }
+}
+
+// Endpoint simplificado - SEM LOGIN
 app.get('/api/thumbnail', async (req, res) => {
   const sheetId = req.query.sheetId;
+  const documentId = req.query.documentId;
+  
   if (!sheetId) return res.status(400).send('Faltando sheetId');
 
+  console.log(`🎯 Gerando thumbnail para: ${sheetId} (APENAS PLANILHAS PÚBLICAS)`);
+
   try {
-    const url = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
-
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
-    const page = await browser.newPage();
-    await page.setViewport({ width: 1280, height: 720 });
-    await page.goto(url, { waitUntil: 'networkidle2' });
-    await new Promise(resolve => setTimeout(resolve, 2000)); // tempo para carregar a planilha
-
-    // Caminho absoluto para salvar a miniatura corretamente
-    const thumbnailDir = path.join(__dirname, 'public', 'thumbnails');
+    const thumbnailDir = getThumbnailsPath();
     const imagePath = path.join(thumbnailDir, `${sheetId}.png`);
+    
+    console.log(`📁 Diretório: ${thumbnailDir}`);
+    console.log(`💾 Arquivo: ${imagePath}`);
 
-    // Garante que a pasta existe
     await fs.mkdir(thumbnailDir, { recursive: true });
 
-    await page.screenshot({ path: imagePath });
+    // ✅ VERIFICAR CACHE PRIMEIRO
+    try {
+      const stats = await fs.stat(imagePath);
+      if (stats.size > 0) {
+        console.log(`♻️ Cache encontrado: ${sheetId}.png`);
+        const thumbnailUrl = `/thumbnails/${sheetId}.png`;
+        
+        if (documentId) {
+          await updateThumbnailInDatabase(documentId, thumbnailUrl);
+        }
+        
+        return res.json({ thumbnailUrl, cached: true });
+      }
+    } catch (error) {
+      console.log(`📸 Gerando novo thumbnail...`);
+    }
+
+    console.log(`🌐 Iniciando Puppeteer...`);
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-web-security',
+        '--no-first-run'
+      ]
+    });
+
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 720 });
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    
+    // ✅ VERIFICAR SE É PÚBLICA
+    const accessResult = await checkPublicAccessAndGenerate(page, sheetId);
+    
+    if (!accessResult.isPublic) {
+      // ✅ PLANILHA PRIVADA - GERAR THUMBNAIL PADRÃO
+      console.log(`🔒 Planilha privada detectada - gerando thumbnail padrão`);
+      
+      await browser.close();
+      await generateDefaultThumbnail(imagePath, sheetId);
+      
+      const thumbnailUrl = `/thumbnails/${sheetId}.png`;
+      
+      if (documentId) {
+        await updateThumbnailInDatabase(documentId, thumbnailUrl);
+      }
+      
+      return res.json({ 
+        thumbnailUrl,
+        isPublic: false,
+        method: 'thumbnail-padrao',
+        message: 'Planilha privada - thumbnail padrão gerado'
+      });
+    }
+    
+    // ✅ PLANILHA PÚBLICA - CAPTURAR SCREENSHOT
+    console.log(`🔓 Planilha pública - capturando screenshot via ${accessResult.method}`);
+    
+    await page.screenshot({ 
+      path: imagePath, 
+      fullPage: accessResult.method === 'export-direto',
+      type: 'png'
+    });
+    
     await browser.close();
 
-    // Retorna o caminho público acessível no frontend
-    res.json({ thumbnailUrl: `/thumbnails/${sheetId}.png` });
+    const stats = await fs.stat(imagePath);
+    console.log(`📏 Screenshot capturado: ${stats.size} bytes`);
+    
+    if (stats.size === 0) {
+      // Fallback para thumbnail padrão se screenshot falhou
+      console.log(`⚠️ Screenshot vazio - gerando thumbnail padrão`);
+      await generateDefaultThumbnail(imagePath, sheetId, 'Erro na Captura');
+    }
+    
+    const thumbnailUrl = `/thumbnails/${sheetId}.png`;
+    
+    if (documentId) {
+      await updateThumbnailInDatabase(documentId, thumbnailUrl);
+    }
+    
+    res.json({ 
+      thumbnailUrl,
+      isPublic: true,
+      method: accessResult.method,
+      message: 'Thumbnail gerado com sucesso'
+    });
 
   } catch (error) {
-    console.error('❌ Erro ao gerar thumbnail:', error);
-    res.status(500).json({ error: 'Erro ao gerar a miniatura' });
+    console.error('❌ Erro ao gerar thumbnail:', {
+      message: error.message,
+      sheetId: sheetId,
+      timestamp: new Date().toISOString()
+    });
+    
+    // ✅ FALLBACK FINAL - THUMBNAIL PADRÃO EM CASO DE ERRO
+    try {
+      const thumbnailDir = getThumbnailsPath();
+      const imagePath = path.join(thumbnailDir, `${sheetId}.png`);
+      await generateDefaultThumbnail(imagePath, sheetId, 'Erro Técnico');
+      
+      const thumbnailUrl = `/thumbnails/${sheetId}.png`;
+      
+      res.json({ 
+        thumbnailUrl,
+        isPublic: false,
+        method: 'thumbnail-erro',
+        message: 'Erro técnico - thumbnail padrão gerado',
+        error: error.message
+      });
+      
+    } catch (fallbackError) {
+      res.status(500).json({ 
+        error: 'Erro ao gerar thumbnail',
+        details: error.message,
+        sheetId: sheetId
+      });
+    }
+  }
+});
+
+// ✅ NOVA FUNÇÃO PARA ATUALIZAR THUMBNAIL NO BANCO
+async function updateThumbnailInDatabase(documentId, thumbnailUrl) {
+  try {
+    console.log(`💾 Atualizando thumbnail no banco - Doc ID: ${documentId}, URL: ${thumbnailUrl}`);
+    
+    const result = await pool.query(`
+      UPDATE documentos 
+      SET thumbnail_url = $1, atualizado_em = CURRENT_TIMESTAMP
+      WHERE id = $2
+      RETURNING id, titulo, thumbnail_url
+    `, [thumbnailUrl, documentId]);
+    
+    if (result.rowCount > 0) {
+      console.log(`✅ Thumbnail atualizado no banco:`, result.rows[0]);
+    } else {
+      console.log(`⚠️ Documento não encontrado para atualizar: ${documentId}`);
+    }
+    
+    return result.rowCount > 0;
+  } catch (error) {
+    console.error(`❌ Erro ao atualizar thumbnail no banco:`, error);
+    return false;
+  }
+}
+
+// ✅ ENDPOINT ALTERNATIVO PARA ATUALIZAR THUMBNAIL MANUALMENTE
+app.post('/api/documents/:id/thumbnail', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { thumbnailUrl } = req.body;
+    
+    const success = await updateThumbnailInDatabase(id, thumbnailUrl);
+    
+    if (success) {
+      res.json({ success: true, message: 'Thumbnail atualizado com sucesso' });
+    } else {
+      res.status(404).json({ error: 'Documento não encontrado' });
+    }
+  } catch (error) {
+    console.error('❌ Erro ao atualizar thumbnail:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 
@@ -646,17 +938,27 @@ app.listen(3001, () => {
 // ======================= LISTAGEM DE DOCUMENTOS =======================
 app.get('/api/documents', authMiddleware, async (req, res) => {
   try {
+    const userType = req.user.tipo_colaborador;
+    
+    // Definir quais visibilidades o usuário pode ver
+    let visibilidadeFilter = ['todos'];
+    if (userType === 'clt_associado') {
+      visibilidadeFilter.push('clt_associados');
+    }
+    
     const result = await pool.query(`
       SELECT 
         d.id, d.titulo, d.descricao, d.categoria, d.nome_arquivo,
         d.url_arquivo, d.tamanho_arquivo, d.tipo_mime, d.qtd_downloads,
         d.enviado_por, d.enviado_em, d.ativo, d.criado_em, d.atualizado_em,
-        u.nome as enviado_por_nome, d.thumbnail_url
+        d.visibilidade, d.thumbnail_url,
+        u.nome as enviado_por_nome
       FROM documentos d
       LEFT JOIN usuarios u ON d.enviado_por = u.id
-      WHERE d.ativo = true
+      WHERE d.ativo = true 
+      AND d.visibilidade = ANY($1)
       ORDER BY d.criado_em DESC
-    `);
+    `, [visibilidadeFilter]);
 
     const documentos = result.rows.map(doc => ({
       id: doc.id,
@@ -674,8 +976,11 @@ app.get('/api/documents', authMiddleware, async (req, res) => {
       ativo: doc.ativo,
       criadoEm: doc.criado_em,
       atualizadoEm: doc.atualizado_em,
-      thumbnailUrl: doc.thumbnail_url  // ✅ JÁ ESTAVA CORRETO
+      thumbnailUrl: doc.thumbnail_url,
+      visibilidade: doc.visibilidade // ✅ NOVO CAMPO
     }));
+
+    console.log(`📄 Listando ${documentos.length} documentos para ${userType} (visibilidades: ${visibilidadeFilter.join(', ')})`);
 
     res.json({
       documentos,
@@ -688,25 +993,28 @@ app.get('/api/documents', authMiddleware, async (req, res) => {
   }
 });
 
-// ======================= UPLOAD DE ARQUIVO FÍSICO =======================
 app.post('/api/documents/upload', authMiddleware, upload.single('file'), async (req, res) => {
   try {
     const file = req.file;
-
     if (!file) return res.status(400).json({ error: 'Arquivo não enviado' });
 
-    const { title, description, category } = req.body;
+    const { title, description, category, visibilidade = 'todos' } = req.body; // ✅ ADICIONADO
     const userId = req.user.id;
+
+    // ✅ Validar visibilidade
+    const visibilidadesValidas = ['todos', 'clt_associados'];
+    if (!visibilidadesValidas.includes(visibilidade)) {
+      return res.status(400).json({ error: 'Visibilidade inválida' });
+    }
 
     const fileName = file.originalname;
     const fileUrl = `/documents/${file.filename}`;
 
-    // ✅ CORRIGIDO: Incluir thumbnail_url (NULL para arquivos físicos)
     const result = await pool.query(`
       INSERT INTO documentos (
         titulo, descricao, categoria, nome_arquivo, url_arquivo,
-        thumbnail_url, tamanho_arquivo, tipo_mime, enviado_por, ativo
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)
+        thumbnail_url, tamanho_arquivo, tipo_mime, enviado_por, ativo, visibilidade
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10)
       RETURNING *
     `, [
       title || file.originalname,
@@ -714,10 +1022,11 @@ app.post('/api/documents/upload', authMiddleware, upload.single('file'), async (
       category || 'Geral',
       file.originalname,
       fileUrl,
-      null,  // ✅ thumbnail_url como NULL para arquivos físicos
+      null,
       file.size,
       file.mimetype,
-      userId
+      userId,
+      visibilidade  // ✅ ADICIONADO
     ]);
 
     const documento = result.rows[0];
@@ -739,13 +1048,19 @@ app.post('/api/documents/upload', authMiddleware, upload.single('file'), async (
 // ======================= CRIAR DOCUMENTO VIA URL =======================
 app.post('/api/documents', authMiddleware, async (req, res) => {
   try {
-    const { title, description, category, fileName, fileUrl, thumbnailUrl } = req.body;  // ✅ ADICIONADO thumbnailUrl
+    const { title, description, category, fileName, fileUrl, thumbnailUrl, visibilidade = 'todos' } = req.body; // ✅ ADICIONADO
+
+    // ✅ Validar visibilidade
+    const visibilidadesValidas = ['todos', 'estagiarios', 'clt_associados'];
+    if (!visibilidadesValidas.includes(visibilidade)) {
+      return res.status(400).json({ error: 'Visibilidade inválida' });
+    }
 
     const result = await pool.query(`
       INSERT INTO documentos (
         titulo, descricao, categoria, nome_arquivo, url_arquivo,
-        thumbnail_url, enviado_por, ativo
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, true)
+        thumbnail_url, enviado_por, ativo, visibilidade
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8)
       RETURNING *
     `, [
       title, 
@@ -753,8 +1068,9 @@ app.post('/api/documents', authMiddleware, async (req, res) => {
       category, 
       fileName || 'Documento via URL',
       fileUrl, 
-      thumbnailUrl || null,  // ✅ ADICIONADO - pode ser null
-      req.user.id
+      thumbnailUrl || null,
+      req.user.id,
+      visibilidade  // ✅ ADICIONADO
     ]);
 
     res.status(201).json({ success: true, documento: result.rows[0] });
@@ -768,9 +1084,13 @@ app.post('/api/documents', authMiddleware, async (req, res) => {
 app.put('/api/documents/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, category, fileName, fileUrl, thumbnailUrl } = req.body;  // ✅ ADICIONADO fileUrl e thumbnailUrl
+    const { title, description, category, fileName, fileUrl, thumbnailUrl, visibilidade } = req.body; // ✅ ADICIONADO
 
-    // ✅ MELHORADO: Usar fileUrl do body se fornecido, senão construir com fileName
+    // ✅ Validar visibilidade se fornecida
+    if (visibilidade && !['todos', 'estagiarios', 'clt_associados'].includes(visibilidade)) {
+      return res.status(400).json({ error: 'Visibilidade inválida' });
+    }
+
     const finalFileUrl = fileUrl || (fileName ? `/documents/${fileName}` : null);
 
     const result = await pool.query(`
@@ -780,11 +1100,12 @@ app.put('/api/documents/:id', authMiddleware, async (req, res) => {
         categoria = COALESCE($3, categoria),
         nome_arquivo = COALESCE($4, nome_arquivo),
         url_arquivo = COALESCE($5, url_arquivo),
-        thumbnail_url = COALESCE($6, thumbnail_url),  -- ✅ ADICIONADO
+        thumbnail_url = COALESCE($6, thumbnail_url),
+        visibilidade = COALESCE($7, visibilidade),  -- ✅ ADICIONADO
         atualizado_em = CURRENT_TIMESTAMP
-      WHERE id = $7 AND ativo = true
+      WHERE id = $8 AND ativo = true
       RETURNING *
-    `, [title, description, category, fileName, finalFileUrl, thumbnailUrl, id]);  // ✅ ADICIONADO thumbnailUrl
+    `, [title, description, category, fileName, finalFileUrl, thumbnailUrl, visibilidade, id]); // ✅ ADICIONADO
 
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Documento não encontrado ou inativo' });
@@ -801,7 +1122,7 @@ app.put('/api/documents/:id', authMiddleware, async (req, res) => {
 // ======================= ATUALIZAR ARQUIVO EXISTENTE =======================
 app.put('/api/documents/:id/upload', authMiddleware, upload.single('file'), async (req, res) => {
   const docId = req.params.id;
-  const { title, description, category } = req.body;
+  const { title, description, category, visibilidade } = req.body; // ✅ ADICIONADO
   const file = req.file;
 
   try {
@@ -809,9 +1130,13 @@ app.put('/api/documents/:id/upload', authMiddleware, upload.single('file'), asyn
       return res.status(400).json({ error: 'Arquivo não enviado' });
     }
 
+    // ✅ Validar visibilidade se fornecida
+    if (visibilidade && !['todos', 'estagiarios', 'clt_associados'].includes(visibilidade)) {
+      return res.status(400).json({ error: 'Visibilidade inválida' });
+    }
+
     const fileUrl = `/documents/${file.filename}`;
     
-    // ✅ CORRIGIDO: Resetar thumbnail_url quando upload novo arquivo
     const result = await pool.query(`
       UPDATE documentos
       SET 
@@ -822,13 +1147,14 @@ app.put('/api/documents/:id/upload', authMiddleware, upload.single('file'), asyn
         url_arquivo = $5,
         tamanho_arquivo = $6,
         tipo_mime = $7,
-        thumbnail_url = NULL,  -- ✅ RESETAR thumbnail quando upload novo arquivo
+        thumbnail_url = NULL,
+        visibilidade = COALESCE($8, visibilidade),  -- ✅ ADICIONADO
         atualizado_em = CURRENT_TIMESTAMP
-      WHERE id = $8
+      WHERE id = $9
       RETURNING *
     `, [
       title, description, category, file.filename,
-      fileUrl, file.size, file.mimetype, docId
+      fileUrl, file.size, file.mimetype, visibilidade, docId  // ✅ ADICIONADO
     ]);
 
     if (result.rows.length === 0) {
@@ -872,20 +1198,6 @@ app.delete('/api/documents/:id', authMiddleware, async (req, res) => {
     res.json({ success: true, message: 'Documento removido com sucesso' });
   } catch (error) {
     console.error('❌ Erro ao deletar documento:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
-
-// ======================= DELETAR DOCUMENTO =======================
-app.delete('/api/documents/:id', authMiddleware, async (req, res) => {
-  try {
-    const { id } = req.params;
-    await pool.query(`
-      UPDATE documentos SET ativo = false, atualizado_em = CURRENT_TIMESTAMP
-      WHERE id = $1
-    `, [id]);
-    res.json({ success: true, message: 'Documento removido com sucesso' });
-  } catch (error) {
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });

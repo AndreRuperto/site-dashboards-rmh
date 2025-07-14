@@ -12,6 +12,7 @@ export interface PDFDocument {
   uploadedAt: Date;
   isActive: boolean;
   uploadedByName?: string;
+  visibilidade?: string;
   fileSize?: number;
   mimeType?: string;
   downloadCount?: number;
@@ -101,10 +102,10 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const fetchDocuments = async () => {
     setIsLoading(true);
     setError(null);
-    
+        
     try {
       const token = localStorage.getItem('authToken');
-      
+            
       if (!token) {
         console.log('📄 Sem token - usando dados locais');
         setDocuments(initialDocuments);
@@ -134,7 +135,7 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       const data = await response.json();
-      
+            
       // ✅ MAPEAR documentos com conversões seguras para Date
       const documentsWithDates: PDFDocument[] = (data.documentos || []).map((doc: any) => ({
         id: doc.id,
@@ -145,7 +146,8 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fileUrl: doc.urlArquivo || doc.url_arquivo || doc.fileUrl,
         thumbnailUrl: doc.thumbnail_url || doc.thumbnailUrl,
         uploadedBy: doc.enviadoPor || doc.enviado_por || doc.uploadedBy,
-        
+        visibilidade: doc.visibilidade || 'todos', // ✅ NOVO CAMPO ADICIONADO
+                
         // ✅ CONVERSÕES SEGURAS para Date
         uploadedAt: (() => {
           if (doc.enviadoEm) return new Date(doc.enviadoEm);
@@ -154,21 +156,21 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (doc.uploadedAt) return new Date(doc.uploadedAt);
           return new Date(); // Fallback
         })(),
-        
+                
         createdAt: (() => {
           if (doc.criadoEm) return new Date(doc.criadoEm);
           if (doc.criado_em) return new Date(doc.criado_em);
           if (doc.createdAt) return new Date(doc.createdAt);
           return undefined; // Opcional
         })(),
-        
+                
         updatedAt: (() => {
           if (doc.atualizadoEm) return new Date(doc.atualizadoEm);
           if (doc.atualizado_em) return new Date(doc.atualizado_em);
           if (doc.updatedAt) return new Date(doc.updatedAt);
           return undefined; // Opcional
         })(),
-        
+                
         uploadedByName: doc.enviadoPorNome || doc.enviado_por_nome || doc.uploadedByName,
         isActive: doc.ativo ?? doc.isActive ?? true,
         downloadCount: doc.qtdDownloads || doc.qtd_downloads || doc.downloadCount || 0,
@@ -178,7 +180,7 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       setDocuments(documentsWithDates);
       if (data.categorias) setCategories(data.categorias);
-
+    
     } catch (err) {
       console.error('❌ Erro ao buscar documentos da API:', err);
       setError(null);
@@ -217,7 +219,15 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(documentData)
+        body: JSON.stringify({
+          title: documentData.title,
+          description: documentData.description,
+          category: documentData.category,
+          fileName: documentData.fileName,
+          fileUrl: documentData.fileUrl,
+          thumbnailUrl: documentData.thumbnailUrl,
+          visibilidade: documentData.visibilidade || 'todos' // ✅ ADICIONAR
+        })
       });
 
       if (!response.ok) {
@@ -240,6 +250,7 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fileUrl: rawDoc?.url_arquivo || documentData.fileUrl,
         thumbnailUrl: rawDoc?.thumbnail_url || documentData.thumbnailUrl, // ✅ CORRIGIDO
         uploadedBy: rawDoc?.enviado_por || documentData.uploadedBy,
+        visibilidade: rawDoc?.visibilidade || documentData.visibilidade || 'todos',
         
         // ✅ CONVERSÕES SEGURAS para Date
         uploadedAt: (() => {
@@ -315,7 +326,15 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(updates)
+        body: JSON.stringify({
+          title: updates.title,
+          description: updates.description,
+          category: updates.category,
+          fileName: updates.fileName,
+          fileUrl: updates.fileUrl,
+          thumbnailUrl: updates.thumbnailUrl,
+          visibilidade: updates.visibilidade // ✅ ADICIONAR
+        })
       });
 
       if (!response.ok) {
@@ -335,6 +354,7 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fileName: rawDoc?.nome_arquivo || rawDoc?.fileName || updates.fileName || 'arquivo.pdf',
         fileUrl: rawDoc?.url_arquivo || rawDoc?.fileUrl || updates.fileUrl || '',
         uploadedBy: rawDoc?.enviado_por || rawDoc?.uploadedBy || 'api@user.com',
+        visibilidade: rawDoc?.visibilidade || updates.visibilidade || 'todos',
         
         // ✅ CONVERSÕES SEGURAS para Date
         uploadedAt: (() => {
@@ -441,6 +461,7 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       formData.append('title', documentData.title || '');
       formData.append('description', documentData.description || '');
       formData.append('category', documentData.category || '');
+      formData.append('visibilidade', documentData.visibilidade || 'todos');
 
       let response: Response;
 
@@ -481,7 +502,8 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         uploadedAt: new Date(rawDoc.data_upload || Date.now()),
         isActive: rawDoc.ativo ?? true,
         mimeType: rawDoc.tipo_mime,
-        fileSize: rawDoc.tamanho_arquivo
+        fileSize: rawDoc.tamanho_arquivo,
+        visibilidade: rawDoc.visibilidade || documentData.visibilidade || 'todos'
       };
 
       if (existingId) {
