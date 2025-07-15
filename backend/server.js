@@ -19,6 +19,278 @@ const fsSync = require('fs');
 const envFile = process.env.ENV_FILE || '.env';
 const envPath = path.resolve(__dirname, envFile);
 
+async function handleSocialMediaSites(page, url) {
+  const domain = new URL(url).hostname;
+  
+  if (domain.includes('instagram.com')) {
+    console.log('🔍 Detectado Instagram - aplicando configurações específicas');
+    
+    try {
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      console.log('🚪 Tentando clicar no botão de fechar específico...');
+      
+      const modalClosed = await page.evaluate(() => {
+        // ✅ MÉTODO 1: Clicar no XPath específico que você forneceu
+        const xpath = '/html/body/div[4]/div[2]/div/div/div[1]/div/div[2]/div/div/div/div/div[2]/div/div[1]/div/div';
+        const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+        const closeButton = result.singleNodeValue;
+        
+        if (closeButton) {
+          console.log('🎯 Encontrado botão de fechar pelo XPath:', closeButton);
+          closeButton.click();
+          return true;
+        }
+        
+        // ✅ MÉTODO 2: Fallback - procurar em div[4] especificamente
+        const div4 = document.querySelector('body > div:nth-child(4)');
+        if (div4) {
+          // Procurar botões dentro deste div específico
+          const buttons = div4.querySelectorAll('div, button, [role="button"]');
+          for (const btn of buttons) {
+            const rect = btn.getBoundingClientRect();
+            // Procurar elementos pequenos no canto superior (botão X)
+            if (rect.width < 50 && rect.height < 50 && rect.top < 200) {
+              console.log('🎯 Encontrado botão candidato em div[4]:', btn);
+              btn.click();
+              return true;
+            }
+          }
+        }
+        
+        // ✅ MÉTODO 3: Procurar padrão similar ao XPath
+        const bodyDivs = document.querySelectorAll('body > div');
+        if (bodyDivs.length >= 4) {
+          const targetDiv = bodyDivs[3]; // div[4] é índice 3
+          const deepButtons = targetDiv.querySelectorAll('div[role="button"], button');
+          
+          for (const btn of deepButtons) {
+            // Verificar se está na posição certa (canto superior)
+            const rect = btn.getBoundingClientRect();
+            if (rect.top < 150 && rect.right > window.innerWidth - 200) {
+              console.log('🎯 Encontrado botão na posição esperada:', btn);
+              btn.click();
+              return true;
+            }
+          }
+        }
+        
+        return false;
+      });
+      
+      if (modalClosed) {
+        console.log('✅ Botão de fechar clicado com sucesso');
+        await new Promise(resolve => setTimeout(resolve, 3000)); // Aguardar animação de fechamento
+        
+        // ✅ VERIFICAR SE MODAL REALMENTE SUMIU
+        const stillExists = await page.evaluate(() => {
+          const xpath = '/html/body/div[4]/div[2]/div/div/div[1]/div/div[2]/div/div/div/div/div[2]/div/div[1]/div/div';
+          const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+          return !!result.singleNodeValue;
+        });
+        
+        if (stillExists) {
+          console.log('⚠️ Modal ainda existe, tentando remoção forçada...');
+          await page.evaluate(() => {
+            const xpath = '/html/body/div[4]/div[2]'; // Remover div pai
+            const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+            const modalContainer = result.singleNodeValue;
+            if (modalContainer) {
+              modalContainer.remove();
+            }
+          });
+        }
+        
+      } else {
+        console.log('⚠️ Botão específico não encontrado, tentando métodos alternativos...');
+        
+        // ✅ FALLBACK: ESC + remoção forçada
+        await page.keyboard.press('Escape');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Remover div[4] inteiro se ainda existir
+        await page.evaluate(() => {
+          const bodyDivs = document.querySelectorAll('body > div');
+          if (bodyDivs.length >= 4) {
+            const suspiciousDiv = bodyDivs[3]; // div[4]
+            const style = window.getComputedStyle(suspiciousDiv);
+            if (style.position === 'fixed' || parseInt(style.zIndex) > 50) {
+              console.log('🗑️ Removendo div[4] suspeito:', suspiciousDiv);
+              suspiciousDiv.remove();
+            }
+          }
+        });
+      }
+      
+      // ✅ LIMPEZA FINAL
+      await page.evaluate(() => {
+        document.body.style.overflow = 'auto';
+        document.documentElement.style.overflow = 'auto';
+        window.scrollTo({ top: 0, behavior: 'instant' });
+      });
+      
+      console.log('✅ Processo de fechamento do modal concluído');
+      
+    } catch (error) {
+      console.log('⚠️ Erro específico do Instagram:', error.message);
+    }
+  }
+  
+  return true;
+}
+
+async function forceInstagramDesktopLayout(page) {
+  console.log('🖥️ Forçando layout desktop do Instagram...');
+  
+  // Aguardar carregamento inicial
+  await page.waitForSelector('main', { timeout: 15000 });
+  
+  // Injetar CSS agressivo
+  await page.addStyleTag({
+    content: `
+      /* Reset completo para forçar desktop */
+      * {
+        max-width: none !important;
+      }
+      
+      /* Container principal */
+      main, 
+      main > div,
+      main section,
+      main article {
+        max-width: 1200px !important;
+        width: 100% !important;
+        margin: 0 auto !important;
+      }
+      
+      /* Header do perfil */
+      header {
+        max-width: 1200px !important;
+        width: 100% !important;
+        padding: 40px 20px !important;
+        margin: 0 auto !important;
+      }
+      
+      /* Grid de posts */
+      [style*="grid-template-columns"] {
+        grid-template-columns: repeat(3, 1fr) !important;
+        max-width: 1200px !important;
+        margin: 0 auto !important;
+        gap: 20px !important;
+      }
+      
+      /* Remover limitações mobile */
+      [style*="max-width: 470px"],
+      [style*="max-width: 600px"] {
+        max-width: 1200px !important;
+      }
+      
+      /* Container do Instagram */
+      #mount_0_0_*,
+      [id^="mount"] {
+        width: 100% !important;
+        max-width: none !important;
+      }
+      
+      /* Forçar largura nos containers pais */
+      body > div,
+      body > div > div,
+      body > div > div > div {
+        width: 100% !important;
+        max-width: none !important;
+      }
+    `
+  });
+  
+  // JavaScript para redimensionar forçadamente
+  await page.evaluate(() => {
+    console.log('🔧 Aplicando JavaScript para layout desktop...');
+    
+    // Sobrescrever métodos de detecção de tela
+    Object.defineProperty(window, 'innerWidth', {
+      writable: true,
+      configurable: true,
+      value: 1920
+    });
+    
+    Object.defineProperty(window, 'innerHeight', {
+      writable: true,
+      configurable: true,
+      value: 1080
+    });
+    
+    // Forçar elementos principais
+    const main = document.querySelector('main');
+    if (main) {
+      main.style.maxWidth = '1200px';
+      main.style.width = '100%';
+      main.style.margin = '0 auto';
+    }
+    
+    // Procurar e ajustar containers
+    const containers = document.querySelectorAll('[role="main"], main, section, article');
+    containers.forEach(container => {
+      container.style.maxWidth = '1200px';
+      container.style.width = '100%';
+      container.style.margin = '0 auto';
+    });
+    
+    // Forçar grids de posts
+    const grids = document.querySelectorAll('[style*="grid"]');
+    grids.forEach(grid => {
+      grid.style.gridTemplateColumns = 'repeat(3, 1fr)';
+      grid.style.maxWidth = '1200px';
+      grid.style.margin = '0 auto';
+      grid.style.gap = '20px';
+    });
+    
+    // Disparar evento de resize
+    window.dispatchEvent(new Event('resize'));
+    
+    // Force reflow
+    document.body.offsetHeight;
+  });
+  
+  // Aguardar layout se ajustar
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  
+  console.log('✅ Layout desktop aplicado');
+}
+
+// ✅ VERSÃO TAMBÉM CORRIGIDA DA FUNÇÃO AGRESSIVA:
+async function forceCloseInstagramModal(page) {
+  console.log('🔨 Método agressivo para fechar modal do Instagram');
+  
+  await page.evaluate(() => {
+    // Remover TODOS os elementos suspeitos
+    const suspiciousElements = document.querySelectorAll(`
+      [role="dialog"],
+      [class*="modal"],
+      [class*="overlay"],
+      [class*="popup"],
+      [style*="position: fixed"],
+      [style*="z-index: 9"],
+      div[style*="background-color: rgba"]
+    `);
+    
+    suspiciousElements.forEach(el => {
+      const style = window.getComputedStyle(el);
+      if (style.position === 'fixed' || 
+          parseInt(style.zIndex) > 50 ||
+          el.getAttribute('role') === 'dialog') {
+        console.log('Removendo elemento suspeito:', el);
+        el.remove();
+      }
+    });
+    
+    // Restaurar scroll
+    document.body.style.overflow = 'auto';
+    document.documentElement.style.overflow = 'auto';
+    
+    return true;
+  });
+}
+
 console.log('🔧 Carregando configurações do arquivo:', envPath);
 
 // ✅ CARREGAR O ARQUIVO .env ESPECÍFICO
@@ -744,66 +1016,100 @@ async function generateDefaultThumbnail(imagePath, sheetId, title = 'Planilha Pr
   }
 }
 
-// Endpoint simplificado - SEM LOGIN
 app.get('/api/thumbnail', async (req, res) => {
   const sheetId = req.query.sheetId;
+  const url = req.query.url;
   const documentId = req.query.documentId;
   
-  if (!sheetId) return res.status(400).send('Faltando sheetId');
-
-  console.log(`🎯 Gerando thumbnail para: ${sheetId} (APENAS PLANILHAS PÚBLICAS)`);
+  // ✅ VALIDAR PARÂMETROS
+  if (!sheetId && !url) {
+    return res.status(400).send('Faltando sheetId ou url');
+  }
 
   try {
     const thumbnailDir = getThumbnailsPath();
-    const imagePath = path.join(thumbnailDir, `${sheetId}.png`);
-    
-    console.log(`📁 Diretório: ${thumbnailDir}`);
-    console.log(`💾 Arquivo: ${imagePath}`);
-
     await fs.mkdir(thumbnailDir, { recursive: true });
 
-    // ✅ VERIFICAR CACHE PRIMEIRO
-    try {
-      const stats = await fs.stat(imagePath);
-      if (stats.size > 0) {
-        console.log(`♻️ Cache encontrado: ${sheetId}.png`);
+    // ✅ PROCESSAMENTO PARA GOOGLE SHEETS (código existente)
+    if (sheetId) {
+      console.log(`🎯 Gerando thumbnail para Google Sheet: ${sheetId}`);
+      
+      const imagePath = path.join(thumbnailDir, `${sheetId}.png`);
+      
+      // Verificar cache primeiro
+      try {
+        const stats = await fs.stat(imagePath);
+        if (stats.size > 0) {
+          console.log(`♻️ Cache encontrado: ${sheetId}.png`);
+          const thumbnailUrl = `/thumbnails/${sheetId}.png`;
+          
+          if (documentId) {
+            await updateThumbnailInDatabase(documentId, thumbnailUrl);
+          }
+          
+          return res.json({ thumbnailUrl, cached: true });
+        }
+      } catch (error) {
+        console.log(`📸 Gerando novo thumbnail...`);
+      }
+
+      console.log(`🌐 Iniciando Puppeteer para Google Sheet...`);
+      const browser = await puppeteer.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-web-security',
+          '--no-first-run'
+        ]
+      });
+
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 720 });
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+      
+      // Verificar se é pública
+      const accessResult = await checkPublicAccessAndGenerate(page, sheetId);
+      
+      if (!accessResult.isPublic) {
+        console.log(`🔒 Planilha privada detectada - gerando thumbnail padrão`);
+        
+        await browser.close();
+        await generateDefaultThumbnail(imagePath, sheetId);
+        
         const thumbnailUrl = `/thumbnails/${sheetId}.png`;
         
         if (documentId) {
           await updateThumbnailInDatabase(documentId, thumbnailUrl);
         }
         
-        return res.json({ thumbnailUrl, cached: true });
+        return res.json({ 
+          thumbnailUrl,
+          isPublic: false,
+          method: 'thumbnail-padrao',
+          message: 'Planilha privada - thumbnail padrão gerado'
+        });
       }
-    } catch (error) {
-      console.log(`📸 Gerando novo thumbnail...`);
-    }
-
-    console.log(`🌐 Iniciando Puppeteer...`);
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-web-security',
-        '--no-first-run'
-      ]
-    });
-
-    const page = await browser.newPage();
-    await page.setViewport({ width: 1280, height: 720 });
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-    
-    // ✅ VERIFICAR SE É PÚBLICA
-    const accessResult = await checkPublicAccessAndGenerate(page, sheetId);
-    
-    if (!accessResult.isPublic) {
-      // ✅ PLANILHA PRIVADA - GERAR THUMBNAIL PADRÃO
-      console.log(`🔒 Planilha privada detectada - gerando thumbnail padrão`);
+      
+      // Planilha pública - capturar screenshot
+      console.log(`🔓 Planilha pública - capturando screenshot via ${accessResult.method}`);
+      
+      await page.screenshot({ 
+        path: imagePath, 
+        fullPage: accessResult.method === 'export-direto',
+        type: 'png'
+      });
       
       await browser.close();
-      await generateDefaultThumbnail(imagePath, sheetId);
+
+      const stats = await fs.stat(imagePath);
+      console.log(`📏 Screenshot capturado: ${stats.size} bytes`);
+      
+      if (stats.size === 0) {
+        console.log(`⚠️ Screenshot vazio - gerando thumbnail padrão`);
+        await generateDefaultThumbnail(imagePath, sheetId, 'Erro na Captura');
+      }
       
       const thumbnailUrl = `/thumbnails/${sheetId}.png`;
       
@@ -813,63 +1119,185 @@ app.get('/api/thumbnail', async (req, res) => {
       
       return res.json({ 
         thumbnailUrl,
-        isPublic: false,
-        method: 'thumbnail-padrao',
-        message: 'Planilha privada - thumbnail padrão gerado'
+        isPublic: true,
+        method: accessResult.method,
+        message: 'Thumbnail gerado com sucesso'
       });
     }
-    
-    // ✅ PLANILHA PÚBLICA - CAPTURAR SCREENSHOT
-    console.log(`🔓 Planilha pública - capturando screenshot via ${accessResult.method}`);
-    
-    await page.screenshot({ 
-      path: imagePath, 
-      fullPage: accessResult.method === 'export-direto',
-      type: 'png'
-    });
-    
-    await browser.close();
 
-    const stats = await fs.stat(imagePath);
-    console.log(`📏 Screenshot capturado: ${stats.size} bytes`);
-    
-    if (stats.size === 0) {
-      // Fallback para thumbnail padrão se screenshot falhou
-      console.log(`⚠️ Screenshot vazio - gerando thumbnail padrão`);
-      await generateDefaultThumbnail(imagePath, sheetId, 'Erro na Captura');
+    // ✅ NOVO: PROCESSAMENTO PARA SITES COMUNS
+    if (url) {
+      console.log(`🌐 Gerando screenshot para site: ${url}`);
+      
+      // Extrair domínio para nome do arquivo
+      const domain = new URL(url).hostname.replace(/[^a-zA-Z0-9]/g, '-');
+      const imagePath = path.join(thumbnailDir, `website-${domain}.png`);
+      
+      // Verificar cache primeiro
+      try {
+        const stats = await fs.stat(imagePath);
+        if (stats.size > 0) {
+          console.log(`♻️ Screenshot em cache encontrado para: ${domain}`);
+          const thumbnailUrl = `/thumbnails/website-${domain}.png`;
+          
+          if (documentId) {
+            await updateThumbnailInDatabase(documentId, thumbnailUrl);
+          }
+          
+          return res.json({ thumbnailUrl, cached: true, domain });
+        }
+      } catch (error) {
+        console.log(`📸 Gerando novo screenshot para site...`);
+      }
+
+      const browser = await puppeteer.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-web-security',
+          '--no-first-run',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding'
+        ]
+      });
+
+      const page = await browser.newPage();
+      
+      // Configurar viewport para captura de qualidade
+      await page.setViewport({ 
+        width: 1200, 
+        height: 800,
+        deviceScaleFactor: 2 // Para maior qualidade
+      });
+      
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+
+      // Configurar timeouts
+      await page.setDefaultNavigationTimeout(30000);
+      await page.setDefaultTimeout(30000);
+      
+      // Bloquear recursos pesados para carregamento mais rápido
+      await page.setRequestInterception(true);
+      page.on('request', (req) => {
+        const resourceType = req.resourceType();
+        if (['font', 'media'].includes(resourceType)) {
+          req.abort();
+        } else {
+          req.continue();
+        }
+      });
+
+      try {
+        console.log(`🔗 Navegando para: ${url}`);
+        await page.goto(url, { 
+          waitUntil: 'domcontentloaded',
+          timeout: 25000 
+        });
+        
+        // Aguardar um pouco para carregamento de conteúdo dinâmico
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Remover elementos que podem atrapalhar (popups, cookies, etc)
+        await page.evaluate(() => {
+          // Remover overlays comuns
+          const overlays = document.querySelectorAll(
+            '[class*="popup"], [class*="modal"], [class*="overlay"], ' +
+            '[class*="cookie"], [class*="banner"], [id*="cookie"], ' +
+            '[class*="consent"], [class*="gdpr"]'
+          );
+          overlays.forEach(el => el.remove());
+          
+          // Scroll para o topo
+          window.scrollTo(0, 0);
+        });
+
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        console.log(`📸 Capturando screenshot...`);
+        await page.screenshot({ 
+          path: imagePath,
+          type: 'png',
+          fullPage: false, // Só a área visível
+          clip: {
+            x: 0,
+            y: 0,
+            width: 1200,
+            height: 800
+          }
+        });
+
+        await browser.close();
+
+        const stats = await fs.stat(imagePath);
+        console.log(`✅ Screenshot capturado: ${stats.size} bytes`);
+        
+        if (stats.size === 0) {
+          throw new Error('Screenshot vazio gerado');
+        }
+        
+        const thumbnailUrl = `/thumbnails/website-${domain}.png`;
+        
+        if (documentId) {
+          await updateThumbnailInDatabase(documentId, thumbnailUrl);
+        }
+        
+        return res.json({ 
+          thumbnailUrl,
+          domain,
+          message: 'Screenshot gerado com sucesso'
+        });
+
+      } catch (navigationError) {
+        console.error(`❌ Erro ao acessar ${url}:`, navigationError.message);
+        await browser.close();
+        
+        // Fallback: gerar thumbnail padrão para o site
+        await generateWebsiteFallbackThumbnail(imagePath, url);
+        
+        const thumbnailUrl = `/thumbnails/website-${domain}.png`;
+        
+        if (documentId) {
+          await updateThumbnailInDatabase(documentId, thumbnailUrl);
+        }
+        
+        return res.json({ 
+          thumbnailUrl,
+          domain,
+          message: 'Site inacessível - thumbnail padrão gerado',
+          error: navigationError.message
+        });
+      }
     }
-    
-    const thumbnailUrl = `/thumbnails/${sheetId}.png`;
-    
-    if (documentId) {
-      await updateThumbnailInDatabase(documentId, thumbnailUrl);
-    }
-    
-    res.json({ 
-      thumbnailUrl,
-      isPublic: true,
-      method: accessResult.method,
-      message: 'Thumbnail gerado com sucesso'
-    });
 
   } catch (error) {
     console.error('❌ Erro ao gerar thumbnail:', {
       message: error.message,
       sheetId: sheetId,
+      url: url,
       timestamp: new Date().toISOString()
     });
     
-    // ✅ FALLBACK FINAL - THUMBNAIL PADRÃO EM CASO DE ERRO
+    // Fallback final
     try {
       const thumbnailDir = getThumbnailsPath();
-      const imagePath = path.join(thumbnailDir, `${sheetId}.png`);
-      await generateDefaultThumbnail(imagePath, sheetId, 'Erro Técnico');
+      let imagePath, thumbnailUrl;
       
-      const thumbnailUrl = `/thumbnails/${sheetId}.png`;
+      if (sheetId) {
+        imagePath = path.join(thumbnailDir, `${sheetId}.png`);
+        await generateDefaultThumbnail(imagePath, sheetId, 'Erro Técnico');
+        thumbnailUrl = `/thumbnails/${sheetId}.png`;
+      } else if (url) {
+        const domain = new URL(url).hostname.replace(/[^a-zA-Z0-9]/g, '-');
+        imagePath = path.join(thumbnailDir, `website-${domain}.png`);
+        await generateWebsiteFallbackThumbnail(imagePath, url);
+        thumbnailUrl = `/thumbnails/website-${domain}.png`;
+      }
       
       res.json({ 
         thumbnailUrl,
-        isPublic: false,
         method: 'thumbnail-erro',
         message: 'Erro técnico - thumbnail padrão gerado',
         error: error.message
@@ -879,11 +1307,423 @@ app.get('/api/thumbnail', async (req, res) => {
       res.status(500).json({ 
         error: 'Erro ao gerar thumbnail',
         details: error.message,
-        sheetId: sheetId
+        sheetId: sheetId,
+        url: url
       });
     }
   }
 });
+
+app.get('/api/website-screenshot', async (req, res) => {
+  const { url, documentId } = req.query;
+  
+  if (!url) return res.status(400).send('URL é obrigatória');
+
+  console.log(`🌐 Gerando screenshot para site: ${url}`);
+
+  try {
+    const domain = new URL(url).hostname.replace(/[^a-zA-Z0-9]/g, '-');
+    const thumbnailDir = getThumbnailsPath();
+    const imagePath = path.join(thumbnailDir, `website-${domain}.png`);
+    
+    await fs.mkdir(thumbnailDir, { recursive: true });
+
+    // Verificar cache primeiro
+    try {
+      const stats = await fs.stat(imagePath);
+      if (stats.size > 0) {
+        console.log(`♻️ Screenshot em cache encontrado para: ${domain}`);
+        const thumbnailUrl = `/thumbnails/website-${domain}.png`;
+        
+        if (documentId) {
+          await updateThumbnailInDatabase(documentId, thumbnailUrl);
+        }
+        
+        return res.json({ thumbnailUrl, cached: true, domain });
+      }
+    } catch (error) {
+      console.log(`📸 Gerando novo screenshot...`);
+    }
+
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-web-security',
+        '--no-first-run',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        '--start-maximized',
+        '--disable-features=VizDisplayCompositor',
+        '--force-device-scale-factor=1',
+        '--disable-extensions',
+        '--no-default-browser-check'
+      ]
+    });
+
+    const page = await browser.newPage();
+    
+    // ✅ CONFIGURAÇÃO ESPECÍFICA PARA INSTAGRAM
+    if (url.includes('instagram.com')) {
+      await page.setViewport({ 
+        width: 1920,
+        height: 1080,
+        deviceScaleFactor: 1,
+        isMobile: false,
+        hasTouch: false,
+        isLandscape: true
+      });
+      
+      // ✅ CONFIGURAÇÕES EXTRAS PARA FORÇAR VERSÃO DESKTOP
+      await page.evaluateOnNewDocument(() => {
+        Object.defineProperty(navigator, 'platform', {
+          get: () => 'Win32'
+        });
+        
+        Object.defineProperty(navigator, 'maxTouchPoints', {
+          get: () => 0
+        });
+        
+        Object.defineProperty(screen, 'width', {
+          get: () => 1920
+        });
+        
+        Object.defineProperty(screen, 'height', {
+          get: () => 1080
+        });
+      });
+    } else {
+      await page.setViewport({ 
+        width: 1920,
+        height: 1080,
+        deviceScaleFactor: 1,
+        isMobile: false,
+        hasTouch: false,
+        isLandscape: true
+      });
+    }
+    
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    
+    page.setDefaultNavigationTimeout(60000);
+    page.setDefaultTimeout(60000);
+    
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      const resourceType = req.resourceType();
+      const reqUrl = req.url();
+      
+      if (resourceType === 'font' || 
+          (resourceType === 'image' && reqUrl.includes('.gif')) ||
+          resourceType === 'media') {
+        req.abort();
+      } else {
+        req.continue();
+      }
+    });
+
+    try {
+      console.log(`🔗 Navegando para: ${url}`);
+      
+      await page.goto(url, { 
+        waitUntil: 'networkidle0',
+        timeout: 30000 
+      });
+      
+      console.log(`⏳ Aguardando renderização completa...`);
+      await handleSocialMediaSites(page, url);
+
+      if (url.includes('instagram.com')) {
+        console.log(`⏰ Aguardando 3 segundos após fechar modal do Instagram...`);
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Verificação dupla do modal
+        const stillHasModal = await page.evaluate(() => {
+          const modals = document.querySelectorAll('[role="dialog"]');
+          return modals.length > 0;
+        });
+        
+        if (stillHasModal) {
+          console.log(`⚠️ Modal ainda presente, removendo forçadamente...`);
+          await forceCloseInstagramModal(page);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+        
+        // ✅ APLICAR LAYOUT DESKTOP AQUI
+        await forceInstagramDesktopLayout(page);
+        
+        // Limpeza final específica para Instagram
+        await page.evaluate(() => {
+          const overlays = document.querySelectorAll(`
+            [style*="position: fixed"],
+            [style*="z-index"],
+            [class*="modal"],
+            [class*="overlay"],
+            [class*="popup"]
+          `);
+          
+          overlays.forEach(el => {
+            const style = window.getComputedStyle(el);
+            if (style.position === 'fixed' && parseInt(style.zIndex) > 10) {
+              el.style.display = 'none';
+            }
+          });
+          
+          document.body.style.overflow = 'auto';
+          document.documentElement.style.overflow = 'auto';
+          window.scrollTo({ top: 0, behavior: 'instant' });
+        });
+        
+        console.log(`✅ Instagram preparado para screenshot`);
+      }
+      
+      await page.waitForFunction(() => {
+        return document.readyState === 'complete';
+      }, { timeout: 10000 });
+      
+      // Tempo diferenciado por site
+      const waitTime = url.includes('instagram.com') ? 2000 : 5000;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      
+      const hasStyles = await page.evaluate(() => {
+        const body = document.body;
+        const computedStyle = window.getComputedStyle(body);
+        const hasBackground = computedStyle.backgroundColor !== 'rgba(0, 0, 0, 0)' && 
+                            computedStyle.backgroundColor !== 'transparent';
+        const hasColor = computedStyle.color !== 'rgb(0, 0, 0)';
+        
+        return hasBackground || hasColor || computedStyle.fontFamily !== 'Times';
+      });
+      
+      console.log(`🎨 Estilos detectados: ${hasStyles}`);
+      
+      if (!hasStyles && !url.includes('instagram.com')) {
+        console.log(`⏳ Aguardando mais tempo para CSS...`);
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+      
+      // Limpeza geral para outros sites
+      if (!url.includes('instagram.com')) {
+        await page.evaluate(() => {
+          try {
+            const overlays = document.querySelectorAll([
+              '[class*="popup"]',
+              '[class*="modal"]', 
+              '[class*="overlay"]',
+              '[class*="cookie"]',
+              '[class*="banner"]',
+              '[id*="cookie"]',
+              '[class*="consent"]',
+              '[class*="gdpr"]',
+              '[class*="notification"]',
+              '[class*="toast"]'
+            ].join(', '));
+            
+            overlays.forEach(el => {
+              if (el && el.parentNode) {
+                el.style.display = 'none';
+              }
+            });
+            
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            
+            const images = document.querySelectorAll('img[loading="lazy"]');
+            images.forEach(img => {
+              img.removeAttribute('loading');
+            });
+            
+          } catch (e) {
+            console.log('Erro ao limpar página:', e);
+          }
+        });
+
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      console.log(`📸 Capturando screenshot final...`);
+      
+      // ✅ SCREENSHOT DIFERENCIADO POR SITE
+      if (url.includes('instagram.com')) {
+        await page.screenshot({ 
+          path: imagePath,
+          type: 'png',
+          fullPage: false,
+          clip: { 
+            x: 0, 
+            y: 0, 
+            width: 1600,  // ✅ Mais largo para Instagram
+            height: 1000  // ✅ Mais alto para Instagram
+          },
+          omitBackground: false
+        });
+      } else {
+        await page.screenshot({ 
+          path: imagePath,
+          type: 'png',
+          fullPage: false,
+          clip: { 
+            x: 0, 
+            y: 0, 
+            width: 1200, 
+            height: 800 
+          },
+          omitBackground: false
+        });
+      }
+
+      await browser.close();
+
+      const stats = await fs.stat(imagePath);
+      console.log(`✅ Screenshot capturado: ${stats.size} bytes`);
+      
+      if (stats.size < 1000) {
+        throw new Error('Screenshot muito pequeno, provavelmente inválido');
+      }
+      
+      const thumbnailUrl = `/thumbnails/website-${domain}.png`;
+      
+      if (documentId) {
+        await updateThumbnailInDatabase(documentId, thumbnailUrl);
+      }
+      
+      res.json({ 
+        thumbnailUrl,
+        domain,
+        hasStyles,
+        message: 'Screenshot gerado com sucesso'
+      });
+
+    } catch (navigationError) {
+      console.error(`❌ Erro ao capturar ${url}:`, navigationError.message);
+      await browser.close();
+      
+      console.log(`🎨 Gerando thumbnail de fallback para ${url}`);
+      await generateWebsiteFallbackThumbnail(imagePath, url);
+      
+      const thumbnailUrl = `/thumbnails/website-${domain}.png`;
+      
+      if (documentId) {
+        await updateThumbnailInDatabase(documentId, thumbnailUrl);
+      }
+      
+      res.json({ 
+        thumbnailUrl,
+        domain,
+        message: 'Site inacessível - thumbnail padrão gerado',
+        error: navigationError.message
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Erro ao gerar screenshot:', error);
+    
+    try {
+      const domain = new URL(url).hostname.replace(/[^a-zA-Z0-9]/g, '-');
+      const thumbnailDir = getThumbnailsPath();
+      const imagePath = path.join(thumbnailDir, `website-${domain}.png`);
+      
+      await generateWebsiteFallbackThumbnail(imagePath, url);
+      
+      const thumbnailUrl = `/thumbnails/website-${domain}.png`;
+      
+      res.json({ 
+        thumbnailUrl,
+        domain,
+        message: 'Erro técnico - thumbnail padrão gerado',
+        error: error.message
+      });
+      
+    } catch (fallbackError) {
+      res.status(500).json({ 
+        error: 'Erro interno do servidor',
+        message: error.message 
+      });
+    }
+  }
+});
+
+// ✅ FUNÇÃO DE FALLBACK CORRIGIDA:
+async function generateWebsiteFallbackThumbnail(imagePath, url) {
+  try {
+    console.log(`🎨 Criando thumbnail de fallback para: ${url}`);
+    
+    const domain = new URL(url).hostname.replace('www.', '');
+    
+    // ✅ VERIFICAR SE SHARP ESTÁ DISPONÍVEL
+    if (typeof sharp === 'undefined') {
+      console.error('❌ Sharp não está disponível, usando método alternativo');
+      
+      // Criar um arquivo SVG simples como fallback
+      const svgContent = `
+        <svg width="1200" height="800" xmlns="http://www.w3.org/2000/svg">
+          <rect width="1200" height="800" fill="#4FACFE"/>
+          <circle cx="600" cy="300" r="80" fill="rgba(255,255,255,0.2)" stroke="white" stroke-width="3"/>
+          <text x="600" y="320" text-anchor="middle" fill="white" font-family="Arial" font-size="60">🌐</text>
+          <text x="600" y="450" text-anchor="middle" fill="white" font-family="Arial" font-size="48" font-weight="bold">${domain}</text>
+          <text x="600" y="500" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-family="Arial" font-size="24">Site não disponível</text>
+        </svg>
+      `;
+      
+      await fs.writeFile(imagePath.replace('.png', '.svg'), svgContent);
+      console.log(`✅ SVG de fallback criado para ${domain}`);
+      return;
+    }
+    
+    const image = sharp({
+      create: {
+        width: 1200,
+        height: 800,
+        channels: 4,
+        background: { r: 79, g: 172, b: 254, alpha: 1 }
+      }
+    });
+    
+    const textSvg = `
+      <svg width="1200" height="800">
+        <style>
+          .domain-text { 
+            font-family: Arial, sans-serif; 
+            font-size: 48px; 
+            font-weight: bold; 
+            fill: white; 
+            text-anchor: middle; 
+          }
+          .url-text { 
+            font-family: Arial, sans-serif; 
+            font-size: 24px; 
+            fill: rgba(255,255,255,0.8); 
+            text-anchor: middle; 
+          }
+        </style>
+        <text x="600" y="400" class="domain-text">${domain}</text>
+        <text x="600" y="450" class="url-text">Site não disponível</text>
+        <circle cx="600" cy="300" r="80" fill="rgba(255,255,255,0.2)" stroke="white" stroke-width="3"/>
+        <text x="600" y="320" style="font-family: Arial; font-size: 60px; fill: white; text-anchor: middle;">🌐</text>
+      </svg>
+    `;
+    
+    await image
+      .composite([{ input: Buffer.from(textSvg), top: 0, left: 0 }])
+      .png()
+      .toFile(imagePath);
+      
+    console.log(`✅ Thumbnail de fallback criado para ${domain}`);
+    
+  } catch (error) {
+    console.error('❌ Erro ao criar thumbnail de fallback:', error);
+    
+    // ✅ ÚLTIMO RECURSO: criar arquivo vazio para evitar erro 404
+    try {
+      await fs.writeFile(imagePath, Buffer.alloc(0));
+      console.log(`⚠️ Arquivo vazio criado como último recurso`);
+    } catch (finalError) {
+      console.error('❌ Erro crítico ao criar arquivo:', finalError);
+    }
+  }
+}
 
 // ✅ NOVA FUNÇÃO PARA ATUALIZAR THUMBNAIL NO BANCO
 async function updateThumbnailInDatabase(documentId, thumbnailUrl) {

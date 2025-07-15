@@ -3,6 +3,8 @@ import Header from '@/components/Header';
 import { useToast } from '@/hooks/use-toast';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import OrganogramaTree from '@/components/organograma/OrganogramaTree';
+
 
 // Configurações da API
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';

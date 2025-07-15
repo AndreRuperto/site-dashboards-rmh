@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, User, Eye, Edit, Trash2, Download, FileText, BarChart3, Image, AlertCircle, Loader2, ExternalLink } from 'lucide-react';
+import { Calendar, User, Eye, Edit, Trash2, Download, FileText, BarChart3, Image, AlertCircle, Loader2, ExternalLink, Globe } from 'lucide-react';
 import { PDFDocument } from '@/contexts/PDFContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -19,6 +19,53 @@ interface PDFCardProps {
   onDelete?: (id: string) => void;
 }
 
+// Função para detectar se é um link web comum (não Google Sheets/Docs ou Office)
+const isWebLink = (url: string): boolean => {
+  if (!url) return false;
+  
+  // Lista de domínios/padrões que NÃO são links web comuns
+  const specialPatterns = [
+    /docs\.google\.com\/spreadsheets/i,
+    /docs\.google\.com\/document/i,
+    /drive\.google\.com/i,
+    /\.xlsx?$/i,
+    /\.docx?$/i,
+    /\.pptx?$/i,
+    /\.pdf$/i,
+    /\.(jpg|jpeg|png|gif|webp|svg)$/i
+  ];
+  
+  // Verifica se é uma URL válida
+  try {
+    const urlObj = new URL(url);
+    // Verifica se não é um dos padrões especiais
+    return !specialPatterns.some(pattern => pattern.test(url));
+  } catch {
+    return false;
+  }
+};
+
+// Função para gerar uma miniatura padrão para links web
+const getWebLinkThumbnail = (url: string): string => {
+  try {
+    const urlObj = new URL(url);
+    const domain = urlObj.hostname.replace('www.', '');
+    
+    // Opção 1: Usar um serviço de screenshot (requer API key)
+    // return `https://api.screenshotmachine.com?key=YOUR_KEY&url=${encodeURIComponent(url)}&dimension=1280x720`;
+    
+    // Opção 2: Usar favicon do site como ícone
+    // return `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+    
+    // Opção 3: Gerar uma miniatura baseada no domínio
+    return `https://ui-avatars.com/api/?name=${domain}&size=400&background=0D8ABC&color=fff&rounded=true&bold=true`;
+    
+  } catch {
+    // Retorna uma imagem padrão se houver erro
+    return '/images/web-link-default.png';
+  }
+};
+
 const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
   const { user } = useAuth();
   const [isViewerOpen, setIsViewerOpen] = useState(false);
@@ -28,6 +75,9 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
   const [imageLoaded, setImageLoaded] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   console.log('📄 Documento:', document.title, 'Visibilidade:', document.visibilidade);
+
+  // Detecta se é um link web comum
+  const isCommonWebLink = isWebLink(document.fileUrl);
 
   const formatDate = (date: Date) => {
     return new Intl.DateTimeFormat('pt-BR', {
@@ -50,7 +100,8 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
   };
 
   // Detect file type
-  const getFileType = (url: string): 'pdf' | 'google-sheet' | 'google-doc' | 'image' | 'unknown' => {
+  const getFileType = (url: string): 'pdf' | 'google-sheet' | 'google-doc' | 'image' | 'web-link' | 'unknown' => {
+    if (isWebLink(url)) return 'web-link';
     if (url.includes('docs.google.com/spreadsheets')) return 'google-sheet';
     if (url.includes('docs.google.com/document')) return 'google-doc';
     if (url.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) return 'image';
@@ -60,12 +111,19 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
 
   const isExternalLink = (url: string): boolean => {
     const fileType = getFileType(url);
-    return fileType === 'google-sheet' || fileType === 'google-doc';
+    return fileType === 'google-sheet' || fileType === 'google-doc' || fileType === 'web-link';
   };
 
   // Função para abrir link externo
   const handleOpenLink = () => {
     window.open(document.fileUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  // Função para abrir o link web
+  const handleWebLinkClick = () => {
+    if (isCommonWebLink && document.fileUrl) {
+      window.open(document.fileUrl, '_blank', 'noopener,noreferrer');
+    }
   };
 
   // Get file icon and label
@@ -80,6 +138,8 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
         return { icon: Image, label: 'Imagem', color: 'text-purple-600' };
       case 'pdf': 
         return { icon: FileText, label: 'PDF', color: 'text-rmh-primary' };
+      case 'web-link':
+        return { icon: Globe, label: 'Link Web', color: 'text-blue-500' };
       default: 
         return { icon: FileText, label: 'Arquivo', color: 'text-gray-600' };
     }
@@ -236,6 +296,30 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
       setImageLoaded(false);
 
       console.log(`🎯 Processando arquivo: ${document.title}`);
+
+      // Verifica se é um link web comum PRIMEIRO
+      if (isCommonWebLink) {
+        try {
+          const response = await fetch(`/api/website-screenshot?url=${encodeURIComponent(document.fileUrl)}&documentId=${document.id}`);
+          
+          if (response.ok) {
+            const data = await response.json();
+            setThumbnailUrl(data.thumbnailUrl);
+            console.log(`✅ Screenshot do site carregado: ${data.thumbnailUrl}`);
+            setIsLoadingThumbnail(false);
+            return;
+          } else {
+            throw new Error('Falha ao gerar screenshot');
+          }
+        } catch (screenshotError) {
+          console.warn('⚠️ Erro no screenshot, usando fallback:', screenshotError);
+          // Fallback para o método atual
+          const webThumbnail = getWebLinkThumbnail(document.fileUrl);
+          setThumbnailUrl(webThumbnail);
+          setIsLoadingThumbnail(false);
+          return;
+        }
+      }
 
       // ✅ PRIORIDADE 1: Usar thumbnailUrl salva no documento
       if (document.thumbnailUrl) {
@@ -427,18 +511,31 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
     <>
       <Card className="group hover:shadow-xl transition-all duration-300 border-gray-200 hover:border-rmh-primary/50 overflow-hidden hover:scale-[1.02]">
         {/* ✅ ÁREA DE MINIATURA COM TAMANHO MÁXIMO */}
-        <div className="relative bg-gradient-to-br from-gray-50 to-gray-100">
-          <AspectRatio ratio={4/3} className="bg-white min-h-[320px]"> {/* Aumentado de 280px */}
+        <div 
+          className={`relative bg-gradient-to-br from-gray-50 to-gray-100 ${
+            isCommonWebLink ? 'cursor-pointer' : ''
+          }`}
+          onClick={isCommonWebLink ? handleWebLinkClick : undefined}
+        >
+          <AspectRatio ratio={4/3} className="bg-white min-h-[320px]">
+            {/* Indicador visual para links web */}
+            {isCommonWebLink && (
+              <div className="absolute top-2 right-2 z-10 bg-blue-500 text-white p-1.5 rounded-full shadow-lg">
+                <ExternalLink className="h-4 w-4" />
+              </div>
+            )}
+
             {isLoadingThumbnail && (
               <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-rmh-primary/5 to-rmh-secondary/5">
                 <div className="bg-white/90 backdrop-blur-sm rounded-lg p-6 shadow-lg">
                   <div className="flex flex-col items-center space-y-3">
                     <Loader2 className="h-8 w-8 text-rmh-primary animate-spin" />
                     <div className="text-sm text-rmh-primary font-medium">
-                      Gerando visualização...
+                      {isCommonWebLink ? "Carregando link" : "Gerando visualização..."}
                     </div>
                     <div className="text-xs text-rmh-gray">
-                      {getFileType(document.fileUrl) === 'pdf' ? 'PDF de alta qualidade' : 'Carregando arquivo'}
+                      {isCommonWebLink ? "Preparando miniatura" : 
+                       getFileType(document.fileUrl) === 'pdf' ? 'PDF de alta qualidade' : 'Carregando arquivo'}
                     </div>
                   </div>
                 </div>
@@ -446,126 +543,19 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
             )}
 
             {thumbnailUrl && !thumbnailError && (
-              <div className="relative w-full h-full"> {/* ✅ REMOVIDO padding para ocupar 100% */}
+              <div className="relative w-full h-full">
                 <img 
                   src={thumbnailUrl} 
                   alt={`Miniatura de ${document.title}`}
                   className={`w-full h-full object-cover rounded-t-lg transition-all duration-500 ${
                     imageLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
-                  }`} // ✅ MUDADO de object-contain para object-cover
+                  } ${isCommonWebLink ? 'group-hover:scale-105' : ''}`}
                   onLoad={() => {
                     setImageLoaded(true);
                     console.log(`✅ Miniatura carregada: ${document.title}`);
                   }}
                   onError={(e) => {
                     console.log(`❌ Erro ao carregar miniatura: ${document.title}`);
-                    
-                    // Cast para HTMLImageElement para ter acesso às propriedades corretas
-                    const imageElement = e.target as HTMLImageElement;
-                    const currentTarget = e.currentTarget as HTMLImageElement;
-                    
-                    console.error('📝 Detalhes completos do erro da imagem:', {
-                      // Informações do documento
-                      documentTitle: document.title,
-                      documentId: document.id,
-                      documentFileName: document.fileName,
-                      documentFileUrl: document.fileUrl,
-                      documentCategory: document.category,
-                      
-                      // Informações da miniatura
-                      thumbnailUrl: thumbnailUrl,
-                      fileType: getFileType(document.fileUrl),
-                      
-                      // Informações do evento de erro
-                      errorType: e.type,
-                      errorTarget: imageElement?.tagName || 'N/A',
-                      errorCurrentTarget: currentTarget?.tagName || 'N/A',
-                      
-                      // Informações da imagem
-                      imageNaturalWidth: imageElement?.naturalWidth || 0,
-                      imageNaturalHeight: imageElement?.naturalHeight || 0,
-                      imageComplete: imageElement?.complete || false,
-                      imageSrc: imageElement?.src || 'N/A',
-                      
-                      // Status da requisição (se disponível)
-                      imageCurrentSrc: currentTarget?.currentSrc || 'N/A',
-                      
-                      // Timestamp do erro
-                      timestamp: new Date().toISOString(),
-                      
-                      // Informações do navegador
-                      userAgent: navigator.userAgent,
-                      
-                      // Informações da rede (se disponível)
-                      connection: (navigator as any).connection ? {
-                        effectiveType: (navigator as any).connection.effectiveType,
-                        downlink: (navigator as any).connection.downlink,
-                        rtt: (navigator as any).connection.rtt
-                      } : 'N/A'
-                    });
-                    
-                    // Tentar verificar se é erro de CORS, rede ou outro
-                    if (imageElement?.src) {
-                      console.log('🔍 Diagnóstico do erro:');
-                      
-                      // Verificar se a URL é válida
-                      try {
-                        const url = new URL(imageElement.src);
-                        console.log('🔗 URL válida:', url.href);
-                        console.log('🌐 Protocolo:', url.protocol);
-                        console.log('🏠 Host:', url.host);
-                        console.log('📂 Pathname:', url.pathname);
-                        
-                        // Verificar se é Google Sheets
-                        if (url.host.includes('docs.google.com') || url.host.includes('googleusercontent.com')) {
-                          console.log('📊 Tipo: Google Sheets export');
-                          console.log('💡 Possíveis causas:');
-                          console.log('   - Planilha sem permissões de export');
-                          console.log('   - Rate limiting do Google');
-                          console.log('   - Configurações de compartilhamento restritivas');
-                          console.log('   - Problema temporário na API do Google');
-                        } else if (url.host.includes('drive.google.com')) {
-                          console.log('📁 Tipo: Google Drive thumbnail');
-                          console.log('💡 Possíveis causas:');
-                          console.log('   - Arquivo sem permissões públicas');
-                          console.log('   - Thumbnail não disponível');
-                          console.log('   - Problema de autenticação');
-                        } else {
-                          console.log('🌐 Tipo: URL externa');
-                          console.log('💡 Possíveis causas:');
-                          console.log('   - Arquivo não encontrado (404)');
-                          console.log('   - Problema de CORS');
-                          console.log('   - Servidor fora do ar');
-                        }
-                      } catch (urlError) {
-                        console.error('❌ URL inválida:', urlError);
-                      }
-                    }
-                    
-                    // Tentar fazer um teste de conectividade
-                    if (thumbnailUrl) {
-                      console.log('🧪 Testando conectividade...');
-                      fetch(thumbnailUrl, { method: 'HEAD' })
-                        .then(response => {
-                          console.log('🌐 Status da requisição de teste:', response.status);
-                          console.log('🔒 Headers da resposta:', Object.fromEntries(response.headers.entries()));
-                          
-                          if (!response.ok) {
-                            console.log('❌ Servidor retornou erro:', response.status, response.statusText);
-                          } else {
-                            console.log('✅ URL acessível, problema pode ser de renderização');
-                          }
-                        })
-                        .catch(fetchError => {
-                          console.log('❌ Erro na requisição de teste:', fetchError.message);
-                          if (fetchError.message.includes('CORS')) {
-                            console.log('🚫 Problema de CORS detectado');
-                          } else if (fetchError.message.includes('Failed to fetch')) {
-                            console.log('🚫 Problema de conectividade ou bloqueio');
-                          }
-                        });
-                    }
-                    
                     setThumbnailError(true);
                     setThumbnailUrl(null);
                   }}
@@ -573,7 +563,16 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
                     filter: 'contrast(1.05) brightness(1.02)'
                   }}
                 />
-                
+
+                {/* Overlay ao passar o mouse em links web */}
+                {isCommonWebLink && (
+                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center rounded-t-lg">
+                    <div className="text-white text-center">
+                      <ExternalLink className="h-8 w-8 mx-auto mb-2" />
+                      <p className="text-sm font-medium">Abrir link</p>
+                    </div>
+                  </div>
+                )}
 
                 {!imageLoaded && (
                   <div className="absolute inset-0 flex items-center justify-center bg-white/80">
@@ -588,9 +587,9 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
                 <div className="bg-white/90 backdrop-blur-sm rounded-lg p-6 shadow-lg">
                   <div className="flex flex-col items-center space-y-3">
                     {thumbnailError ? (
-                      <AlertCircle className="h-16 w-16 text-orange-500" /> // ✅ Aumentado de 12 para 16
+                      <AlertCircle className="h-16 w-16 text-orange-500" />
                     ) : (
-                      <IconComponent className={`h-16 w-16 ${fileInfo.color}`} /> // ✅ Aumentado de 12 para 16
+                      <IconComponent className={`h-16 w-16 ${fileInfo.color}`} />
                     )}
                     <div className="text-center">
                       <div className={`text-base font-medium ${thumbnailError ? 'text-orange-600' : fileInfo.color} mb-2`}>
@@ -636,18 +635,43 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
                 <Calendar className="h-4 w-4" />
                 <span>{formatDate(document.uploadedAt)}</span>
               </div>
+              {isCommonWebLink && (
+                <div className="flex items-center space-x-2">
+                  <Globe className="h-4 w-4" />
+                  <span className="truncate text-xs">
+                    {(() => {
+                      try {
+                        return new URL(document.fileUrl).hostname.replace('www.', '');
+                      } catch {
+                        return 'Link externo';
+                      }
+                    })()}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="flex space-x-2">
-              <Button
-                size="sm"
-                onClick={handleView}
-                disabled={!isValidFileUrl(document.fileUrl)}
-                className="flex-1 bg-rmh-lightGreen hover:bg-rmh-primary text-sm h-9 disabled:opacity-50 transition-all duration-200"
-              >
-                <Eye className="h-4 w-4 mr-1" />
-                Ver
-              </Button>
+              {/* NÃO mostrar botão "Ver" para links web */}
+              {!isCommonWebLink && (
+                <Button
+                  size="sm"
+                  onClick={handleView}
+                  disabled={!isValidFileUrl(document.fileUrl)}
+                  className="flex-1 bg-rmh-lightGreen hover:bg-rmh-primary text-sm h-9 disabled:opacity-50 transition-all duration-200"
+                >
+                  <Eye className="h-4 w-4 mr-1" />
+                  Ver
+                </Button>
+              )}
+
+              {/* Para links web, mostrar um texto indicativo */}
+              {isCommonWebLink && (
+                <div className="flex-1 flex items-center justify-center text-sm text-blue-600 space-x-1">
+                  <ExternalLink className="h-3 w-3" />
+                  <span>Clique para abrir</span>
+                </div>
+              )}
 
               {isExternalLink(document.fileUrl) ? (
                 <Button
