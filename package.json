@@ -15,7 +15,7 @@
     "preview": "vite preview",
     "start": "serve -s dist -l $PORT",
     "deploy:local": "npm run build:backend:local && cd backend && cross-env NODE_ENV=development ENV_FILE=.env npm start",
-    "deploy:prod": "npm run build:backend:prod && cd backend && cross-env NODE_ENV=production ENV_FILE=.env1 npm start",
+    "deploy:prod": "npm run build:backend:prod",
     "deploy:clean": "npm run clean && npm run build:backend:local && cd backend && npm start",
     "backend:start": "cd backend && npm start",
     "backend:dev": "cd backend && npm run dev"
