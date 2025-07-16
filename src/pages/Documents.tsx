@@ -204,7 +204,7 @@ const DocumentsPage = () => {
             {canEdit && (
               <Button 
                 onClick={handleNewDocument}
-                className="bg-rmh-primary hover:bg-rmh-secondary"
+                className="bg-rmh-lightGreen hover:bg-rmh-primary"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Novo Documento

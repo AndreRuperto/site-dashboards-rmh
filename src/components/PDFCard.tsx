@@ -518,13 +518,6 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
           onClick={isCommonWebLink ? handleWebLinkClick : undefined}
         >
           <AspectRatio ratio={4/3} className="bg-white min-h-[320px]">
-            {/* Indicador visual para links web */}
-            {isCommonWebLink && (
-              <div className="absolute top-2 right-2 z-10 bg-blue-500 text-white p-1.5 rounded-full shadow-lg">
-                <ExternalLink className="h-4 w-4" />
-              </div>
-            )}
-
             {isLoadingThumbnail && (
               <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-rmh-primary/5 to-rmh-secondary/5">
                 <div className="bg-white/90 backdrop-blur-sm rounded-lg p-6 shadow-lg">
@@ -543,7 +536,7 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
             )}
 
             {thumbnailUrl && !thumbnailError && (
-              <div className="relative w-full h-full">
+              <div className="relative w-full h-full overflow-hidden">
                 <img 
                   src={thumbnailUrl} 
                   alt={`Miniatura de ${document.title}`}
@@ -620,7 +613,7 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
 
         {/* ✅ CONTEÚDO DO CARD */}
         <CardHeader className="pb-3 pt-4">
-          <CardTitle className="text-lg font-heading font-semibold text-rmh-primary line-clamp-2 leading-tight hover:text-rmh-secondary transition-colors">
+          <CardTitle className="text-lg font-heading font-semibold text-rmh-primary line-clamp-2 leading-tight transition-colors">
             {document.title}
           </CardTitle>
           <CardDescription className="text-sm text-rmh-gray line-clamp-2">
@@ -630,11 +623,13 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
 
         <CardContent className="pt-0 pb-4">
           <div className="space-y-4">
+            {/* linha de data + domínio (sem mudanças) */}
             <div className="flex items-center justify-between text-xs text-rmh-gray">
               <div className="flex items-center space-x-2">
                 <Calendar className="h-4 w-4" />
                 <span>{formatDate(document.uploadedAt)}</span>
               </div>
+
               {isCommonWebLink && (
                 <div className="flex items-center space-x-2">
                   <Globe className="h-4 w-4" />
@@ -651,9 +646,10 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
               )}
             </div>
 
-            <div className="flex space-x-2">
-              {/* NÃO mostrar botão "Ver" para links web */}
-              {!isCommonWebLink && (
+            {/* linha de ações */}
+            <div className="flex w-full items-center space-x-2">
+              {/* 👉 ESPAÇADOR: botão Ver OU div flex-1 vazia */}
+              {!isCommonWebLink ? (
                 <Button
                   size="sm"
                   onClick={handleView}
@@ -663,24 +659,20 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
                   <Eye className="h-4 w-4 mr-1" />
                   Ver
                 </Button>
+              ) : (
+                /* mantém o espaço quando o botão Ver não existe */
+                <div className="flex-1" />
               )}
 
-              {/* Para links web, mostrar um texto indicativo */}
-              {isCommonWebLink && (
-                <div className="flex-1 flex items-center justify-center text-sm text-blue-600 space-x-1">
-                  <ExternalLink className="h-3 w-3" />
-                  <span>Clique para abrir</span>
-                </div>
-              )}
-
+              {/* Abrir link externo OU Download interno */}
               {isExternalLink(document.fileUrl) ? (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleOpenLink}
                   disabled={!isValidFileUrl(document.fileUrl)}
-                  className="border-rmh-primary text-rmh-primary hover:bg-rmh-primary hover:text-white h-9 px-3 disabled:opacity-50 transition-all duration-200"
-                  title="Abrir no Google"
+                  className="border-rmh-primary text-rmh-primary hover:bg-rmh-primary hover:text-white h-9 px-3"
+                  title="Abrir link"
                 >
                   <ExternalLink className="h-4 w-4" />
                 </Button>
@@ -690,30 +682,32 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
                   size="sm"
                   onClick={handleDownload}
                   disabled={!isValidFileUrl(document.fileUrl)}
-                  className="border-rmh-primary text-rmh-primary hover:bg-rmh-primary hover:text-white h-9 px-3 disabled:opacity-50 transition-all duration-200"
+                  className="border-rmh-primary text-rmh-primary hover:bg-rmh-primary hover:text-white h-9 px-3"
                   title="Baixar arquivo"
                 >
                   <Download className="h-4 w-4" />
                 </Button>
               )}
 
+              {/* Editar */}
               {canEdit && onEdit && (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => onEdit(document)}
-                  className="border-rmh-primary text-rmh-primary hover:bg-rmh-primary hover:text-white h-9 px-3 transition-all duration-200"
+                  className="border-rmh-primary text-rmh-primary hover:bg-rmh-primary hover:text-white h-9 px-3"
                 >
                   <Edit className="h-4 w-4" />
                 </Button>
               )}
 
+              {/* Excluir */}
               {canEdit && onDelete && userIsAdmin && (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => onDelete(document.id)}
-                  className="border-red-500 text-red-500 hover:bg-red-500 hover:text-white h-9 px-3 transition-all duration-200"
+                  className="border-red-500 text-red-500 hover:bg-red-500 hover:text-white h-9 px-3"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
