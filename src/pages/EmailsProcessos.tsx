@@ -540,377 +540,377 @@ const EmailsProcessos = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* ✅ HEADER ADICIONADO IGUAL AO DA PÁGINA DE DASHBOARDS */}
       <Header />
-      
-      <main className="container mx-auto px-6 py-8">
+      <main className="max-w-[1600px] mx-auto px-6 py-8">
         <div className="space-y-6">
-          {/* ✅ HEADER SECTION NO MESMO ESTILO DA PÁGINA DE DASHBOARDS */}
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
-            <div>
-              <h1 className="text-3xl font-heading font-bold text-rmh-primary">
-                Controle de Emails - Processos
-              </h1>
-              <p className="text-corporate-gray mt-1">
-                Visualize e gerencie o envio de emails sobre processos ajuizados
-              </p>
-            </div>
-            
-            <div className="flex gap-2">
-              <Button
-                onClick={carregarProcessos}
-                variant="outline"
-                disabled={carregandoInicial}
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${carregandoInicial ? 'animate-spin' : ''}`} />
-                Atualizar
-              </Button>
-            </div>
-          </div>
-
-          {/* Filtros */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Filter className="h-5 w-5" />
-                Filtrar Processos
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {/* Primeira linha */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Cliente ou número do processo</label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                    <input
-                      type="text"
-                      value={termoBusca}
-                      onChange={(e) => setTermoBusca(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">Tipo de processo</label>
-                  <select
-                    value={filtroSetor}
-                    onChange={(e) => setFiltroSetor(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                  >
-                    <option value="todos">Todos os tipos</option>
-                    {setoresUnicos.map(setor => (
-                      <option key={setor} value={setor}>{setor}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">Status</label>
-                  <select 
-                    value={filtroEmail} 
-                    onChange={(e) => setFiltroEmail(e.target.value)} 
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                  >
-                    <option value="todos">Todos</option>
-                    <option value="Enviado">Email Enviado</option>
-                    <option value="Pendente">Email Pendente</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">ID do Atendimento</label>
-                  <div className="relative">
-                    <Hash className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                    <input
-                      type="text"
-                      value={buscaIdAtendimento}
-                      onChange={(e) => setBuscaIdAtendimento(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                    />
-                  </div>
-                </div>
+          <div className="max-w-[1600px] mx-auto space-y-6">
+            {/* Header Section */}
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
+              <div>
+                <h1 className="text-3xl font-heading font-bold text-rmh-primary">
+                  Controle de Emails - Processos
+                </h1>
+                <p className="text-corporate-gray mt-1">
+                  Visualize e gerencie o envio de emails sobre processos ajuizados
+                </p>
               </div>
-
-              {/* Segunda linha */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Autuação do processo de</label>
-                  <input
-                    type="date"
-                    value={dataInicioFiltro}
-                    onChange={(e) => setDataInicioFiltro(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">até</label>
-                  <input
-                    type="date"
-                    value={dataFimFiltro}
-                    onChange={(e) => setDataFimFiltro(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Estatísticas */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center space-x-2">
-                  <BarChart3 className="h-5 w-5 text-gray-600" />
-                  <div>
-                    <p className="text-sm text-gray-600">Total de processos</p>
-                    <p className="text-xl font-bold text-gray">{stats.total}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center space-x-2">
-                  <Check className="h-5 w-5 text-gray-600" />
-                  <div>
-                    <p className="text-sm text-gray-600">Emails Enviados</p>
-                    <p className="text-xl font-bold text-gray-600">{stats.comEmail}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center space-x-2">
-                  <Clock className="h-5 w-5 text-gray-600" />
-                  <div>
-                    <p className="text-sm text-gray-600">Emails Pendentes</p>
-                    <p className="text-xl font-bold text-gray-600">{stats.semEmail}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Ações em massa - só para protocolo */}
-          {podeEnviarEmails && processosSelecionados.length > 0 && (
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription className="flex items-center justify-between">
-                <span>{processosSelecionados.length} processo(s) selecionado(s)</span>
+              
+              <div className="flex gap-2">
                 <Button
-                  onClick={enviarEmailsEmMassa}
-                  disabled={carregando}
-                  size="sm"
+                  onClick={carregarProcessos}
+                  variant="outline"
+                  disabled={carregandoInicial}
                 >
-                  <Send className="h-4 w-4 mr-2" />
-                  Enviar Emails em Massa
+                  <RefreshCw className={`h-4 w-4 mr-2 ${carregandoInicial ? 'animate-spin' : ''}`} />
+                  Atualizar
                 </Button>
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Lista de Processos com Paginação */}
-          <Card className="h-[600px] flex flex-col">
-            <CardHeader className="flex-shrink-0">
-              <div className="flex justify-between items-center">
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  Processos ({totalItens})
-                </CardTitle>
-                <div className="flex items-center space-x-4">
-                  {/* ✅ NOVO: Seletor de itens por página */}
-                  <div className="flex items-center space-x-2">
-                    <select
-                      value={itensPorPagina}
-                      onChange={(e) => handleItensPorPaginaChange(Number(e.target.value))}
-                      className="px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                    >
-                      <option value={5}>5</option>
-                      <option value={10}>10</option>
-                      <option value={20}>20</option>
-                      <option value={50}>50</option>
-                      <option value={100}>100</option>
-                    </select>
-                    <span className="text-sm text-gray-600">por página</span>
-                  </div>
-                  
-                  {podeEnviarEmails && (
-                    <div className="flex items-center space-x-2">
-                      <Button
-                        onClick={toggleSelecionarTodos}
-                        variant="outline"
-                        size="sm"
-                      >
-                        {processosSelecionados.length === processosFiltrados.length ? (
-                          <>
-                            <CheckSquare className="h-4 w-4 mr-2" />
-                            Desmarcar Todos
-                          </>
-                        ) : (
-                          <>
-                            <Square className="h-4 w-4 mr-2" />
-                            Selecionar Todos
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  )}
-                </div>
               </div>
-            </CardHeader>
+            </div>
             
-            {/* Conteúdo Scrollável */}
-            <CardContent className="flex-1 overflow-y-auto">
-              <div className="space-y-4">
-                {processosPaginaAtual.map((processo) => (
-                  <div
-                    key={processo.id}
-                    className={`border rounded-lg p-4 transition-all ${
-                      processosSelecionados.includes(processo.id)
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
+            {/* Filtros */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Filter className="h-5 w-5" />
+                  Filtrar Processos
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {/* Primeira linha */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Cliente ou número do processo</label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                      <input
+                        type="text"
+                        value={termoBusca}
+                        onChange={(e) => setTermoBusca(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Tipo de processo</label>
+                    <select
+                      value={filtroSetor}
+                      onChange={(e) => setFiltroSetor(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                    >
+                      <option value="todos">Todos os tipos</option>
+                      {setoresUnicos.map(setor => (
+                        <option key={setor} value={setor}>{setor}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Status</label>
+                    <select 
+                      value={filtroEmail} 
+                      onChange={(e) => setFiltroEmail(e.target.value)} 
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                    >
+                      <option value="todos">Todos</option>
+                      <option value="Enviado">Email Enviado</option>
+                      <option value="Pendente">Email Pendente</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2">ID do Atendimento</label>
+                    <div className="relative">
+                      <Hash className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                      <input
+                        type="text"
+                        value={buscaIdAtendimento}
+                        onChange={(e) => setBuscaIdAtendimento(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Segunda linha */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Autuação do processo de</label>
+                    <input
+                      type="date"
+                      value={dataInicioFiltro}
+                      onChange={(e) => setDataInicioFiltro(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2">até</label>
+                    <input
+                      type="date"
+                      value={dataFimFiltro}
+                      onChange={(e) => setDataFimFiltro(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Estatísticas */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center space-x-2">
+                    <BarChart3 className="h-5 w-5 text-gray-600" />
+                    <div>
+                      <p className="text-sm text-gray-600">Total de processos</p>
+                      <p className="text-xl font-bold text-gray">{stats.total}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center space-x-2">
+                    <Check className="h-5 w-5 text-gray-600" />
+                    <div>
+                      <p className="text-sm text-gray-600">Emails Enviados</p>
+                      <p className="text-xl font-bold text-gray-600">{stats.comEmail}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center space-x-2">
+                    <Clock className="h-5 w-5 text-gray-600" />
+                    <div>
+                      <p className="text-sm text-gray-600">Emails Pendentes</p>
+                      <p className="text-xl font-bold text-gray-600">{stats.semEmail}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Ações em massa - só para protocolo */}
+            {podeEnviarEmails && processosSelecionados.length > 0 && (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription className="flex items-center justify-between">
+                  <span>{processosSelecionados.length} processo(s) selecionado(s)</span>
+                  <Button
+                    onClick={enviarEmailsEmMassa}
+                    disabled={carregando}
+                    size="sm"
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        {podeEnviarEmails && (
-                          <input
-                            type="checkbox"
-                            checked={processosSelecionados.includes(processo.id)}
-                            onChange={() => toggleSelecionarProcesso(processo.id)}
-                            className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                          />
-                        )}
-                        
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-2 mb-2">
-                            <h3 className="font-semibold text-gray-900">{processo.cliente}</h3>
-                            {processo.emailEnviado ? (
-                              <Badge className="bg-green-100 hover:bg-green-100 text-green-800">
-                                <Mail className="h-3 w-3 mr-1" />
-                                Email Enviado
-                              </Badge>
-                            ) : (
-                              <Badge className="bg-yellow-100 hover:bg-yellow-100 text-yellow-800">
-                                <Clock className="h-3 w-3 mr-1" />
-                                Email Pendente
-                              </Badge>
+                    <Send className="h-4 w-4 mr-2" />
+                    Enviar Emails em Massa
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Lista de Processos com Paginação */}
+            <Card className="h-[600px] flex flex-col">
+              <CardHeader className="flex-shrink-0">
+                <div className="flex justify-between items-center">
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Processos ({totalItens})
+                  </CardTitle>
+                  <div className="flex items-center space-x-4">
+                    {/* ✅ NOVO: Seletor de itens por página */}
+                    <div className="flex items-center space-x-2">
+                      <select
+                        value={itensPorPagina}
+                        onChange={(e) => handleItensPorPaginaChange(Number(e.target.value))}
+                        className="px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                      >
+                        <option value={5}>5</option>
+                        <option value={10}>10</option>
+                        <option value={20}>20</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                      </select>
+                      <span className="text-sm text-gray-600">por página</span>
+                    </div>
+                    
+                    {podeEnviarEmails && (
+                      <div className="flex items-center space-x-2">
+                        <Button
+                          onClick={toggleSelecionarTodos}
+                          variant="outline"
+                          size="sm"
+                        >
+                          {processosSelecionados.length === processosFiltrados.length ? (
+                            <>
+                              <CheckSquare className="h-4 w-4 mr-2" />
+                              Desmarcar Todos
+                            </>
+                          ) : (
+                            <>
+                              <Square className="h-4 w-4 mr-2" />
+                              Selecionar Todos
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
+              
+              {/* Conteúdo Scrollável */}
+              <CardContent className="flex-1 overflow-y-auto">
+                <div className="space-y-4">
+                  {processosPaginaAtual.map((processo) => (
+                    <div
+                      key={processo.id}
+                      className={`border rounded-lg p-4 transition-all ${
+                        processosSelecionados.includes(processo.id)
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          {podeEnviarEmails && (
+                            <input
+                              type="checkbox"
+                              checked={processosSelecionados.includes(processo.id)}
+                              onChange={() => toggleSelecionarProcesso(processo.id)}
+                              className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                            />
+                          )}
+                          
+                          <div className="flex-1">
+                            <div className="flex items-center space-x-2 mb-2">
+                              <h3 className="font-semibold text-gray-900">{processo.cliente}</h3>
+                              {processo.emailEnviado ? (
+                                <Badge className="bg-green-100 hover:bg-green-100 text-green-800">
+                                  <Mail className="h-3 w-3 mr-1" />
+                                  Email Enviado
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-yellow-100 hover:bg-yellow-100 text-yellow-800">
+                                  <Clock className="h-3 w-3 mr-1" />
+                                  Email Pendente
+                                </Badge>
+                              )}
+                            </div>
+                            
+                            <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-600">
+                              <div>
+                                <strong>Número:</strong> {processo.numeroProcesso}
+                              </div>
+                              <div>
+                                <strong>Email:</strong> {processo.emailCliente}
+                              </div>
+                              <div>
+                                <strong>Tipo:</strong> {processo.tipoProcesso}
+                              </div>
+                              <div>
+                                <strong>ID do atendimento:</strong> {processo.idAtendimento}
+                              </div>
+                              <div>
+                                <strong>Ajuizamento:</strong> {formatarData(processo.dataAjuizamento)}
+                              </div>
+                            </div>
+                            
+                            {processo.dataUltimoEmail && (
+                              <div className="mt-2 text-xs text-green-600">
+                                Email enviado em: {formatarData(processo.dataUltimoEmail)}
+                              </div>
                             )}
                           </div>
-                          
-                          <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-600">
-                            <div>
-                              <strong>Número:</strong> {processo.numeroProcesso}
-                            </div>
-                            <div>
-                              <strong>Email:</strong> {processo.emailCliente}
-                            </div>
-                            <div>
-                              <strong>Tipo:</strong> {processo.tipoProcesso}
-                            </div>
-                            <div>
-                              <strong>ID do atendimento:</strong> {processo.idAtendimento}
-                            </div>
-                            <div>
-                              <strong>Ajuizamento:</strong> {formatarData(processo.dataAjuizamento)}
-                            </div>
-                          </div>
-                          
-                          {processo.dataUltimoEmail && (
-                            <div className="mt-2 text-xs text-green-600">
-                              Email enviado em: {formatarData(processo.dataUltimoEmail)}
-                            </div>
+                        </div>
+                        
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            onClick={() => setProcessoDetalhado(processo)}
+                            size="sm"
+                            variant="outline"
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            Ver Detalhes
+                          </Button>
+                          {podeEnviarEmails && (
+                            <Button
+                              onClick={() => enviarEmailIndividual(processo)}
+                              disabled={carregando}
+                              size="sm"
+                              variant={processo.emailEnviado ? "outline" : "default"}
+                            >
+                              <Send className="h-4 w-4 mr-2" />
+                              {processo.emailEnviado ? 'Reenviar' : 'Enviar'} Email
+                            </Button>
                           )}
                         </div>
                       </div>
+                    </div>
+                  ))}
+                </div>
+                
+                {processosPaginaAtual.length === 0 && (
+                  <div className="text-center py-8 text-gray-500">
+                    <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                    <p>Nenhum processo encontrado com os filtros aplicados</p>
+                  </div>
+                )}
+              </CardContent>
+
+              {/* Footer com Paginação */}
+              {totalPaginas > 1 && (
+                <div className="flex-shrink-0 p-4 border-t bg-gray-50">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="text-sm text-gray-600 flex-shrink-0">
+                      {indiceInicial + 1} a {Math.min(indiceFinal, totalItens)} de {totalItens}
+                    </div>
+                    
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={`px-3 py-1 text-xs ${paginaAtual === 1 ? 'opacity-50 pointer-events-none' : ''}`}
+                        onClick={() => irParaPagina(paginaAtual - 1)}
+                      >
+                        Anterior
+                      </Button>
                       
-                      <div className="flex items-center space-x-2">
+                      {gerarPaginasExibicao().map((pagina) => (
                         <Button
-                          onClick={() => setProcessoDetalhado(processo)}
+                          key={pagina}
+                          variant={pagina === paginaAtual ? "default" : "outline"}
                           size="sm"
-                          variant="outline"
+                          className="px-2 py-1 text-xs min-w-[32px] cursor-pointer"
+                          onClick={() => irParaPagina(pagina)}
                         >
-                          <Eye className="h-4 w-4 mr-2" />
-                          Ver Detalhes
+                          {pagina}
                         </Button>
-                        {podeEnviarEmails && (
-                          <Button
-                            onClick={() => enviarEmailIndividual(processo)}
-                            disabled={carregando}
-                            size="sm"
-                            variant={processo.emailEnviado ? "outline" : "default"}
-                          >
-                            <Send className="h-4 w-4 mr-2" />
-                            {processo.emailEnviado ? 'Reenviar' : 'Enviar'} Email
-                          </Button>
-                        )}
-                      </div>
+                      ))}
+                      
+                      {totalPaginas > 5 && paginaAtual < totalPaginas - 2 && (
+                        <span className="px-2 text-gray-400">...</span>
+                      )}
+                      
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={`px-3 py-1 text-xs ${paginaAtual === totalPaginas ? 'opacity-50 pointer-events-none' : ''}`}
+                        onClick={() => irParaPagina(paginaAtual + 1)}
+                      >
+                        Próxima
+                      </Button>
                     </div>
                   </div>
-                ))}
-              </div>
-              
-              {processosPaginaAtual.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                  <p>Nenhum processo encontrado com os filtros aplicados</p>
                 </div>
               )}
-            </CardContent>
-
-            {/* Footer com Paginação */}
-            {totalPaginas > 1 && (
-              <div className="flex-shrink-0 p-4 border-t bg-gray-50">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="text-sm text-gray-600 flex-shrink-0">
-                    {indiceInicial + 1} a {Math.min(indiceFinal, totalItens)} de {totalItens}
-                  </div>
-                  
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className={`px-3 py-1 text-xs ${paginaAtual === 1 ? 'opacity-50 pointer-events-none' : ''}`}
-                      onClick={() => irParaPagina(paginaAtual - 1)}
-                    >
-                      Anterior
-                    </Button>
-                    
-                    {gerarPaginasExibicao().map((pagina) => (
-                      <Button
-                        key={pagina}
-                        variant={pagina === paginaAtual ? "default" : "outline"}
-                        size="sm"
-                        className="px-2 py-1 text-xs min-w-[32px] cursor-pointer"
-                        onClick={() => irParaPagina(pagina)}
-                      >
-                        {pagina}
-                      </Button>
-                    ))}
-                    
-                    {totalPaginas > 5 && paginaAtual < totalPaginas - 2 && (
-                      <span className="px-2 text-gray-400">...</span>
-                    )}
-                    
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className={`px-3 py-1 text-xs ${paginaAtual === totalPaginas ? 'opacity-50 pointer-events-none' : ''}`}
-                      onClick={() => irParaPagina(paginaAtual + 1)}
-                    >
-                      Próxima
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </Card>
+            </Card>
+          </div>
         </div>
       </main>
 

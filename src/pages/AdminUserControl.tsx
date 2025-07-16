@@ -796,480 +796,292 @@ const AdminUserControl: React.FC = () => {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
+    <div className="min-h-screen bg-gray-50">
       <Header />
-      {/* Header */}
-      <div className="space-y-4">
-        <Button
-          onClick={() => navigate('/')}
-          variant="ghost"
-          className="mb-2"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Voltar ao Início
-        </Button>
-        
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-primary">Controle de Usuários</h1>
-            <p className="text-gray-600">Gerencie cadastros, aprovações e coordenações por setor</p>
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={() => setModalNovoUsuario(true)} className="bg-rmh-lightGreen hover:bg-rmh-primary">
-              <UserPlus className="h-4 w-4 mr-2" />
-              Adicionar Usuário
-            </Button>
-            <Button onClick={fetchUsuarios} variant="outline">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Atualizar
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Estatísticas Melhoradas */}
-      <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-7 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <Users className="h-5 w-5 text-gray-600" />
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total</p>
-                <p className="text-2xl font-bold text-gray-700">{stats.total}</p>
-              </div>
+      <main className="max-w-[1600px] mx-auto px-6 py-8">
+        <div className="space-y-6">
+          {/* Header Section */}
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
+            <div>
+              <h1 className="text-3xl font-heading font-bold text-rmh-primary">
+                Controle de Usuários
+              </h1>
+              <p className="text-corporate-gray mt-1">
+                Gerencie cadastros, aprovações e coordenações por setor
+              </p>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <Clock className="h-5 w-5 text-gray-600" />
-              <div>
-                <p className="text-sm font-medium text-gray-600">Pendentes</p>
-                <p className="text-2xl font-bold text-gray-700">{stats.pendentes_aprovacao + stats.nao_verificados}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <Briefcase className="h-5 w-5 text-gray-500" />
-              <div>
-                <p className="text-sm font-medium text-gray-600">CLT/Associados</p>
-                <p className="text-2xl font-bold text-gray-700">{stats.clt_associados}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <GraduationCap className="h-5 w-5 text-gray-500" />
-              <div>
-                <p className="text-sm font-medium text-gray-600">Estagiários</p>
-                <p className="text-2xl font-bold text-gray-700">{stats.estagiarios}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <Crown className="h-5 w-5 text-gray-500" />
-              <div>
-                <p className="text-sm font-medium text-gray-600">Coordenadores</p>
-                <p className="text-2xl font-bold text-gray-700">{stats.coordenadores}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <Shield className="h-5 w-5 text-gray-600" />
-              <div>
-                <p className="text-sm font-medium text-gray-600">Administradores</p>
-                <p className="text-2xl font-bold text-gray-700">{stats.admins}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <Ban className="h-5 w-5 text-gray-700" />
-              <div>
-                <p className="text-sm font-medium text-gray-600">Revogados</p>
-                <p className="text-2xl font-bold text-gray-700">{stats.revogados}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* 🆕 SISTEMA DE ABAS */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2 gap-2">
-          <TabsTrigger 
-            value="geral"
-            className="data-[state=active]:border data-[state=active]:border-black-300 data-[state=active]:shadow-sm"
-          >
-            <Users className="h-4 w-4 mr-2" />
-            Usuários Gerais
-          </TabsTrigger>
-          <TabsTrigger 
-            value="verificacoes" 
-            className="relative data-[state=active]:border data-[state=active]:border-black-300 data-[state=active]:shadow-sm"
-          >
-            <Clock className="h-4 w-4 mr-2" />
-            Verificações & Tokens
-          </TabsTrigger>
-        </TabsList>
-
-        {/* 🆕 ABA 1: USUÁRIOS GERAIS */}
-        <TabsContent value="geral" className="space-y-4">
-          <div className="space-y-4">
-            {/* Busca */}
-            <div className="flex gap-4">
-              <div className="flex-1 max-w-md">
-                <Input
-                  placeholder="Buscar por nome, email ou setor..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full"
-                />
-              </div>
-              <Select value={setorSelecionado} onValueChange={setSetorSelecionado}>
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="Filtrar por setor" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos os setores</SelectItem>
-                  {setores.map(setor => (
-                    <SelectItem key={setor} value={setor}>{setor}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              
-              {/* Toggle para Agrupar por Setores */}
-              <div className="flex items-center space-x-2 px-3 py-2 bg-gray-50 rounded-lg border">
-                <Building2 className="h-4 w-4 text-gray-600" />
-                <Label htmlFor="toggle-setores" className="text-sm font-medium cursor-pointer whitespace-nowrap">
-                  Agrupar por Setores
-                </Label>
-                <Switch
-                  id="toggle-setores"
-                  checked={visualizacaoPorSetores}
-                  onCheckedChange={setVisualizacaoPorSetores}
-                />
-              </div>
-            </div>
-            {/* Filtros por tipo */}
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
-              <Button
-                variant={filter === 'pendentes_aprovacao' ? 'default' : 'outline'}
-                onClick={() => setFilter('pendentes_aprovacao')}
-                size="sm"
-                className="w-full"
-              >
-                <Clock className="h-4 w-4 mr-1" />
-                Aguard. Aprovação ({stats.pendentes_aprovacao})
+            
+            <div className="flex gap-2">
+              <Button onClick={() => setModalNovoUsuario(true)} className="bg-rmh-lightGreen hover:bg-rmh-primary">
+                <UserPlus className="h-4 w-4 mr-2" />
+                Adicionar Usuário
               </Button>
-              <Button
-                variant={filter === 'pendentes_verificacao' ? 'default' : 'outline'}
-                onClick={() => setFilter('pendentes_verificacao')}
-                size="sm"
-                className="w-full"
-              >
-                <MailSearch className="h-4 w-4 mr-1" />
-                Aguard. Verificação ({stats.nao_verificados})
-              </Button>
-              <Button
-                variant={filter === 'corporativos' ? 'default' : 'outline'}
-                onClick={() => setFilter('corporativos')}
-                size="sm"
-                className="w-full"
-              >
-                <Briefcase className="h-4 w-4 mr-1" />
-                CLT/Associados ({stats.clt_associados})
-              </Button>
-              <Button
-                variant={filter === 'estagiarios' ? 'default' : 'outline'}
-                onClick={() => setFilter('estagiarios')}
-                size="sm"
-                className="w-full"
-              >
-                <GraduationCap className="h-4 w-4 mr-1" />
-                Estagiários ({stats.estagiarios})
-              </Button>
-              <Button
-                variant={filter === 'coordenadores' ? 'default' : 'outline'}
-                onClick={() => setFilter('coordenadores')}
-                size="sm"
-                className="w-full"
-              >
-                <Crown className="h-4 w-4 mr-1" />
-                Coordenadores ({stats.coordenadores})
-              </Button>
-              <Button
-                variant={filter === 'admins' ? 'default' : 'outline'}
-                onClick={() => setFilter('admins')}
-                size="sm"
-                className="w-full"
-              >
-                <Shield className="h-4 w-4 mr-1" />
-                Administradores ({stats.admins})
-              </Button>
-              <Button
-                variant={filter === 'revogados' ? 'default' : 'outline'}
-                onClick={() => setFilter('revogados')}
-                size="sm"
-                className="w-full"
-              >
-                <Ban className="h-4 w-4 mr-1" />
-                Revogados ({stats.revogados})
-              </Button>
-              <Button
-                variant={filter === 'todos' ? 'default' : 'outline'}
-                onClick={() => setFilter('todos')}
-                size="sm"
-                className="w-full"
-              >
-                Todos ({stats.total})
+              <Button onClick={fetchUsuarios} variant="outline">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Atualizar
               </Button>
             </div>
           </div>
 
-          {/* Lista de usuários DENTRO da aba geral */}
-          <div className="space-y-4">
-            {!visualizacaoPorSetores ? (
-              // VISUALIZAÇÃO NORMAL (Lista única)
-              <>
-                {usuariosFiltrados.length === 0 ? (
-                  <Card>
-                    <CardContent className="p-8 text-center">
-                      <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">
-                        Nenhum usuário encontrado
-                      </h3>
-                      <p className="text-gray-500">
-                        Não há usuários que correspondam aos filtros selecionados.
-                      </p>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  usuariosFiltrados.map((usuario) => (
-                    <Card key={usuario.id}>
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-4">
-                            <div className="flex-1">
-                              <div className="flex items-center space-x-2">
-                                <h3 className="font-medium text-lg">{usuario.nome}</h3>
-                                {getStatusBadge(usuario)}
-                              </div>
-                              <p className="text-sm text-gray-600 mt-1">
-                                {usuario.email_login} • {usuario.setor} • {usuario.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}
-                              </p>
-                            </div>
-                          </div>
+          {/* Resto do conteúdo */}
+          <div className="max-w-[1800px] mx-auto space-y-6">
+            {/* Estatísticas Melhoradas */}
+            <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-7 gap-4">
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center space-x-2">
+                    <Users className="h-5 w-5 text-gray-600" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Total</p>
+                      <p className="text-2xl font-bold text-gray-700">{stats.total}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
-                          <div className="flex items-center space-x-2">
-                            {/* Botões para aprovação (apenas estagiários pendentes) */}
-                            {isPendenteAprovacao(usuario) && (
-                              <>
-                                <Button
-                                  onClick={() => setUsuarioParaAprovar({ id: usuario.id, nome: usuario.nome })}
-                                  size="sm"
-                                  className="bg-green-600 hover:bg-green-700"
-                                >
-                                  <UserCheck className="h-4 w-4 mr-1" />
-                                  Aprovar
-                                </Button>
-                                <Button
-                                  onClick={() => setUsuarioParaRejeitar({ id: usuario.id, nome: usuario.nome })}
-                                  size="sm"
-                                  variant="destructive"
-                                >
-                                  <UserX className="h-4 w-4 mr-1" />
-                                  Rejeitar
-                                </Button>
-                              </>
-                            )}
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center space-x-2">
+                    <Clock className="h-5 w-5 text-gray-600" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Pendentes</p>
+                      <p className="text-2xl font-bold text-gray-700">{stats.pendentes_aprovacao + stats.nao_verificados}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
-                            {/* Botões para usuários ativos */}
-                            {usuario.aprovado_admin && usuario.email_verificado && usuario.ativo !== false && usuario.tipo_colaborador !== 'estagiario' && (
-                              <>
-                                {/* Botão de coordenação */}
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => setUsuarioParaPromover({ 
-                                    id: usuario.id, 
-                                    nome: usuario.nome, 
-                                    isCoordenador: usuario.is_coordenador 
-                                  })}
-                                  className={usuario.is_coordenador 
-                                    ? "text-gray-600 hover:text-gray-700" 
-                                    : "text-yellow-600 hover:text-yellow-700"
-                                  }
-                                >
-                                  <Crown className="h-4 w-4 mr-1" />
-                                  {usuario.is_coordenador ? 'Remover Coordenação' : 'Tornar Coordenador'}
-                                </Button>
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center space-x-2">
+                    <Briefcase className="h-5 w-5 text-gray-500" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">CLT/Associados</p>
+                      <p className="text-2xl font-bold text-gray-700">{stats.clt_associados}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
-                                {/* Botão de editar */}
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => abrirModalEdicao(usuario)}
-                                  className="text-blue-600 hover:text-blue-700"
-                                >
-                                  <Edit className="h-4 w-4 mr-1" />
-                                  Editar
-                                </Button>
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center space-x-2">
+                    <GraduationCap className="h-5 w-5 text-gray-500" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Estagiários</p>
+                      <p className="text-2xl font-bold text-gray-700">{stats.estagiarios}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
-                                {/* Botão de revogar */}
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => setUsuarioParaRevogar({ id: usuario.id, nome: usuario.nome })}
-                                  className="text-red-600 hover:text-red-700"
-                                >
-                                  <Ban className="h-4 w-4 mr-1" />
-                                  Revogar
-                                </Button>
-                              </>
-                            )}
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center space-x-2">
+                    <Crown className="h-5 w-5 text-gray-500" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Coordenadores</p>
+                      <p className="text-2xl font-bold text-gray-700">{stats.coordenadores}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
-                            {/* Para usuários revogados, botão de reativar */}
-                            {usuario.ativo === false && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {/* Implementar reativação */}}
-                                className="text-green-600 hover:text-green-700"
-                              >
-                                <CheckCircle className="h-4 w-4 mr-1" />
-                                Reativar
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))
-                )}
-              </>
-            ) : (
-              // VISUALIZAÇÃO POR SETORES (Agrupado) - código igual ao anterior
-              <>
-                {setoresFiltrados.length === 0 ? (
-                  <Card>
-                    <CardContent className="p-8 text-center">
-                      <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">
-                        Nenhum setor encontrado
-                      </h3>
-                      <p className="text-gray-500">
-                        Não há setores que correspondam aos filtros selecionados.
-                      </p>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  setoresFiltrados.map((setor) => {
-                    const usuariosDoSetor = usuariosAgrupadosPorSetor[setor].filter(usuario => {
-                      const passaBusca = searchTerm === '' || 
-                        usuario.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        usuario.email_login.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        usuario.setor.toLowerCase().includes(searchTerm.toLowerCase());
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center space-x-2">
+                    <Shield className="h-5 w-5 text-gray-600" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Administradores</p>
+                      <p className="text-2xl font-bold text-gray-700">{stats.admins}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
-                      const passaFiltroTipo = (() => {
-                        switch (filter) {
-                          case 'pendentes_aprovacao':
-                            return isPendenteAprovacao(usuario);
-                          case 'pendentes_verificacao':
-                            return isPendenteVerificacao(usuario) && !isPendenteAprovacao(usuario);
-                          case 'corporativos':
-                            return usuario.tipo_colaborador === 'clt_associado' && !isPendenteVerificacao(usuario);
-                          case 'estagiarios':
-                            return usuario.tipo_colaborador === 'estagiario' && !isPendenteAprovacao(usuario) && !isPendenteVerificacao(usuario);
-                          case 'admins':
-                            return usuario.tipo_usuario === 'admin';
-                          case 'coordenadores':
-                            return usuario.is_coordenador === true;
-                          case 'revogados':
-                            return usuario.ativo === false;
-                          default:
-                            return true;
-                        }
-                      })();
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center space-x-2">
+                    <Ban className="h-5 w-5 text-gray-700" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Revogados</p>
+                      <p className="text-2xl font-bold text-gray-700">{stats.revogados}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
 
-                      return passaBusca && passaFiltroTipo;
-                    });
+            {/* Sistema de Abas */}
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <TabsList className="grid w-full grid-cols-2 gap-2">
+                <TabsTrigger 
+                  value="geral"
+                  className="data-[state=active]:border data-[state=active]:border-black-300 data-[state=active]:shadow-sm"
+                >
+                  <Users className="h-4 w-4 mr-2" />
+                  Usuários Gerais
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="verificacoes" 
+                  className="relative data-[state=active]:border data-[state=active]:border-black-300 data-[state=active]:shadow-sm"
+                >
+                  <Clock className="h-4 w-4 mr-2" />
+                  Verificações & Tokens
+                </TabsTrigger>
+              </TabsList>
 
-                    return (
-                      <Card key={setor} className="mb-6">
-                        <CardHeader className="pb-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
-                              <div>
-                                <CardTitle className="text-xl text-primary">{setor}</CardTitle>
-                                <p className="text-sm text-gray-600 mt-1">
-                                  {usuariosDoSetor.length} {usuariosDoSetor.length === 1 ? 'usuário' : 'usuários'}
-                                </p>
-                              </div>
-                            </div>
-                            
-                            {/* Estatísticas rápidas do setor */}
-                            <div className="flex space-x-4 text-sm">
-                              <div className="text-center">
-                                <p className="text-2xl font-bold text-rmh-primary">
-                                  {usuariosDoSetor.filter(u => u.tipo_colaborador === 'estagiario' && !isPendenteAprovacao(u) && !isPendenteVerificacao(u)).length}
-                                </p>
-                                <p className="text-gray-500">Estagiários</p>
-                              </div>
-                              <div className="text-center">
-                                <p className="text-2xl font-bold text-rmh-primary">
-                                  {usuariosDoSetor.filter(u => u.tipo_colaborador === 'clt_associado' && !isPendenteVerificacao(u)).length}
-                                </p>
-                                <p className="text-gray-500">CLT</p>
-                              </div>
-                              <div className="text-center">
-                                <p className="text-2xl font-bold text-rmh-primary">
-                                  {usuariosDoSetor.filter(u => u.is_coordenador).length}
-                                </p>
-                                <p className="text-gray-500">Coordenador</p>
-                              </div>
-                            </div>
-                          </div>
-                        </CardHeader>
-                        
-                        <CardContent className="space-y-3">
-                          {usuariosDoSetor.map((usuario) => (
-                            <div key={usuario.id} className="p-3 border border-gray-200 rounded-lg bg-gray-50">
+              {/* ABA 1: USUÁRIOS GERAIS */}
+              <TabsContent value="geral" className="space-y-4">
+                <div className="space-y-4">
+                  {/* Busca */}
+                  <div className="flex gap-4">
+                    <div className="flex-1 max-w-md">
+                      <Input
+                        placeholder="Buscar por nome, email ou setor..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full"
+                      />
+                    </div>
+                    <Select value={setorSelecionado} onValueChange={setSetorSelecionado}>
+                      <SelectTrigger className="w-48">
+                        <SelectValue placeholder="Filtrar por setor" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todos">Todos os setores</SelectItem>
+                        {setores.map(setor => (
+                          <SelectItem key={setor} value={setor}>{setor}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    
+                    {/* Toggle para Agrupar por Setores */}
+                    <div className="flex items-center space-x-2 px-3 py-2 bg-gray-50 rounded-lg border">
+                      <Building2 className="h-4 w-4 text-gray-600" />
+                      <Label htmlFor="toggle-setores" className="text-sm font-medium cursor-pointer whitespace-nowrap">
+                        Agrupar por Setores
+                      </Label>
+                      <Switch
+                        id="toggle-setores"
+                        checked={visualizacaoPorSetores}
+                        onCheckedChange={setVisualizacaoPorSetores}
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Filtros por tipo */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
+                    <Button
+                      variant={filter === 'pendentes_aprovacao' ? 'default' : 'outline'}
+                      onClick={() => setFilter('pendentes_aprovacao')}
+                      size="sm"
+                      className="w-full"
+                    >
+                      <Clock className="h-4 w-4 mr-1" />
+                      Aguard. Aprovação ({stats.pendentes_aprovacao})
+                    </Button>
+                    <Button
+                      variant={filter === 'pendentes_verificacao' ? 'default' : 'outline'}
+                      onClick={() => setFilter('pendentes_verificacao')}
+                      size="sm"
+                      className="w-full"
+                    >
+                      <MailSearch className="h-4 w-4 mr-1" />
+                      Aguard. Verificação ({stats.nao_verificados})
+                    </Button>
+                    <Button
+                      variant={filter === 'corporativos' ? 'default' : 'outline'}
+                      onClick={() => setFilter('corporativos')}
+                      size="sm"
+                      className="w-full"
+                    >
+                      <Briefcase className="h-4 w-4 mr-1" />
+                      CLT/Associados ({stats.clt_associados})
+                    </Button>
+                    <Button
+                      variant={filter === 'estagiarios' ? 'default' : 'outline'}
+                      onClick={() => setFilter('estagiarios')}
+                      size="sm"
+                      className="w-full"
+                    >
+                      <GraduationCap className="h-4 w-4 mr-1" />
+                      Estagiários ({stats.estagiarios})
+                    </Button>
+                    <Button
+                      variant={filter === 'coordenadores' ? 'default' : 'outline'}
+                      onClick={() => setFilter('coordenadores')}
+                      size="sm"
+                      className="w-full"
+                    >
+                      <Crown className="h-4 w-4 mr-1" />
+                      Coordenadores ({stats.coordenadores})
+                    </Button>
+                    <Button
+                      variant={filter === 'admins' ? 'default' : 'outline'}
+                      onClick={() => setFilter('admins')}
+                      size="sm"
+                      className="w-full"
+                    >
+                      <Shield className="h-4 w-4 mr-1" />
+                      Administradores ({stats.admins})
+                    </Button>
+                    <Button
+                      variant={filter === 'revogados' ? 'default' : 'outline'}
+                      onClick={() => setFilter('revogados')}
+                      size="sm"
+                      className="w-full"
+                    >
+                      <Ban className="h-4 w-4 mr-1" />
+                      Revogados ({stats.revogados})
+                    </Button>
+                    <Button
+                      variant={filter === 'todos' ? 'default' : 'outline'}
+                      onClick={() => setFilter('todos')}
+                      size="sm"
+                      className="w-full"
+                    >
+                      Todos ({stats.total})
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Lista de usuários */}
+                <div className="space-y-4">
+                  {!visualizacaoPorSetores ? (
+                    // VISUALIZAÇÃO NORMAL (Lista única)
+                    <>
+                      {usuariosFiltrados.length === 0 ? (
+                        <Card>
+                          <CardContent className="p-8 text-center">
+                            <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                            <h3 className="text-lg font-medium text-gray-900 mb-2">
+                              Nenhum usuário encontrado
+                            </h3>
+                            <p className="text-gray-500">
+                              Não há usuários que correspondam aos filtros selecionados.
+                            </p>
+                          </CardContent>
+                        </Card>
+                      ) : (
+                        usuariosFiltrados.map((usuario) => (
+                          <Card key={usuario.id}>
+                            <CardContent className="p-4">
                               <div className="flex items-center justify-between">
-                                <div className="flex items-center space-x-3">
+                                <div className="flex items-center space-x-4">
                                   <div className="flex-1">
                                     <div className="flex items-center space-x-2">
-                                      <h4 className="font-medium">{usuario.nome}</h4>
+                                      <h3 className="font-medium text-lg">{usuario.nome}</h3>
                                       {getStatusBadge(usuario)}
                                     </div>
                                     <p className="text-sm text-gray-600 mt-1">
-                                      {usuario.email_login} • {usuario.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}
+                                      {usuario.email_login} • {usuario.setor} • {usuario.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}
                                     </p>
                                   </div>
                                 </div>
 
                                 <div className="flex items-center space-x-2">
-                                  {/* Botões iguais aos da visualização normal */}
+                                  {/* Botões para aprovação (apenas estagiários pendentes) */}
                                   {isPendenteAprovacao(usuario) && (
                                     <>
                                       <Button
@@ -1291,8 +1103,10 @@ const AdminUserControl: React.FC = () => {
                                     </>
                                   )}
 
+                                  {/* Botões para usuários ativos */}
                                   {usuario.aprovado_admin && usuario.email_verificado && usuario.ativo !== false && usuario.tipo_colaborador !== 'estagiario' && (
                                     <>
+                                      {/* Botão de coordenação */}
                                       <Button
                                         size="sm"
                                         variant="outline"
@@ -1307,9 +1121,10 @@ const AdminUserControl: React.FC = () => {
                                         }
                                       >
                                         <Crown className="h-4 w-4 mr-1" />
-                                        {usuario.is_coordenador ? 'Remover' : 'Coordenador'}
+                                        {usuario.is_coordenador ? 'Remover Coordenação' : 'Tornar Coordenador'}
                                       </Button>
 
+                                      {/* Botão de editar */}
                                       <Button
                                         size="sm"
                                         variant="outline"
@@ -1320,6 +1135,7 @@ const AdminUserControl: React.FC = () => {
                                         Editar
                                       </Button>
 
+                                      {/* Botão de revogar */}
                                       <Button
                                         size="sm"
                                         variant="outline"
@@ -1332,6 +1148,7 @@ const AdminUserControl: React.FC = () => {
                                     </>
                                   )}
 
+                                  {/* Para usuários revogados, botão de reativar */}
                                   {usuario.ativo === false && (
                                     <Button
                                       size="sm"
@@ -1345,27 +1162,213 @@ const AdminUserControl: React.FC = () => {
                                   )}
                                 </div>
                               </div>
-                            </div>
-                          ))}
-                        </CardContent>
-                      </Card>
-                    );
-                  })
-                )}
-              </>
-            )}
-          </div>
-        </TabsContent>
+                            </CardContent>
+                          </Card>
+                        ))
+                      )}
+                    </>
+                  ) : (
+                    // VISUALIZAÇÃO POR SETORES (Agrupado)
+                    <>
+                      {setoresFiltrados.length === 0 ? (
+                        <Card>
+                          <CardContent className="p-8 text-center">
+                            <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                            <h3 className="text-lg font-medium text-gray-900 mb-2">
+                              Nenhum setor encontrado
+                            </h3>
+                            <p className="text-gray-500">
+                              Não há setores que correspondam aos filtros selecionados.
+                            </p>
+                          </CardContent>
+                        </Card>
+                      ) : (
+                        setoresFiltrados.map((setor) => {
+                          const usuariosDoSetor = usuariosAgrupadosPorSetor[setor].filter(usuario => {
+                            const passaBusca = searchTerm === '' || 
+                              usuario.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                              usuario.email_login.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                              usuario.setor.toLowerCase().includes(searchTerm.toLowerCase());
 
-        {/* 🆕 ABA 2: VERIFICAÇÕES & TOKENS */}
-        <TabsContent value="verificacoes" className="space-y-6">
-          <TokensExpiradosSection 
-            activeTab={activeTab}
-            fetchWithAuth={fetchWithAuth}
-            toast={toast}
-          />
-        </TabsContent>
-      </Tabs>
+                            const passaFiltroTipo = (() => {
+                              switch (filter) {
+                                case 'pendentes_aprovacao':
+                                  return isPendenteAprovacao(usuario);
+                                case 'pendentes_verificacao':
+                                  return isPendenteVerificacao(usuario) && !isPendenteAprovacao(usuario);
+                                case 'corporativos':
+                                  return usuario.tipo_colaborador === 'clt_associado' && !isPendenteVerificacao(usuario);
+                                case 'estagiarios':
+                                  return usuario.tipo_colaborador === 'estagiario' && !isPendenteAprovacao(usuario) && !isPendenteVerificacao(usuario);
+                                case 'admins':
+                                  return usuario.tipo_usuario === 'admin';
+                                case 'coordenadores':
+                                  return usuario.is_coordenador === true;
+                                case 'revogados':
+                                  return usuario.ativo === false;
+                                default:
+                                  return true;
+                              }
+                            })();
+
+                            return passaBusca && passaFiltroTipo;
+                          });
+
+                          return (
+                            <Card key={setor} className="mb-6">
+                              <CardHeader className="pb-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center space-x-3">
+                                    <div>
+                                      <CardTitle className="text-xl text-primary">{setor}</CardTitle>
+                                      <p className="text-sm text-gray-600 mt-1">
+                                        {usuariosDoSetor.length} {usuariosDoSetor.length === 1 ? 'usuário' : 'usuários'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Estatísticas rápidas do setor */}
+                                  <div className="flex space-x-4 text-sm">
+                                    <div className="text-center">
+                                      <p className="text-2xl font-bold text-rmh-primary">
+                                        {usuariosDoSetor.filter(u => u.tipo_colaborador === 'estagiario' && !isPendenteAprovacao(u) && !isPendenteVerificacao(u)).length}
+                                      </p>
+                                      <p className="text-gray-500">Estagiários</p>
+                                    </div>
+                                    <div className="text-center">
+                                      <p className="text-2xl font-bold text-rmh-primary">
+                                        {usuariosDoSetor.filter(u => u.tipo_colaborador === 'clt_associado' && !isPendenteVerificacao(u)).length}
+                                      </p>
+                                      <p className="text-gray-500">CLT</p>
+                                    </div>
+                                    <div className="text-center">
+                                      <p className="text-2xl font-bold text-rmh-primary">
+                                        {usuariosDoSetor.filter(u => u.is_coordenador).length}
+                                      </p>
+                                      <p className="text-gray-500">Coordenador</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </CardHeader>
+                              
+                              <CardContent className="space-y-3">
+                                {usuariosDoSetor.map((usuario) => (
+                                  <div key={usuario.id} className="p-3 border border-gray-200 rounded-lg bg-gray-50">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center space-x-3">
+                                        <div className="flex-1">
+                                          <div className="flex items-center space-x-2">
+                                            <h4 className="font-medium">{usuario.nome}</h4>
+                                            {getStatusBadge(usuario)}
+                                          </div>
+                                          <p className="text-sm text-gray-600 mt-1">
+                                            {usuario.email_login} • {usuario.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}
+                                          </p>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center space-x-2">
+                                        {/* Botões iguais aos da visualização normal */}
+                                        {isPendenteAprovacao(usuario) && (
+                                          <>
+                                            <Button
+                                              onClick={() => setUsuarioParaAprovar({ id: usuario.id, nome: usuario.nome })}
+                                              size="sm"
+                                              className="bg-green-600 hover:bg-green-700"
+                                            >
+                                              <UserCheck className="h-4 w-4 mr-1" />
+                                              Aprovar
+                                            </Button>
+                                            <Button
+                                              onClick={() => setUsuarioParaRejeitar({ id: usuario.id, nome: usuario.nome })}
+                                              size="sm"
+                                              variant="destructive"
+                                            >
+                                              <UserX className="h-4 w-4 mr-1" />
+                                              Rejeitar
+                                            </Button>
+                                          </>
+                                        )}
+
+                                        {usuario.aprovado_admin && usuario.email_verificado && usuario.ativo !== false && usuario.tipo_colaborador !== 'estagiario' && (
+                                          <>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() => setUsuarioParaPromover({ 
+                                                id: usuario.id, 
+                                                nome: usuario.nome, 
+                                                isCoordenador: usuario.is_coordenador 
+                                              })}
+                                              className={usuario.is_coordenador 
+                                                ? "text-gray-600 hover:text-gray-700" 
+                                                : "text-yellow-600 hover:text-yellow-700"
+                                              }
+                                            >
+                                              <Crown className="h-4 w-4 mr-1" />
+                                              {usuario.is_coordenador ? 'Remover' : 'Coordenador'}
+                                            </Button>
+
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() => abrirModalEdicao(usuario)}
+                                              className="text-blue-600 hover:text-blue-700"
+                                            >
+                                              <Edit className="h-4 w-4 mr-1" />
+                                              Editar
+                                            </Button>
+
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() => setUsuarioParaRevogar({ id: usuario.id, nome: usuario.nome })}
+                                              className="text-red-600 hover:text-red-700"
+                                            >
+                                              <Ban className="h-4 w-4 mr-1" />
+                                              Revogar
+                                            </Button>
+                                          </>
+                                        )}
+
+                                        {usuario.ativo === false && (
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => {/* Implementar reativação */}}
+                                            className="text-green-600 hover:text-green-700"
+                                          >
+                                            <CheckCircle className="h-4 w-4 mr-1" />
+                                            Reativar
+                                          </Button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </CardContent>
+                            </Card>
+                          );
+                        })
+                      )}
+                    </>
+                  )}
+                </div>
+              </TabsContent>
+
+              {/* ABA 2: VERIFICAÇÕES & TOKENS */}
+              <TabsContent value="verificacoes" className="space-y-6">
+                <TokensExpiradosSection 
+                  activeTab={activeTab}
+                  fetchWithAuth={fetchWithAuth}
+                  toast={toast}
+                />
+              </TabsContent>
+            </Tabs>
+          </div>
+        </div>
+      </main>
+
       {/* MODAL: Adicionar Novo Usuário */}
       <Dialog open={modalNovoUsuario} onOpenChange={setModalNovoUsuario}>
         <DialogContent className="sm:max-w-md">
