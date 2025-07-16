@@ -390,6 +390,37 @@ function getThumbnailsPath() {
 const DOCUMENTS_PATH = getDocumentsPath();
 const THUMBNAILS_PATH = getThumbnailsPath();
 
+app.get('/documents/:filename', async (req, res) => {
+  const { filename } = req.params;
+  const filePath = path.join(__dirname, 'dist/documents', filename);
+  
+  console.log('📁 Tentando servir arquivo:', filename);
+  console.log('📍 Caminho completo:', filePath);
+  
+  try {
+    // ✅ USAR fs.access (versão async) em vez de existsSync
+    await fs.access(filePath);
+    
+    // ✅ SERVIR O ARQUIVO
+    res.sendFile(filePath, (err) => {
+      if (err) {
+        console.error('❌ Erro ao servir arquivo:', err);
+        res.status(500).json({ error: 'Erro ao servir arquivo' });
+      } else {
+        console.log('✅ Arquivo servido com sucesso:', filename);
+      }
+    });
+    
+  } catch (error) {
+    console.log('❌ Arquivo não encontrado:', filePath);
+    res.status(404).json({ 
+      error: 'Arquivo não encontrado',
+      path: filePath,
+      filename: filename
+    });
+  }
+});
+
 // ✅ MIDDLEWARE DE ARQUIVOS ESTÁTICOS CORRIGIDO
 app.use('/documents', (req, res, next) => {
   console.log(`📂 Requisição de arquivo: ${req.url}`);
@@ -397,17 +428,20 @@ app.use('/documents', (req, res, next) => {
   next();
 }, express.static(DOCUMENTS_PATH, {
   setHeaders: (res, filePath) => {
-    console.log(`📄 Servindo arquivo: ${path.basename(filePath)}`);
-    // Configurar headers para melhor compatibilidade
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET');
+
+    // 👇 Headers que forçam o navegador a não guardar nada em cache
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
   },
-  // Configurações adicionais
   dotfiles: 'ignore',
   etag: false,
   extensions: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif'],
   index: false,
-  maxAge: '1d',
+  maxAge: '0', // 👈 Desativa cache completamente
   redirect: false
 }));
 
@@ -1061,7 +1095,16 @@ app.get('/api/thumbnail', async (req, res) => {
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
           '--disable-web-security',
-          '--no-first-run'
+          '--no-first-run',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+          '--disable-blink-features=AutomationControlled',
+          '--disable-component-extensions-with-background-pages',
+          '--disable-default-apps',
+          '--mute-audio',
+          '--no-zygote',
+          '--disable-background-networking'
         ]
       });
 
@@ -2209,22 +2252,87 @@ app.get('/api/documents/:id/download', authMiddleware, async (req, res) => {
   }
 });
 
-app.get('/api/debug/files', authMiddleware, async (req, res) => {
+app.get('/debug/files', async (req, res) => {
   try {
-    const files = await fs.readdir(DOCUMENTS_PATH);
-    res.json({
-      documentsPath: DOCUMENTS_PATH,
-      thumbnailsPath: THUMBNAILS_PATH,
+    console.log('🔍 Debug: Verificando estrutura de arquivos');
+    
+    const documentsPath = getDocumentsPath();
+    const thumbnailsPath = getThumbnailsPath();
+    
+    console.log('📂 Caminhos configurados:');
+    console.log('   - Documents:', documentsPath);
+    console.log('   - Thumbnails:', thumbnailsPath);
+    
+    // Verificar se os diretórios existem
+    const documentsExists = fsSync.existsSync(documentsPath);
+    const thumbnailsExists = fsSync.existsSync(thumbnailsPath);
+    
+    console.log('📁 Diretórios existem?');
+    console.log('   - Documents:', documentsExists);
+    console.log('   - Thumbnails:', thumbnailsExists);
+    
+    let documentsFiles = [];
+    let thumbnailsFiles = [];
+    
+    // Listar arquivos se os diretórios existirem
+    if (documentsExists) {
+      try {
+        documentsFiles = await fs.readdir(documentsPath);
+        console.log(`📄 Encontrados ${documentsFiles.length} arquivos em documents`);
+      } catch (error) {
+        console.error('❌ Erro ao ler documents:', error.message);
+      }
+    }
+    
+    if (thumbnailsExists) {
+      try {
+        thumbnailsFiles = await fs.readdir(thumbnailsPath);
+        console.log(`🖼️ Encontrados ${thumbnailsFiles.length} arquivos em thumbnails`);
+      } catch (error) {
+        console.error('❌ Erro ao ler thumbnails:', error.message);
+      }
+    }
+    
+    // Verificar arquivo específico
+    const targetFile = '1752587921077_feriados_e_emendas_2025__1_.pdf';
+    const targetFilePath = path.join(documentsPath, targetFile);
+    const targetFileExists = fsSync.existsSync(targetFilePath);
+    
+    console.log(`🎯 Arquivo específico "${targetFile}":`, targetFileExists ? 'EXISTE' : 'NÃO EXISTE');
+    
+    const response = {
       environment: process.env.NODE_ENV || 'development',
-      files: files,
-      currentWorkingDirectory: process.cwd(),
-      serverDirectory: __dirname
-    });
+      paths: {
+        documents: documentsPath,
+        thumbnails: thumbnailsPath,
+        cwd: process.cwd(),
+        dirname: __dirname
+      },
+      exists: {
+        documents: documentsExists,
+        thumbnails: thumbnailsExists
+      },
+      files: {
+        documents: documentsFiles.slice(0, 20), // Primeiros 20 arquivos
+        thumbnails: thumbnailsFiles.slice(0, 20),
+        totalDocuments: documentsFiles.length,
+        totalThumbnails: thumbnailsFiles.length
+      },
+      targetFile: {
+        name: targetFile,
+        path: targetFilePath,
+        exists: targetFileExists
+      }
+    };
+    
+    res.json(response);
+    
   } catch (error) {
+    console.error('❌ Erro na rota de debug:', error);
     res.status(500).json({ 
-      error: 'Erro ao listar arquivos',
-      documentsPath: DOCUMENTS_PATH,
-      errorMessage: error.message 
+      error: 'Erro interno',
+      message: error.message,
+      stack: error.stack
     });
   }
 });
