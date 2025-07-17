@@ -309,45 +309,29 @@ const app = express();
 
 function getDocumentsPath() {
   const isProduction = process.env.NODE_ENV === 'production';
+  const isRailway = process.env.RAILWAY_ENVIRONMENT === 'true'; // ✅ String comparison
   
   let documentsPath;
   
-  if (isProduction) {
-    // Produção: backend/dist/documents
+  if (isProduction && isRailway) {
+    // ✅ RAILWAY COM VOLUME: Usar o volume persistente
+    documentsPath = '/app/storage/documents';
+  } else if (isProduction) {
+    // ✅ PRODUÇÃO SEM RAILWAY: backend/dist/documents
     documentsPath = path.join(__dirname, 'dist', 'documents');
   } else {
-    // Desenvolvimento: raiz/public/documents (assumindo que server.js está em backend/)
+    // ✅ DESENVOLVIMENTO: raiz/public/documents
     documentsPath = path.join(__dirname, '..', 'public', 'documents');
   }
   
   console.log(`📁 Ambiente: ${isProduction ? 'PRODUÇÃO' : 'DESENVOLVIMENTO'}`);
+  console.log(`🚂 Railway: ${isRailway ? 'SIM' : 'NÃO'}`);
   console.log(`📂 Caminho dos documentos: ${documentsPath}`);
   
-  // Verificar se o diretório existe, se não, tentar alternativas
+  // ✅ CRIAR DIRETÓRIO SE NÃO EXISTIR
   if (!fsSync.existsSync(documentsPath)) {
-    console.log(`⚠️ Diretório principal não encontrado: ${documentsPath}`);
-    
-    // Tentar alternativas
-    const alternatives = [
-      path.join(__dirname, 'public', 'documents'),  // backend/public/documents
-      path.join(__dirname, '..', 'dist', 'documents'), // raiz/dist/documents
-      path.join(process.cwd(), 'public', 'documents'), // process.cwd()/public/documents
-      path.join(process.cwd(), 'dist', 'documents')    // process.cwd()/dist/documents
-    ];
-    
-    for (const altPath of alternatives) {
-      if (fsSync.existsSync(altPath)) {
-        console.log(`✅ Diretório alternativo encontrado: ${altPath}`);
-        documentsPath = altPath;
-        break;
-      }
-    }
-    
-    // Se ainda não encontrou, criar o diretório
-    if (!fsSync.existsSync(documentsPath)) {
-      console.log(`📁 Criando diretório: ${documentsPath}`);
-      fsSync.mkdirSync(documentsPath, { recursive: true });
-    }
+    console.log(`📁 Criando diretório: ${documentsPath}`);
+    fsSync.mkdirSync(documentsPath, { recursive: true });
   }
   
   return documentsPath;
@@ -355,40 +339,62 @@ function getDocumentsPath() {
 
 function getThumbnailsPath() {
   const isProduction = process.env.NODE_ENV === 'production';
+  const isRailway = process.env.RAILWAY_ENVIRONMENT === 'true'; // ✅ String comparison
   
   let thumbnailsPath;
   
-  if (isProduction) {
+  if (isProduction && isRailway) {
+    // ✅ RAILWAY COM VOLUME: Usar o volume persistente
+    thumbnailsPath = '/app/storage/thumbnails';
+  } else if (isProduction) {
+    // ✅ PRODUÇÃO SEM RAILWAY: backend/dist/thumbnails
     thumbnailsPath = path.join(__dirname, 'dist', 'thumbnails');
   } else {
+    // ✅ DESENVOLVIMENTO: raiz/public/thumbnails
     thumbnailsPath = path.join(__dirname, '..', 'public', 'thumbnails');
   }
   
-  // Criar se não existir
+  console.log(`📷 Caminho das thumbnails: ${thumbnailsPath}`);
+  
+  // ✅ CRIAR DIRETÓRIO SE NÃO EXISTIR
   if (!fsSync.existsSync(thumbnailsPath)) {
-    const alternatives = [
-      path.join(__dirname, 'public', 'thumbnails'),
-      path.join(__dirname, '..', 'dist', 'thumbnails'),
-      path.join(process.cwd(), 'public', 'thumbnails'),
-      path.join(process.cwd(), 'dist', 'thumbnails')
-    ];
-    
-    for (const altPath of alternatives) {
-      if (fsSync.existsSync(path.dirname(altPath))) {
-        thumbnailsPath = altPath;
-        break;
-      }
-    }
-    
+    console.log(`📁 Criando diretório: ${thumbnailsPath}`);
     fsSync.mkdirSync(thumbnailsPath, { recursive: true });
   }
   
   return thumbnailsPath;
 }
 
+// ✅ ADICIONE esta função utilitária para organizar melhor
+function getStoragePath(type) {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isRailway = process.env.RAILWAY_ENVIRONMENT === 'true'; // ✅ String comparison
+  
+  if (isProduction && isRailway) {
+    // ✅ RAILWAY: Volume persistente
+    return `/app/storage/${type}`;
+  } else if (isProduction) {
+    // ✅ PRODUÇÃO: backend/dist/
+    return path.join(__dirname, 'dist', type);
+  } else {
+    // ✅ DESENVOLVIMENTO: raiz/public/
+    return path.join(__dirname, '..', 'public', type);
+  }
+}
+
+console.log('🔧 Verificando configuração de ambiente:', {
+  NODE_ENV: process.env.NODE_ENV,
+  RAILWAY_ENVIRONMENT: process.env.RAILWAY_ENVIRONMENT,
+  RAILWAY_DETECTED: process.env.RAILWAY_ENVIRONMENT === 'true'
+});
+
 // Obter caminhos corretos
 const DOCUMENTS_PATH = getDocumentsPath();
 const THUMBNAILS_PATH = getThumbnailsPath();
+
+console.log('📁 Caminhos finais configurados:');
+console.log(`  📂 Documents: ${DOCUMENTS_PATH}`);
+console.log(`  📷 Thumbnails: ${THUMBNAILS_PATH}`);
 
 app.get('/documents/:filename', async (req, res) => {
   const { filename } = req.params;
