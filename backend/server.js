@@ -15,7 +15,6 @@ const fs = require('fs/promises');
 const multer = require('multer');
 const puppeteer = require('puppeteer');
 const fsSync = require('fs');
-const { createLogsTable, addRefreshEndpoint } = require('./refresh');
 
 const envFile = process.env.ENV_FILE || '.env';
 const envPath = path.resolve(__dirname, envFile);
