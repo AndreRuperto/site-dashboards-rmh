@@ -1,7 +1,12 @@
-// ✅ ADICIONAR NO backend/server.js (SEM CRON JOB)
+// backend/refreshThumbnails.js - ARQUIVO SEPARADO
+
+const puppeteer = require('puppeteer');
+const path = require('path');
+const fs = require('fs/promises');
+const fsSync = require('fs');
 
 // ✅ FUNÇÃO PARA ATUALIZAR THUMBNAILS DE ARQUIVOS WEB
-async function refreshWebThumbnails() {
+async function refreshWebThumbnails(pool, getThumbnailsPath, updateThumbnailInDatabase, checkPublicAccessAndGenerate, generateDefaultThumbnail) {
   console.log('🔄 INICIANDO REFRESH DE THUMBNAILS WEB...');
   
   try {
@@ -37,7 +42,7 @@ async function refreshWebThumbnails() {
           // Atualizar thumbnail do Google Sheets
           const sheetId = doc.url_arquivo.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1];
           if (sheetId) {
-            thumbnailUrl = await generateSheetThumbnail(sheetId, doc.id);
+            thumbnailUrl = await generateSheetThumbnail(sheetId, doc.id, getThumbnailsPath, updateThumbnailInDatabase, checkPublicAccessAndGenerate, generateDefaultThumbnail);
           }
         } else if (fileType === 'google-doc') {
           // Para Google Docs, usar a API do Google Drive
@@ -86,7 +91,7 @@ async function refreshWebThumbnails() {
 }
 
 // ✅ FUNÇÃO AUXILIAR PARA GERAR THUMBNAIL DO GOOGLE SHEETS
-async function generateSheetThumbnail(sheetId, documentId) {
+async function generateSheetThumbnail(sheetId, documentId, getThumbnailsPath, updateThumbnailInDatabase, checkPublicAccessAndGenerate, generateDefaultThumbnail) {
   try {
     const thumbnailDir = getThumbnailsPath();
     const imagePath = path.join(thumbnailDir, `${sheetId}.png`);
@@ -164,92 +169,8 @@ function getFileType(url) {
   return 'unknown';
 }
 
-// ✅ ENDPOINT MANUAL PARA FORÇAR REFRESH (ADMIN ONLY)
-app.post('/api/admin/refresh-thumbnails', authMiddleware, async (req, res) => {
-  try {
-    // Verificar se é admin
-    if (!isAdmin(req.user)) {
-      return res.status(403).json({ error: 'Acesso negado. Apenas administradores.' });
-    }
-
-    console.log(`🔄 REFRESH MANUAL iniciado por: ${req.user.nome}`);
-    
-    // Executar refresh em background
-    refreshWebThumbnails()
-      .then(result => {
-        console.log(`✅ Refresh concluído: ${result.atualizados}/${result.total} atualizados`);
-      })
-      .catch(error => {
-        console.error('❌ Erro no refresh em background:', error);
-      });
-    
-    res.json({ 
-      success: true, 
-      message: 'Refresh de thumbnails iniciado em background',
-      timestamp: new Date().toISOString()
-    });
-
-  } catch (error) {
-    console.error('❌ Erro no refresh manual:', error);
-    res.status(500).json({ error: 'Erro ao iniciar refresh de thumbnails' });
-  }
-});
-
-// ✅ ENDPOINT PÚBLICO PARA CRON JOB DO RAILWAY
-app.get('/api/cron/refresh-thumbnails', async (req, res) => {
-  try {
-    console.log('⏰ CRON JOB: Iniciando refresh diário de thumbnails...');
-    
-    const result = await refreshWebThumbnails();
-    
-    res.json({
-      success: true,
-      message: 'Refresh de thumbnails concluído',
-      ...result,
-      timestamp: new Date().toISOString()
-    });
-
-  } catch (error) {
-    console.error('❌ Erro no refresh via cron:', error);
-    res.status(500).json({ 
-      success: false,
-      error: 'Erro ao executar refresh de thumbnails',
-      timestamp: new Date().toISOString()
-    });
-  }
-});
-
-// ✅ ENDPOINT PARA VER STATUS DO ÚLTIMO REFRESH
-app.get('/api/admin/thumbnail-refresh-status', authMiddleware, async (req, res) => {
-  try {
-    if (!isAdmin(req.user)) {
-      return res.status(403).json({ error: 'Acesso negado. Apenas administradores.' });
-    }
-
-    const result = await pool.query(`
-      SELECT evento, detalhes, criado_em
-      FROM logs_sistema 
-      WHERE evento = 'refresh_thumbnails'
-      ORDER BY criado_em DESC
-      LIMIT 5
-    `);
-
-    res.json({
-      success: true,
-      ultimosRefresh: result.rows.map(row => ({
-        ...row,
-        detalhes: JSON.parse(row.detalhes)
-      }))
-    });
-
-  } catch (error) {
-    console.error('❌ Erro ao buscar status:', error);
-    res.status(500).json({ error: 'Erro ao buscar status do refresh' });
-  }
-});
-
 // ✅ FUNÇÃO PARA CRIAR TABELA DE LOGS (EXECUTAR UMA VEZ)
-async function createLogsTable() {
+async function createLogsTable(pool) {
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS logs_sistema (
@@ -265,12 +186,10 @@ async function createLogsTable() {
   }
 }
 
-// ✅ EXECUTAR CRIAÇÃO DA TABELA NA INICIALIZAÇÃO
-createLogsTable();
-
-// ✅ LOG DE INICIALIZAÇÃO
-console.log('🚀 Sistema de refresh de thumbnails configurado');
-console.log('📋 Endpoints disponíveis:');
-console.log('  - POST /api/admin/refresh-thumbnails (manual)');
-console.log('  - GET /api/cron/refresh-thumbnails (para Railway Cron)');
-console.log('  - GET /api/admin/thumbnail-refresh-status (status)');
+// ✅ EXPORTAR FUNÇÕES
+module.exports = {
+  refreshWebThumbnails,
+  generateSheetThumbnail,
+  getFileType,
+  createLogsTable
+};

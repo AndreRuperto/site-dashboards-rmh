@@ -15,6 +15,7 @@ const fs = require('fs/promises');
 const multer = require('multer');
 const puppeteer = require('puppeteer');
 const fsSync = require('fs');
+const { refreshWebThumbnails, createLogsTable } = require('./refresh');
 
 const envFile = process.env.ENV_FILE || '.env';
 const envPath = path.resolve(__dirname, envFile);
@@ -2461,6 +2462,112 @@ app.get('/api/documents/stats', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
+
+createLogsTable(pool);
+
+// ✅ ENDPOINT MANUAL PARA FORÇAR REFRESH (ADMIN ONLY)
+app.post('/api/admin/refresh-thumbnails', authMiddleware, async (req, res) => {
+  try {
+    // Verificar se é admin
+    if (!isAdmin(req.user)) {
+      return res.status(403).json({ error: 'Acesso negado. Apenas administradores.' });
+    }
+
+    console.log(`🔄 REFRESH MANUAL iniciado por: ${req.user.nome}`);
+    
+    // Executar refresh em background - passando as dependências
+    refreshWebThumbnails(
+      pool, 
+      getThumbnailsPath, 
+      updateThumbnailInDatabase, 
+      checkPublicAccessAndGenerate, 
+      generateDefaultThumbnail
+    )
+      .then(result => {
+        console.log(`✅ Refresh concluído: ${result.atualizados}/${result.total} atualizados`);
+      })
+      .catch(error => {
+        console.error('❌ Erro no refresh em background:', error);
+      });
+    
+    res.json({ 
+      success: true, 
+      message: 'Refresh de thumbnails iniciado em background',
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ Erro no refresh manual:', error);
+    res.status(500).json({ error: 'Erro ao iniciar refresh de thumbnails' });
+  }
+});
+
+// ✅ ENDPOINT PÚBLICO PARA CRON JOB DO RAILWAY
+app.get('/api/cron/refresh-thumbnails', async (req, res) => {
+  try {
+    console.log('⏰ CRON JOB: Iniciando refresh diário de thumbnails...');
+    
+    // Passar as dependências para o módulo
+    const result = await refreshWebThumbnails(
+      pool, 
+      getThumbnailsPath, 
+      updateThumbnailInDatabase, 
+      checkPublicAccessAndGenerate, 
+      generateDefaultThumbnail
+    );
+    
+    res.json({
+      success: true,
+      message: 'Refresh de thumbnails concluído',
+      ...result,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ Erro no refresh via cron:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Erro ao executar refresh de thumbnails',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// ✅ ENDPOINT PARA VER STATUS DO ÚLTIMO REFRESH
+app.get('/api/admin/thumbnail-refresh-status', authMiddleware, async (req, res) => {
+  try {
+    if (!isAdmin(req.user)) {
+      return res.status(403).json({ error: 'Acesso negado. Apenas administradores.' });
+    }
+
+    const result = await pool.query(`
+      SELECT evento, detalhes, criado_em
+      FROM logs_sistema 
+      WHERE evento = 'refresh_thumbnails'
+      ORDER BY criado_em DESC
+      LIMIT 5
+    `);
+
+    res.json({
+      success: true,
+      ultimosRefresh: result.rows.map(row => ({
+        ...row,
+        detalhes: JSON.parse(row.detalhes)
+      }))
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar status:', error);
+    res.status(500).json({ error: 'Erro ao buscar status do refresh' });
+  }
+});
+
+// ✅ ADICIONAR NO FINAL DO server.js (onde tem os outros console.log)
+console.log('🚀 Sistema de refresh de thumbnails configurado');
+console.log('📋 Endpoints disponíveis:');
+console.log('  - POST /api/admin/refresh-thumbnails (manual)');
+console.log('  - GET /api/cron/refresh-thumbnails (para Railway Cron)');
+console.log('  - GET /api/admin/thumbnail-refresh-status (status)');
 
 // ===============================================
 // TEMPLATE DE EMAIL ATUALIZADO
