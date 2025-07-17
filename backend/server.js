@@ -2468,11 +2468,6 @@ createLogsTable(pool);
 // ✅ ENDPOINT MANUAL PARA FORÇAR REFRESH (ADMIN ONLY)
 app.post('/api/admin/refresh-thumbnails', authMiddleware, async (req, res) => {
   try {
-    // Verificar se é admin
-    if (!isAdmin(req.user)) {
-      return res.status(403).json({ error: 'Acesso negado. Apenas administradores.' });
-    }
-
     console.log(`🔄 REFRESH MANUAL iniciado por: ${req.user.nome}`);
     
     // Executar refresh em background - passando as dependências
