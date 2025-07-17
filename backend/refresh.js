@@ -8,18 +8,35 @@ const sharp = require('sharp');
 
 console.log('🚀 Iniciando sistema de refresh de thumbnails...');
 
-// ✅ CONFIGURAÇÃO DO BANCO (RAILWAY)
+// ✅ CONFIGURAÇÃO DO BANCO (COM FALLBACK)
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: process.env.DATABASE_URL || `postgresql://${process.env.PGUSER}:${process.env.PGPASSWORD}@${process.env.PGHOST}:${process.env.PGPORT}/${process.env.PGDATABASE}`,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  max: 5,
+  max: 10,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
-  query_timeout: 30000,
-  statement_timeout: 30000,
-  idle_in_transaction_session_timeout: 30000,
-  options: '-c timezone=America/Sao_Paulo'
+  connectionTimeoutMillis: 30000,
+  query_timeout: 60000,
+  statement_timeout: 60000,
+  idle_in_transaction_session_timeout: 60000,
 });
+
+// Log para debug
+console.log('🔗 Tentando conectar ao banco...');
+console.log('🌍 NODE_ENV:', process.env.NODE_ENV);
+console.log('📦 DATABASE_URL:', process.env.DATABASE_URL ? 'Configurada' : 'Não encontrada');
+
+// Teste de conexão
+async function testConnection() {
+  try {
+    const client = await pool.connect();
+    console.log('✅ Conexão com banco bem-sucedida!');
+    client.release();
+    return true;
+  } catch (error) {
+    console.error('❌ Erro na conexão com banco:', error.message);
+    return false;
+  }
+}
 
 // ✅ FUNÇÃO PARA OBTER CAMINHO DOS THUMBNAILS
 function getThumbnailsPath() {
@@ -387,6 +404,12 @@ async function createLogsTable() {
 async function main() {
   try {
     console.log('🚀 Iniciando execução do Railway Cron...');
+    
+    // Testar conexão primeiro
+    const connected = await testConnection();
+    if (!connected) {
+      throw new Error('Não foi possível conectar ao banco de dados');
+    }
     
     // Inicializar banco
     await createLogsTable();
