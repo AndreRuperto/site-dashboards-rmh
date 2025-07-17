@@ -1060,11 +1060,13 @@ app.get('/api/thumbnail', async (req, res) => {
     return res.status(400).send('Faltando sheetId ou url');
   }
 
+  let browser = null;
+
   try {
     const thumbnailDir = getThumbnailsPath();
     await fs.mkdir(thumbnailDir, { recursive: true });
 
-    // ✅ PROCESSAMENTO PARA GOOGLE SHEETS (código existente)
+    // ✅ PROCESSAMENTO PARA GOOGLE SHEETS
     if (sheetId) {
       console.log(`🎯 Gerando thumbnail para Google Sheet: ${sheetId}`);
       
@@ -1088,8 +1090,9 @@ app.get('/api/thumbnail', async (req, res) => {
       }
 
       console.log(`🌐 Iniciando Puppeteer para Google Sheet...`);
-      const browser = await puppeteer.launch({
-        headless: true,
+      
+      browser = await puppeteer.launch({
+        headless: true, // ✅ Headless true para produção
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -1118,7 +1121,7 @@ app.get('/api/thumbnail', async (req, res) => {
       if (!accessResult.isPublic) {
         console.log(`🔒 Planilha privada detectada - gerando thumbnail padrão`);
         
-        await browser.close();
+        await browser.close(); // ✅ FECHAR BROWSER
         await generateDefaultThumbnail(imagePath, sheetId);
         
         const thumbnailUrl = `/thumbnails/${sheetId}.png`;
@@ -1135,15 +1138,95 @@ app.get('/api/thumbnail', async (req, res) => {
         });
       }
       
-      // Planilha pública - capturar screenshot
-      console.log(`🔓 Planilha pública - capturando screenshot via ${accessResult.method}`);
+      // ✅ Tentar fechar avisos automaticamente
+      console.log(`🔓 Planilha pública - tentando fechar avisos...`);
       
+      try {
+        await page.evaluate(() => {
+          // Tentar fechar avisos de upgrade/compatibilidade
+          const closeSelectors = [
+            '[aria-label*="Close"]',
+            '[aria-label*="Dismiss"]',
+            '[aria-label*="Fechar"]',
+            '[data-testid*="close"]',
+            '.close-button',
+            '[title*="Close"]',
+            'button[aria-label*="Close"]',
+            '[class*="dismiss"]',
+            '[class*="close"]',
+            // ✅ Novos seletores baseados em estrutura comum do Google
+            '.docs-butterbar [role="button"]',
+            '.docs-butterbar button',
+            '[jsname][role="button"]',
+            '[data-tooltip*="Close"]',
+            '[data-tooltip*="Dismiss"]'
+          ];
+          
+          closeSelectors.forEach(selector => {
+            const elements = document.querySelectorAll(selector);
+            elements.forEach(el => {
+              const text = el.textContent || '';
+              const ariaLabel = el.getAttribute('aria-label') || '';
+              
+              if (text.includes('×') || 
+                  ariaLabel.includes('Close') ||
+                  ariaLabel.includes('Fechar') ||
+                  ariaLabel.includes('Dismiss') ||
+                  el.getAttribute('data-tooltip')?.includes('Close')) {
+                console.log('🎯 Tentando clicar para fechar aviso');
+                el.click();
+              }
+            });
+          });
+          
+          // Remover banners diretamente
+          const bannerSelectors = [
+            '[class*="upgrade"]',
+            '[class*="banner"]',
+            '[class*="notification"]',
+            '.docs-butterbar-container',
+            '.docs-butterbar',
+            '[role="banner"]',
+            // ✅ Seletores específicos do Google
+            '.docs-omnibox-upgrade-tip',
+            '.docs-butterbar-wrap',
+            '[jsname="butterBarContent"]'
+          ];
+          
+          bannerSelectors.forEach(selector => {
+            const elements = document.querySelectorAll(selector);
+            elements.forEach(el => {
+              const text = el.textContent || '';
+              if (text.includes('compatível') || 
+                  text.includes('upgrade') ||
+                  text.includes('navegador') ||
+                  text.includes('browser') ||
+                  text.includes('versão') ||
+                  text.includes('atualiz')) {
+                console.log('🗑️ Removendo banner de aviso');
+                el.style.display = 'none';
+                el.remove();
+              }
+            });
+          });
+        });
+        
+        console.log(`✅ Tentativa de fechar avisos concluída`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+      } catch (closeError) {
+        console.log(`⚠️ Erro ao tentar fechar avisos:`, closeError.message);
+      }
+      
+      // Capturar screenshot
+      console.log(`📸 Capturando screenshot via ${accessResult.method}`);
       await page.screenshot({ 
         path: imagePath, 
         fullPage: accessResult.method === 'export-direto',
         type: 'png'
       });
       
+      // ✅ SEMPRE FECHAR BROWSER
       await browser.close();
 
       const stats = await fs.stat(imagePath);
@@ -1168,11 +1251,10 @@ app.get('/api/thumbnail', async (req, res) => {
       });
     }
 
-    // ✅ NOVO: PROCESSAMENTO PARA SITES COMUNS
+    // ✅ PROCESSAMENTO PARA SITES COMUNS
     if (url) {
       console.log(`🌐 Gerando screenshot para site: ${url}`);
       
-      // Extrair domínio para nome do arquivo
       const domain = new URL(url).hostname.replace(/[^a-zA-Z0-9]/g, '-');
       const imagePath = path.join(thumbnailDir, `website-${domain}.png`);
       
@@ -1193,8 +1275,8 @@ app.get('/api/thumbnail', async (req, res) => {
         console.log(`📸 Gerando novo screenshot para site...`);
       }
 
-      const browser = await puppeteer.launch({
-        headless: true,
+      browser = await puppeteer.launch({
+        headless: true, // ✅ Headless true para produção
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -1209,20 +1291,17 @@ app.get('/api/thumbnail', async (req, res) => {
 
       const page = await browser.newPage();
       
-      // Configurar viewport para captura de qualidade
       await page.setViewport({ 
         width: 1200, 
         height: 800,
-        deviceScaleFactor: 2 // Para maior qualidade
+        deviceScaleFactor: 2
       });
       
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
 
-      // Configurar timeouts
       await page.setDefaultNavigationTimeout(30000);
       await page.setDefaultTimeout(30000);
       
-      // Bloquear recursos pesados para carregamento mais rápido
       await page.setRequestInterception(true);
       page.on('request', (req) => {
         const resourceType = req.resourceType();
@@ -1240,20 +1319,16 @@ app.get('/api/thumbnail', async (req, res) => {
           timeout: 25000 
         });
         
-        // Aguardar um pouco para carregamento de conteúdo dinâmico
         await new Promise(resolve => setTimeout(resolve, 2000));
         
-        // Remover elementos que podem atrapalhar (popups, cookies, etc)
+        // Remover overlays e banners
         await page.evaluate(() => {
-          // Remover overlays comuns
           const overlays = document.querySelectorAll(
             '[class*="popup"], [class*="modal"], [class*="overlay"], ' +
             '[class*="cookie"], [class*="banner"], [id*="cookie"], ' +
             '[class*="consent"], [class*="gdpr"]'
           );
           overlays.forEach(el => el.remove());
-          
-          // Scroll para o topo
           window.scrollTo(0, 0);
         });
 
@@ -1263,7 +1338,7 @@ app.get('/api/thumbnail', async (req, res) => {
         await page.screenshot({ 
           path: imagePath,
           type: 'png',
-          fullPage: false, // Só a área visível
+          fullPage: false,
           clip: {
             x: 0,
             y: 0,
@@ -1272,6 +1347,7 @@ app.get('/api/thumbnail', async (req, res) => {
           }
         });
 
+        // ✅ SEMPRE FECHAR BROWSER
         await browser.close();
 
         const stats = await fs.stat(imagePath);
@@ -1295,9 +1371,10 @@ app.get('/api/thumbnail', async (req, res) => {
 
       } catch (navigationError) {
         console.error(`❌ Erro ao acessar ${url}:`, navigationError.message);
+        
+        // ✅ FECHAR BROWSER MESMO COM ERRO
         await browser.close();
         
-        // Fallback: gerar thumbnail padrão para o site
         await generateWebsiteFallbackThumbnail(imagePath, url);
         
         const thumbnailUrl = `/thumbnails/website-${domain}.png`;
@@ -1353,6 +1430,25 @@ app.get('/api/thumbnail', async (req, res) => {
         sheetId: sheetId,
         url: url
       });
+    }
+  } finally {
+    // ✅ GARANTIR QUE BROWSER SEMPRE SEJA FECHADO
+    if (browser) {
+      try {
+        await browser.close();
+        console.log(`🔒 Browser fechado com segurança`);
+      } catch (closeError) {
+        console.error(`❌ Erro ao fechar browser:`, closeError.message);
+        
+        // Force kill se necessário
+        try {
+          const pages = await browser.pages();
+          await Promise.all(pages.map(page => page.close()));
+          await browser.close();
+        } catch (forceError) {
+          console.error(`❌ Erro ao forçar fechamento:`, forceError.message);
+        }
+      }
     }
   }
 });
