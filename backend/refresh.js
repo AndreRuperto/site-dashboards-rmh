@@ -1,44 +1,274 @@
-// backend/refreshThumbnails.js - SEMPRE ATUALIZA MINIATURAS
+// backend/refreshThumbnails.js - STANDALONE PARA RAILWAY CRON
 
 const path = require('path');
 const fs = require('fs/promises');
+const { Pool } = require('pg');
+const puppeteer = require('puppeteer');
+const sharp = require('sharp');
+
+console.log('🚀 Iniciando sistema de refresh de thumbnails...');
+
+// ✅ CONFIGURAÇÃO DO BANCO (RAILWAY)
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  max: 5,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+  query_timeout: 30000,
+  statement_timeout: 30000,
+  idle_in_transaction_session_timeout: 30000,
+  options: '-c timezone=America/Sao_Paulo'
+});
 
 // ✅ FUNÇÃO PARA OBTER CAMINHO DOS THUMBNAILS
 function getThumbnailsPath() {
-  // Mesma lógica do server.js
   const alternatives = [
     path.join(__dirname, '..', 'dist', 'thumbnails'),
     path.join(process.cwd(), 'public', 'thumbnails'),
-    path.join(process.cwd(), 'dist', 'thumbnails')
+    path.join(process.cwd(), 'dist', 'thumbnails'),
+    '/tmp/thumbnails' // Para Railway
   ];
   
   for (const altPath of alternatives) {
     try {
       require('fs').mkdirSync(altPath, { recursive: true });
+      console.log(`📁 Usando diretório de thumbnails: ${altPath}`);
       return altPath;
     } catch (error) {
       continue;
     }
   }
   
-  return alternatives[0]; // fallback
+  return alternatives[0];
 }
 
-// ✅ FUNÇÃO PRINCIPAL - SEMPRE DELETA CACHE E REGENERA
-async function refreshWebThumbnails(pool, baseUrl = 'http://localhost:3001') {
-  console.log('🔄 INICIANDO REFRESH DE THUMBNAILS WEB (FORÇA REGENERAÇÃO)...');
+// ✅ FUNÇÃO PARA GERAR THUMBNAIL PADRÃO
+async function generateDefaultThumbnail(imagePath, sheetId, title = 'Planilha Privada') {
+  console.log(`🎨 Gerando thumbnail padrão para: ${sheetId}`);
+  
+  const svgImage = `
+    <svg width="400" height="300" xmlns="http://www.w3.org/2000/svg">
+      <rect width="400" height="300" fill="#d4f7d4"/>
+      <g stroke="#28a745" stroke-width="1" fill="none">
+        <line x1="50" y1="60" x2="350" y2="60"/>
+        <line x1="50" y1="90" x2="350" y2="90"/>
+        <line x1="50" y1="120" x2="350" y2="120"/>
+        <line x1="50" y1="150" x2="350" y2="150"/>
+        <line x1="50" y1="180" x2="350" y2="180"/>
+        <line x1="50" y1="210" x2="350" y2="210"/>
+        <line x1="50" y1="240" x2="350" y2="240"/>
+        <line x1="50" y1="60" x2="50" y2="240"/>
+        <line x1="100" y1="60" x2="100" y2="240"/>
+        <line x1="150" y1="60" x2="150" y2="240"/>
+        <line x1="200" y1="60" x2="200" y2="240"/>
+        <line x1="250" y1="60" x2="250" y2="240"/>
+        <line x1="300" y1="60" x2="300" y2="240"/>
+        <line x1="350" y1="60" x2="350" y2="240"/>
+      </g>
+    </svg>
+  `;
+
+  try {
+    const baseImage = await sharp(Buffer.from(svgImage)).png().toBuffer();
+    
+    // Tentar adicionar cadeado
+    try {
+      const cadeadoPath = path.join(__dirname, '..', 'public', 'cadeado.png');
+      const cadeadoResized = await sharp(cadeadoPath).resize(20, 20).png().toBuffer();
+      
+      await sharp(baseImage)
+        .composite([{ input: cadeadoResized, top: 5, left: 375 }])
+        .png()
+        .toFile(imagePath);
+        
+      console.log(`✅ Thumbnail padrão criado com cadeado: ${sheetId}`);
+    } catch (cadeadoError) {
+      // Fallback sem cadeado
+      await sharp(baseImage).toFile(imagePath);
+      console.log(`✅ Thumbnail padrão criado (sem cadeado): ${sheetId}`);
+    }
+  } catch (error) {
+    console.error(`❌ Erro ao gerar thumbnail padrão:`, error.message);
+    throw error;
+  }
+}
+
+// ✅ FUNÇÃO PARA VERIFICAR SE GOOGLE SHEET É PÚBLICO
+async function checkPublicAccess(page, sheetId) {
+  try {
+    const publicUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit#gid=0`;
+    console.log(`🔍 Verificando acesso público: ${sheetId}`);
+    
+    await page.goto(publicUrl, { 
+      waitUntil: 'networkidle0', 
+      timeout: 30000 
+    });
+    
+    await page.waitForSelector('body', { timeout: 5000 });
+    
+    const isPublic = await page.evaluate(() => {
+      const bodyText = document.body.textContent || '';
+      const hasError = bodyText.includes('acesso negado') || 
+                      bodyText.includes('não tem permissão') ||
+                      bodyText.includes('access denied') ||
+                      bodyText.includes('permission denied') ||
+                      bodyText.includes('sem permissão');
+      
+      return !hasError;
+    });
+    
+    console.log(`${isPublic ? '🔓' : '🔒'} Planilha ${sheetId}: ${isPublic ? 'pública' : 'privada'}`);
+    return { isPublic, method: 'navegacao-direta' };
+    
+  } catch (error) {
+    console.log(`⚠️ Erro ao verificar acesso público para ${sheetId}:`, error.message);
+    return { isPublic: false, method: 'erro' };
+  }
+}
+
+// ✅ FUNÇÃO PARA GERAR THUMBNAIL DE GOOGLE SHEET
+async function generateGoogleSheetThumbnail(sheetId, documentId) {
+  const thumbnailsPath = getThumbnailsPath();
+  const imagePath = path.join(thumbnailsPath, `${sheetId}.png`);
+  
+  console.log(`📸 Gerando thumbnail para Google Sheet: ${sheetId}`);
+  
+  let browser = null;
   
   try {
-    // Buscar todos os documentos que são arquivos da web
+    // Deletar cache primeiro (sempre regenerar)
+    try {
+      await fs.unlink(imagePath);
+      console.log(`🗑️ Cache removido: ${sheetId}.png`);
+    } catch (error) {
+      console.log(`ℹ️ Cache não existia: ${sheetId}.png`);
+    }
+    
+    // Configuração do Puppeteer para Railway
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-web-security',
+        '--no-first-run',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        '--disable-features=TranslateUI',
+        '--disable-ipc-flooding-protection',
+        '--disable-extensions'
+      ]
+    });
+
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 720 });
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    
+    const accessResult = await checkPublicAccess(page, sheetId);
+    
+    if (!accessResult.isPublic) {
+      console.log(`🔒 Planilha privada detectada - gerando thumbnail padrão`);
+      await browser.close();
+      await generateDefaultThumbnail(imagePath, sheetId);
+      
+      // Atualizar no banco
+      await pool.query(`
+        UPDATE documentos 
+        SET thumbnail_url = $1, atualizado_em = CURRENT_TIMESTAMP
+        WHERE id = $2
+      `, [`/thumbnails/${sheetId}.png`, documentId]);
+      
+      return { success: true, isPublic: false, thumbnailUrl: `/thumbnails/${sheetId}.png` };
+    }
+    
+    console.log(`🔓 Planilha pública - capturando screenshot`);
+    
+    // Tentar fechar possíveis modais/avisos
+    try {
+      await page.evaluate(() => {
+        const closeButtons = document.querySelectorAll('[aria-label*="Close"], [aria-label*="Fechar"], .close, [data-dismiss]');
+        closeButtons.forEach(btn => btn.click());
+      });
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    } catch (error) {
+      console.log(`ℹ️ Nenhum modal para fechar`);
+    }
+    
+    await page.screenshot({ 
+      path: imagePath, 
+      fullPage: false,
+      type: 'png',
+      quality: 90
+    });
+    
+    await browser.close();
+
+    const stats = await fs.stat(imagePath);
+    console.log(`📏 Screenshot capturado: ${stats.size} bytes`);
+    
+    if (stats.size === 0) {
+      console.log(`⚠️ Screenshot vazio - gerando thumbnail padrão`);
+      await generateDefaultThumbnail(imagePath, sheetId, 'Erro na Captura');
+    }
+    
+    // Atualizar no banco
+    await pool.query(`
+      UPDATE documentos 
+      SET thumbnail_url = $1, atualizado_em = CURRENT_TIMESTAMP
+      WHERE id = $2
+    `, [`/thumbnails/${sheetId}.png`, documentId]);
+    
+    return { 
+      success: true, 
+      isPublic: true, 
+      thumbnailUrl: `/thumbnails/${sheetId}.png` 
+    };
+
+  } catch (error) {
+    console.error(`❌ Erro ao gerar thumbnail para ${sheetId}:`, error.message);
+    
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (closeError) {
+        console.error(`❌ Erro ao fechar browser:`, closeError.message);
+      }
+    }
+    
+    // Fallback para thumbnail padrão
+    try {
+      await generateDefaultThumbnail(imagePath, sheetId, 'Erro Técnico');
+      
+      await pool.query(`
+        UPDATE documentos 
+        SET thumbnail_url = $1, atualizado_em = CURRENT_TIMESTAMP
+        WHERE id = $2
+      `, [`/thumbnails/${sheetId}.png`, documentId]);
+      
+      return { success: true, isPublic: false, thumbnailUrl: `/thumbnails/${sheetId}.png`, error: error.message };
+    } catch (fallbackError) {
+      console.error(`❌ Erro crítico no fallback:`, fallbackError.message);
+      return { success: false, error: fallbackError.message };
+    }
+  }
+}
+
+// ✅ FUNÇÃO PRINCIPAL - REFRESH DE THUMBNAILS
+async function refreshWebThumbnails() {
+  const startTime = new Date();
+  console.log(`🔄 [${startTime.toISOString()}] INICIANDO REFRESH DE THUMBNAILS WEB...`);
+  
+  try {
     const result = await pool.query(`
       SELECT id, titulo, url_arquivo, thumbnail_url, categoria
       FROM documentos 
       WHERE ativo = true 
       AND (
         url_arquivo LIKE '%docs.google.com/spreadsheets%' OR
-        url_arquivo LIKE '%docs.google.com/document%' OR
-        url_arquivo LIKE '%drive.google.com%' OR
-        url_arquivo LIKE 'http%'
+        url_arquivo LIKE '%docs.google.com/document%'
       )
       ORDER BY atualizado_em DESC
     `);
@@ -48,49 +278,26 @@ async function refreshWebThumbnails(pool, baseUrl = 'http://localhost:3001') {
 
     let atualizados = 0;
     let erros = 0;
-    const thumbnailsPath = getThumbnailsPath();
 
-    // Processar cada documento
     for (const doc of webDocuments) {
       try {
         console.log(`🔄 Processando: ${doc.titulo} (ID: ${doc.id})`);
 
         const fileType = getFileType(doc.url_arquivo);
-        let apiUrl = null;
 
-        // ✅ GOOGLE SHEETS: DELETAR CACHE E REGENERAR
         if (fileType === 'google-sheet') {
           const sheetId = doc.url_arquivo.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1];
           if (sheetId) {
-            // 🗑️ DELETAR CACHE PRIMEIRO
-            try {
-              const cacheFile = path.join(thumbnailsPath, `${sheetId}.png`);
-              await fs.unlink(cacheFile);
-              console.log(`🗑️ Cache removido: ${sheetId}.png`);
-            } catch (error) {
-              console.log(`ℹ️ Cache não existia ou já removido: ${sheetId}.png`);
+            const result = await generateGoogleSheetThumbnail(sheetId, doc.id);
+            if (result.success) {
+              atualizados++;
+              console.log(`✅ Thumbnail atualizado: ${doc.titulo}`);
+            } else {
+              erros++;
+              console.log(`❌ Erro ao atualizar: ${doc.titulo}`);
             }
-            
-            // Chamar API para regenerar
-            apiUrl = `${baseUrl}/api/thumbnail?sheetId=${sheetId}&documentId=${doc.id}`;
           }
-        } 
-        // ✅ WEBSITES: DELETAR CACHE E REGENERAR
-        else if (fileType === 'website') {
-          try {
-            const domain = new URL(doc.url_arquivo).hostname.replace(/[^a-zA-Z0-9]/g, '-');
-            const cacheFile = path.join(thumbnailsPath, `website-${domain}.png`);
-            await fs.unlink(cacheFile);
-            console.log(`🗑️ Cache removido: website-${domain}.png`);
-          } catch (error) {
-            console.log(`ℹ️ Cache não existia para website`);
-          }
-          
-          // Chamar API para regenerar
-          apiUrl = `${baseUrl}/api/website-screenshot?url=${encodeURIComponent(doc.url_arquivo)}&documentId=${doc.id}`;
-        } 
-        // ✅ GOOGLE DOCS: ATUALIZAR URL DIRETAMENTE
-        else if (fileType === 'google-doc') {
+        } else if (fileType === 'google-doc') {
           const docId = doc.url_arquivo.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1];
           if (docId) {
             const thumbnailUrl = `https://drive.google.com/thumbnail?id=${docId}&sz=w500-h650`;
@@ -105,32 +312,10 @@ async function refreshWebThumbnails(pool, baseUrl = 'http://localhost:3001') {
               atualizados++;
               console.log(`✅ Google Doc atualizado: ${doc.titulo}`);
             }
-            continue;
           }
         }
 
-        // ✅ CHAMAR API PARA REGENERAR THUMBNAIL
-        if (apiUrl) {
-          console.log(`📡 Chamando API: ${apiUrl}`);
-          
-          const response = await fetch(apiUrl, {
-            method: 'GET',
-            timeout: 60000
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            atualizados++;
-            console.log(`✅ Thumbnail regenerado: ${doc.titulo} - ${data.thumbnailUrl || 'sucesso'}`);
-          } else {
-            console.log(`⚠️ API retornou erro para ${doc.titulo}: ${response.status}`);
-            erros++;
-          }
-        } else {
-          console.log(`⚠️ Tipo não suportado para refresh: ${fileType} - ${doc.titulo}`);
-        }
-
-        // Delay entre requisições para não sobrecarregar
+        // Delay menor para Railway
         await new Promise(resolve => setTimeout(resolve, 2000));
 
       } catch (error) {
@@ -139,7 +324,10 @@ async function refreshWebThumbnails(pool, baseUrl = 'http://localhost:3001') {
       }
     }
 
-    console.log(`🎉 REFRESH CONCLUÍDO:`);
+    const endTime = new Date();
+    const duration = ((endTime - startTime) / 1000).toFixed(2);
+
+    console.log(`🎉 [${endTime.toISOString()}] REFRESH CONCLUÍDO em ${duration}s:`);
     console.log(`   📊 Total processados: ${webDocuments.length}`);
     console.log(`   ✅ Thumbnails regenerados: ${atualizados}`);
     console.log(`   ❌ Erros: ${erros}`);
@@ -147,54 +335,25 @@ async function refreshWebThumbnails(pool, baseUrl = 'http://localhost:3001') {
     // Salvar log no banco
     await pool.query(`
       INSERT INTO logs_sistema (evento, detalhes, criado_em)
-      VALUES ('refresh_thumbnails', $1, CURRENT_TIMESTAMP)
+      VALUES ('cron_refresh_thumbnails', $1, CURRENT_TIMESTAMP)
     `, [JSON.stringify({ 
       total: webDocuments.length, 
       regenerados: atualizados,
       erros,
-      timestamp: new Date().toISOString(),
-      modo: 'sempre_regenera'
+      duracao_segundos: parseFloat(duration),
+      executado_via: 'railway_cron',
+      timestamp: endTime.toISOString()
     })]);
 
     return { 
       total: webDocuments.length, 
       regenerados: atualizados,
-      erros 
+      erros,
+      duracao: duration
     };
 
   } catch (error) {
     console.error('❌ Erro no refresh de thumbnails:', error);
-    throw error;
-  }
-}
-
-// ✅ FUNÇÃO PARA LIMPAR TODOS OS CACHES E REGENERAR TUDO
-async function forceRefreshAllThumbnails(pool, baseUrl = 'http://localhost:3001') {
-  console.log('🔄 INICIANDO LIMPEZA TOTAL DE CACHE...');
-  
-  try {
-    const thumbnailsPath = getThumbnailsPath();
-    
-    // 🗑️ LIMPAR PASTA INTEIRA DE THUMBNAILS
-    try {
-      const files = await fs.readdir(thumbnailsPath);
-      console.log(`🗑️ Removendo ${files.length} arquivos de cache...`);
-      
-      for (const file of files) {
-        if (file.endsWith('.png')) {
-          await fs.unlink(path.join(thumbnailsPath, file));
-        }
-      }
-      console.log(`✅ Cache limpo: ${files.length} arquivos removidos`);
-    } catch (error) {
-      console.log(`ℹ️ Pasta de cache vazia ou não existe`);
-    }
-
-    // Agora executar refresh normal (vai regenerar tudo)
-    return await refreshWebThumbnails(pool, baseUrl);
-
-  } catch (error) {
-    console.error('❌ Erro no refresh total:', error);
     throw error;
   }
 }
@@ -204,14 +363,11 @@ function getFileType(url) {
   if (url.includes('docs.google.com/spreadsheets')) return 'google-sheet';
   if (url.includes('docs.google.com/document')) return 'google-doc';
   if (url.includes('drive.google.com')) return 'google-drive';
-  if (url.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) return 'image';
-  if (url.includes('.pdf') || url.includes('pdf')) return 'pdf';
-  if (url.startsWith('http') && !url.includes('docs.google.com')) return 'website';
   return 'unknown';
 }
 
 // ✅ FUNÇÃO PARA CRIAR TABELA DE LOGS
-async function createLogsTable(pool) {
+async function createLogsTable() {
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS logs_sistema (
@@ -227,56 +383,39 @@ async function createLogsTable(pool) {
   }
 }
 
-// ✅ ENDPOINTS PARA USAR NO SERVER.JS
-function addRefreshEndpoint(app, pool, authMiddleware) {
-  // Endpoint para refresh (sempre regenera)
-  app.post('/api/refresh-thumbnails', authMiddleware, async (req, res) => {
+// ✅ FUNÇÃO PRINCIPAL PARA RAILWAY CRON
+async function main() {
+  try {
+    console.log('🚀 Iniciando execução do Railway Cron...');
+    
+    // Inicializar banco
+    await createLogsTable();
+    
+    // Executar refresh
+    const result = await refreshWebThumbnails();
+    
+    console.log(`✅ Execução concluída com sucesso!`);
+    console.log(`📊 Resumo: ${result.regenerados}/${result.total} thumbnails atualizados em ${result.duracao}s`);
+    
+    // Fechar conexões
+    await pool.end();
+    
+    // Exit com sucesso
+    process.exit(0);
+    
+  } catch (error) {
+    console.error('❌ Erro na execução principal:', error);
+    
     try {
-      const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const result = await refreshWebThumbnails(pool, baseUrl);
-      
-      res.json({
-        success: true,
-        message: 'Refresh de thumbnails concluído (sempre regenera)',
-        ...result
-      });
-    } catch (error) {
-      console.error('❌ Erro no endpoint de refresh:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Erro interno do servidor',
-        message: error.message
-      });
+      await pool.end();
+    } catch (poolError) {
+      console.error('❌ Erro ao fechar pool:', poolError);
     }
-  });
-
-  // Endpoint para limpeza total + regeneração
-  app.post('/api/refresh-all-thumbnails', authMiddleware, async (req, res) => {
-    try {
-      const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const result = await forceRefreshAllThumbnails(pool, baseUrl);
-      
-      res.json({
-        success: true,
-        message: 'Limpeza total e regeneração concluída',
-        ...result
-      });
-    } catch (error) {
-      console.error('❌ Erro no endpoint de refresh total:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Erro interno do servidor',
-        message: error.message
-      });
-    }
-  });
+    
+    // Exit com erro
+    process.exit(1);
+  }
 }
 
-// ✅ EXPORTAR FUNÇÕES
-module.exports = {
-  refreshWebThumbnails,
-  forceRefreshAllThumbnails,
-  getFileType,
-  createLogsTable,
-  addRefreshEndpoint
-};
+// ✅ EXECUTAR IMEDIATAMENTE
+main();
