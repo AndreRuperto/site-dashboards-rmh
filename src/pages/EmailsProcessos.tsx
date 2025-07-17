@@ -276,9 +276,7 @@ const EmailsProcessos = () => {
     const matchPessoa = filtroPessoa === 'todos' || processo.responsavel === filtroPessoa;
     const matchIdAtendimento = buscaIdAtendimento === '' || 
     (processo.idAtendimento && 
-     processo.idAtendimento.toLowerCase().includes(buscaIdAtendimento.toLowerCase())) ||
-    (processo.idProcessoPlanilha && 
-     processo.idProcessoPlanilha.toLowerCase().includes(buscaIdAtendimento.toLowerCase()));
+     processo.idAtendimento.toLowerCase().includes(buscaIdAtendimento.toLowerCase()));
     const matchBusca = termoBusca === '' || 
       processo.cliente?.toLowerCase().includes(termoBusca.toLowerCase()) ||
       processo.numeroProcesso?.toLowerCase().includes(termoBusca.toLowerCase());

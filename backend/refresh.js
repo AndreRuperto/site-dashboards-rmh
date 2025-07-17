@@ -42,6 +42,8 @@ function checkMemoryUsage() {
   return true;
 }
 
+let currentTimestamp = Date.now();
+
 // ✅ CLASSE PARA GERENCIAR BROWSER COM SEGURANÇA
 class SafeBrowserManager {
   constructor() {
@@ -147,7 +149,8 @@ async function generateGoogleSheetThumbnailOptimized(sheetId, documentId, titulo
     }
 
     const thumbnailsPath = getThumbnailsPath();
-    const imagePath = path.join(thumbnailsPath, `${sheetId}.png`);
+    const imageName = `${currentTimestamp}_${sheetId}.png`;
+    const imagePath = path.join(thumbnailsPath, imageName);
     
     console.log(`📸 Processando: ${titulo || sheetId}`);
 
@@ -182,7 +185,7 @@ async function generateGoogleSheetThumbnailOptimized(sheetId, documentId, titulo
       await page.close();
       await generateDefaultThumbnail(imagePath, sheetId);
       
-      const thumbnailUrl = `/thumbnails/${sheetId}.png`;
+      const thumbnailUrl = `/thumbnails/${imageName}`;
       await updateThumbnailInDatabase(documentId, thumbnailUrl);
       
       return {
@@ -212,7 +215,7 @@ async function generateGoogleSheetThumbnailOptimized(sheetId, documentId, titulo
       await generateDefaultThumbnail(imagePath, sheetId);
     }
 
-    const thumbnailUrl = `/thumbnails/${sheetId}.png`;
+    const thumbnailUrl = `/thumbnails/${imageName}`;
     await updateThumbnailInDatabase(documentId, thumbnailUrl);
 
     const endMemory = process.memoryUsage().rss;
@@ -241,10 +244,11 @@ async function generateGoogleSheetThumbnailOptimized(sheetId, documentId, titulo
     // ✅ FALLBACK PARA THUMBNAIL PADRÃO
     try {
       const thumbnailsPath = getThumbnailsPath();
-      const imagePath = path.join(thumbnailsPath, `${sheetId}.png`);
+      const imageName = `${currentTimestamp}_${sheetId}.png`;
+      const imagePath = path.join(thumbnailsPath, imageName);
       await generateDefaultThumbnail(imagePath, sheetId, 'Erro Técnico');
       
-      const thumbnailUrl = `/thumbnails/${sheetId}.png`;
+      const thumbnailUrl = `/thumbnails/${imageName}`;
       await updateThumbnailInDatabase(documentId, thumbnailUrl);
       
       return {
@@ -290,6 +294,14 @@ async function checkIfSheetIsPublic(page, sheetId) {
 
 // ✅ FUNÇÃO PRINCIPAL OTIMIZADA PARA RAILWAY
 async function refreshWebThumbnailsOptimized() {
+  const thumbnailsPath = getThumbnailsPath();
+    try {
+      const files = await fs.readdir(thumbnailsPath);
+      await Promise.all(files.map(file => fs.unlink(path.join(thumbnailsPath, file))));
+      console.log(`🗑️ Limpeza de thumbnails antiga concluída`);
+    } catch (error) {
+      console.error('❌ Erro ao limpar thumbnails antigos:', error.message);
+    }
   const startTime = new Date();
   console.log(`🔄 [${startTime.toISOString()}] INICIANDO REFRESH OTIMIZADO...`);
   
@@ -301,8 +313,7 @@ async function refreshWebThumbnailsOptimized() {
       WHERE ativo = true 
       AND url_arquivo LIKE '%docs.google.com/spreadsheets%'
       ORDER BY atualizado_em DESC
-      LIMIT $1
-    `, [RAILWAY_LIMITS.MAX_DOCUMENTS_PER_RUN]);
+    `);
 
     const webDocuments = result.rows;
     console.log(`📊 Processando ${webDocuments.length} documentos (limite: ${RAILWAY_LIMITS.MAX_DOCUMENTS_PER_RUN})`);
