@@ -309,7 +309,7 @@ const app = express();
 
 function getDocumentsPath() {
   const isProduction = process.env.NODE_ENV === 'production';
-  const isRailway = process.env.RAILWAY_ENVIRONMENT === 'true'; // ✅ String comparison
+  const isRailway = process.env.RAILWAY_VOLUME === 'true'; // ✅ String comparison
   
   let documentsPath;
   
@@ -339,7 +339,7 @@ function getDocumentsPath() {
 
 function getThumbnailsPath() {
   const isProduction = process.env.NODE_ENV === 'production';
-  const isRailway = process.env.RAILWAY_ENVIRONMENT === 'true'; // ✅ String comparison
+  const isRailway = process.env.RAILWAY_VOLUME === 'true'; // ✅ String comparison
   
   let thumbnailsPath;
   
@@ -368,7 +368,7 @@ function getThumbnailsPath() {
 // ✅ ADICIONE esta função utilitária para organizar melhor
 function getStoragePath(type) {
   const isProduction = process.env.NODE_ENV === 'production';
-  const isRailway = process.env.RAILWAY_ENVIRONMENT === 'true'; // ✅ String comparison
+  const isRailway = process.env.RAILWAY_VOLUME === 'true'; // ✅ String comparison
   
   if (isProduction && isRailway) {
     // ✅ RAILWAY: Volume persistente
@@ -8113,7 +8113,7 @@ async function iniciarServidor() {
     // Iniciar servidor
     const server = app.listen(PORT, '0.0.0.0', async () => {
       const isProduction = process.env.NODE_ENV === 'production';
-      const isRailway = process.env.RAILWAY_ENVIRONMENT;
+      const isRailway = process.env.RAILWAY_VOLUME;
       const railwayUrl = process.env.RAILWAY_PUBLIC_DOMAIN;
 
       // Detectar ambiente

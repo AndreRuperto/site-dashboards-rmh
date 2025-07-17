@@ -37,3 +37,6 @@ dist-ssr
 .env
 .env1
 # *.jfif
+
+public/thumbnails/*.png
+public/thumbnails/*.jpeg
