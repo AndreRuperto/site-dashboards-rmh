@@ -2463,6 +2463,9 @@ app.get('/api/documents/stats', authMiddleware, async (req, res) => {
   }
 });
 
+createLogsTable(pool).catch(error => {
+  console.error('⚠️ Erro ao criar tabela de logs:', error);
+});
 addRefreshEndpoint(app, pool, authMiddleware);
 
 // ===============================================
