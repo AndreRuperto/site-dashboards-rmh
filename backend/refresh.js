@@ -1,11 +1,32 @@
-// backend/refreshThumbnails.js - REFATORADO
+// backend/refreshThumbnails.js - SEMPRE ATUALIZA MINIATURAS
 
 const path = require('path');
 const fs = require('fs/promises');
 
-// ✅ FUNÇÃO PRINCIPAL - USA A API QUE JÁ EXISTE
+// ✅ FUNÇÃO PARA OBTER CAMINHO DOS THUMBNAILS
+function getThumbnailsPath() {
+  // Mesma lógica do server.js
+  const alternatives = [
+    path.join(__dirname, '..', 'dist', 'thumbnails'),
+    path.join(process.cwd(), 'public', 'thumbnails'),
+    path.join(process.cwd(), 'dist', 'thumbnails')
+  ];
+  
+  for (const altPath of alternatives) {
+    try {
+      require('fs').mkdirSync(altPath, { recursive: true });
+      return altPath;
+    } catch (error) {
+      continue;
+    }
+  }
+  
+  return alternatives[0]; // fallback
+}
+
+// ✅ FUNÇÃO PRINCIPAL - SEMPRE DELETA CACHE E REGENERA
 async function refreshWebThumbnails(pool, baseUrl = 'http://localhost:3001') {
-  console.log('🔄 INICIANDO REFRESH DE THUMBNAILS WEB...');
+  console.log('🔄 INICIANDO REFRESH DE THUMBNAILS WEB (FORÇA REGENERAÇÃO)...');
   
   try {
     // Buscar todos os documentos que são arquivos da web
@@ -27,7 +48,7 @@ async function refreshWebThumbnails(pool, baseUrl = 'http://localhost:3001') {
 
     let atualizados = 0;
     let erros = 0;
-    let pularCache = 0;
+    const thumbnailsPath = getThumbnailsPath();
 
     // Processar cada documento
     for (const doc of webDocuments) {
@@ -37,18 +58,39 @@ async function refreshWebThumbnails(pool, baseUrl = 'http://localhost:3001') {
         const fileType = getFileType(doc.url_arquivo);
         let apiUrl = null;
 
-        // ✅ USAR A API QUE JÁ EXISTE NO SERVER.JS
+        // ✅ GOOGLE SHEETS: DELETAR CACHE E REGENERAR
         if (fileType === 'google-sheet') {
           const sheetId = doc.url_arquivo.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1];
           if (sheetId) {
-            // Chamar a API de thumbnail que já existe
+            // 🗑️ DELETAR CACHE PRIMEIRO
+            try {
+              const cacheFile = path.join(thumbnailsPath, `${sheetId}.png`);
+              await fs.unlink(cacheFile);
+              console.log(`🗑️ Cache removido: ${sheetId}.png`);
+            } catch (error) {
+              console.log(`ℹ️ Cache não existia ou já removido: ${sheetId}.png`);
+            }
+            
+            // Chamar API para regenerar
             apiUrl = `${baseUrl}/api/thumbnail?sheetId=${sheetId}&documentId=${doc.id}`;
           }
-        } else if (fileType === 'website') {
-          // Chamar a API de screenshot que já existe
+        } 
+        // ✅ WEBSITES: DELETAR CACHE E REGENERAR
+        else if (fileType === 'website') {
+          try {
+            const domain = new URL(doc.url_arquivo).hostname.replace(/[^a-zA-Z0-9]/g, '-');
+            const cacheFile = path.join(thumbnailsPath, `website-${domain}.png`);
+            await fs.unlink(cacheFile);
+            console.log(`🗑️ Cache removido: website-${domain}.png`);
+          } catch (error) {
+            console.log(`ℹ️ Cache não existia para website`);
+          }
+          
+          // Chamar API para regenerar
           apiUrl = `${baseUrl}/api/website-screenshot?url=${encodeURIComponent(doc.url_arquivo)}&documentId=${doc.id}`;
-        } else if (fileType === 'google-doc') {
-          // Para Google Docs, atualizar diretamente no banco (API do Google)
+        } 
+        // ✅ GOOGLE DOCS: ATUALIZAR URL DIRETAMENTE
+        else if (fileType === 'google-doc') {
           const docId = doc.url_arquivo.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1];
           if (docId) {
             const thumbnailUrl = `https://drive.google.com/thumbnail?id=${docId}&sz=w500-h650`;
@@ -67,24 +109,19 @@ async function refreshWebThumbnails(pool, baseUrl = 'http://localhost:3001') {
           }
         }
 
+        // ✅ CHAMAR API PARA REGENERAR THUMBNAIL
         if (apiUrl) {
           console.log(`📡 Chamando API: ${apiUrl}`);
           
           const response = await fetch(apiUrl, {
             method: 'GET',
-            timeout: 60000 // 60 segundos timeout
+            timeout: 60000
           });
 
           if (response.ok) {
             const data = await response.json();
-            
-            if (data.cached) {
-              pularCache++;
-              console.log(`♻️ Thumbnail em cache: ${doc.titulo}`);
-            } else {
-              atualizados++;
-              console.log(`✅ Thumbnail atualizado: ${doc.titulo} - ${data.thumbnailUrl}`);
-            }
+            atualizados++;
+            console.log(`✅ Thumbnail regenerado: ${doc.titulo} - ${data.thumbnailUrl || 'sucesso'}`);
           } else {
             console.log(`⚠️ API retornou erro para ${doc.titulo}: ${response.status}`);
             erros++;
@@ -94,7 +131,7 @@ async function refreshWebThumbnails(pool, baseUrl = 'http://localhost:3001') {
         }
 
         // Delay entre requisições para não sobrecarregar
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
       } catch (error) {
         erros++;
@@ -104,8 +141,7 @@ async function refreshWebThumbnails(pool, baseUrl = 'http://localhost:3001') {
 
     console.log(`🎉 REFRESH CONCLUÍDO:`);
     console.log(`   📊 Total processados: ${webDocuments.length}`);
-    console.log(`   ✅ Atualizados: ${atualizados}`);
-    console.log(`   ♻️ Cache aproveitado: ${pularCache}`);
+    console.log(`   ✅ Thumbnails regenerados: ${atualizados}`);
     console.log(`   ❌ Erros: ${erros}`);
 
     // Salvar log no banco
@@ -114,16 +150,15 @@ async function refreshWebThumbnails(pool, baseUrl = 'http://localhost:3001') {
       VALUES ('refresh_thumbnails', $1, CURRENT_TIMESTAMP)
     `, [JSON.stringify({ 
       total: webDocuments.length, 
-      atualizados, 
-      cache: pularCache,
+      regenerados: atualizados,
       erros,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      modo: 'sempre_regenera'
     })]);
 
     return { 
       total: webDocuments.length, 
-      atualizados, 
-      cache: pularCache, 
+      regenerados: atualizados,
       erros 
     };
 
@@ -133,53 +168,33 @@ async function refreshWebThumbnails(pool, baseUrl = 'http://localhost:3001') {
   }
 }
 
-// ✅ FUNÇÃO PARA FORÇAR REGENERAÇÃO (SEM CACHE)
-async function forceRefreshThumbnails(pool, baseUrl = 'http://localhost:3001') {
-  console.log('🔄 INICIANDO REFRESH FORÇADO (SEM CACHE)...');
+// ✅ FUNÇÃO PARA LIMPAR TODOS OS CACHES E REGENERAR TUDO
+async function forceRefreshAllThumbnails(pool, baseUrl = 'http://localhost:3001') {
+  console.log('🔄 INICIANDO LIMPEZA TOTAL DE CACHE...');
   
   try {
-    // Buscar apenas documentos com problemas de thumbnail
-    const result = await pool.query(`
-      SELECT id, titulo, url_arquivo, thumbnail_url, categoria
-      FROM documentos 
-      WHERE ativo = true 
-      AND (
-        thumbnail_url IS NULL OR
-        thumbnail_url = '' OR
-        (url_arquivo LIKE '%docs.google.com/spreadsheets%' AND thumbnail_url NOT LIKE '/thumbnails/%')
-      )
-      ORDER BY atualizado_em DESC
-      LIMIT 50
-    `);
-
-    const problematicDocs = result.rows;
-    console.log(`🔧 Encontrados ${problematicDocs.length} documentos com problemas de thumbnail`);
-
-    // Primeiro, limpar cache físico para forçar regeneração
-    for (const doc of problematicDocs) {
-      const fileType = getFileType(doc.url_arquivo);
+    const thumbnailsPath = getThumbnailsPath();
+    
+    // 🗑️ LIMPAR PASTA INTEIRA DE THUMBNAILS
+    try {
+      const files = await fs.readdir(thumbnailsPath);
+      console.log(`🗑️ Removendo ${files.length} arquivos de cache...`);
       
-      if (fileType === 'google-sheet') {
-        const sheetId = doc.url_arquivo.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1];
-        if (sheetId) {
-          try {
-            // Tentar deletar arquivo de cache
-            const thumbnailsPath = path.join(process.cwd(), 'dist', 'thumbnails');
-            const cacheFile = path.join(thumbnailsPath, `${sheetId}.png`);
-            await fs.unlink(cacheFile);
-            console.log(`🗑️ Cache removido para: ${sheetId}`);
-          } catch (error) {
-            // Ignorar erro se arquivo não existir
-          }
+      for (const file of files) {
+        if (file.endsWith('.png')) {
+          await fs.unlink(path.join(thumbnailsPath, file));
         }
       }
+      console.log(`✅ Cache limpo: ${files.length} arquivos removidos`);
+    } catch (error) {
+      console.log(`ℹ️ Pasta de cache vazia ou não existe`);
     }
 
-    // Agora chamar a API normal para regenerar
+    // Agora executar refresh normal (vai regenerar tudo)
     return await refreshWebThumbnails(pool, baseUrl);
 
   } catch (error) {
-    console.error('❌ Erro no refresh forçado:', error);
+    console.error('❌ Erro no refresh total:', error);
     throw error;
   }
 }
@@ -195,7 +210,7 @@ function getFileType(url) {
   return 'unknown';
 }
 
-// ✅ FUNÇÃO PARA CRIAR TABELA DE LOGS (EXECUTAR UMA VEZ)
+// ✅ FUNÇÃO PARA CRIAR TABELA DE LOGS
 async function createLogsTable(pool) {
   try {
     await pool.query(`
@@ -212,9 +227,9 @@ async function createLogsTable(pool) {
   }
 }
 
-// ✅ ENDPOINT PARA USAR NO SERVER.JS
+// ✅ ENDPOINTS PARA USAR NO SERVER.JS
 function addRefreshEndpoint(app, pool, authMiddleware) {
-  // Endpoint para refresh normal
+  // Endpoint para refresh (sempre regenera)
   app.post('/api/refresh-thumbnails', authMiddleware, async (req, res) => {
     try {
       const baseUrl = `${req.protocol}://${req.get('host')}`;
@@ -222,7 +237,7 @@ function addRefreshEndpoint(app, pool, authMiddleware) {
       
       res.json({
         success: true,
-        message: 'Refresh de thumbnails concluído',
+        message: 'Refresh de thumbnails concluído (sempre regenera)',
         ...result
       });
     } catch (error) {
@@ -235,19 +250,19 @@ function addRefreshEndpoint(app, pool, authMiddleware) {
     }
   });
 
-  // Endpoint para refresh forçado
-  app.post('/api/force-refresh-thumbnails', authMiddleware, async (req, res) => {
+  // Endpoint para limpeza total + regeneração
+  app.post('/api/refresh-all-thumbnails', authMiddleware, async (req, res) => {
     try {
       const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const result = await forceRefreshThumbnails(pool, baseUrl);
+      const result = await forceRefreshAllThumbnails(pool, baseUrl);
       
       res.json({
         success: true,
-        message: 'Refresh forçado concluído',
+        message: 'Limpeza total e regeneração concluída',
         ...result
       });
     } catch (error) {
-      console.error('❌ Erro no endpoint de refresh forçado:', error);
+      console.error('❌ Erro no endpoint de refresh total:', error);
       res.status(500).json({
         success: false,
         error: 'Erro interno do servidor',
@@ -260,7 +275,7 @@ function addRefreshEndpoint(app, pool, authMiddleware) {
 // ✅ EXPORTAR FUNÇÕES
 module.exports = {
   refreshWebThumbnails,
-  forceRefreshThumbnails,
+  forceRefreshAllThumbnails,
   getFileType,
   createLogsTable,
   addRefreshEndpoint
