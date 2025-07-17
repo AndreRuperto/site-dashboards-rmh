@@ -2534,7 +2534,7 @@ app.get('/api/cron/refresh-thumbnails', async (req, res) => {
 });
 
 // ✅ ENDPOINT PARA VER STATUS DO ÚLTIMO REFRESH
-app.get('/api/admin/thumbnail-refresh-status', authMiddleware, async (req, res) => {
+app.get('/api/admin/thumbnail-refresh-status', async (req, res) => {
   try {
     if (!isAdmin(req.user)) {
       return res.status(403).json({ error: 'Acesso negado. Apenas administradores.' });
