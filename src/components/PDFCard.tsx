@@ -548,7 +548,7 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
                     console.log(`✅ Miniatura carregada: ${document.title}`);
                   }}
                   onError={(e) => {
-                    console.log(`❌ Erro ao carregar miniatura: ${document.title}`);
+                    console.log(`❌ Erro ao carregar miniatura: ${document.title} - ${thumbnailUrl}`);
                     setThumbnailError(true);
                     setThumbnailUrl(null);
                   }}
