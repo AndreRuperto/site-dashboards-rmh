@@ -312,7 +312,7 @@ async function refreshWebThumbnailsOptimized() {
       FROM documentos 
       WHERE ativo = true 
       AND url_arquivo LIKE '%docs.google.com/spreadsheets%'
-      ORDER BY atualizado_em DESC
+      ORDER BY atualizado_em DESC                                                                                                                                                                                                                                                                                                                                                                                                    
     `);
 
     const webDocuments = result.rows;

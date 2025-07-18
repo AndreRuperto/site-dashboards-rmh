@@ -8078,6 +8078,80 @@ app.use((error, req, res, next) => {
   });
 });
 
+// ✅ ROTA PARA DEBUG - LISTAR ARQUIVOS DO SERVIDOR
+app.get('/api/debug/files', async (req, res) => {
+  try {
+    // Listar arquivos das duas pastas principais
+    const documentsFiles = await fs.readdir(DOCUMENTS_PATH).catch(() => []);
+    const thumbnailsFiles = await fs.readdir(THUMBNAILS_PATH).catch(() => []);
+    
+    // Filtrar apenas PNGs dos thumbnails
+    const thumbnailsPng = thumbnailsFiles.filter(file => file.endsWith('.png'));
+    
+    // Obter estatísticas dos thumbnails
+    const thumbnailsStats = [];
+    for (const file of thumbnailsPng) {
+      try {
+        const filePath = path.join(THUMBNAILS_PATH, file);
+        const stats = await fs.stat(filePath);
+        thumbnailsStats.push({
+          filename: file,
+          size: stats.size,
+          sizeFormatted: `${(stats.size / 1024).toFixed(1)} KB`,
+          created: stats.birthtime,
+          modified: stats.mtime,
+          url: `/thumbnails/${file}`
+        });
+      } catch (error) {
+        thumbnailsStats.push({
+          filename: file,
+          error: 'Erro ao obter estatísticas'
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      environment: process.env.NODE_ENV || 'development',
+      serverInfo: {
+        currentWorkingDirectory: process.cwd(),
+        serverDirectory: __dirname,
+        nodeVersion: process.version
+      },
+      paths: {
+        documentsPath: DOCUMENTS_PATH,
+        thumbnailsPath: THUMBNAILS_PATH
+      },
+      files: {
+        documents: {
+          total: documentsFiles.length,
+          files: documentsFiles
+        },
+        thumbnails: {
+          total: thumbnailsPng.length,
+          totalAllFiles: thumbnailsFiles.length,
+          files: thumbnailsStats
+        }
+      },
+      memory: {
+        used: Math.round(process.memoryUsage().rss / 1024 / 1024),
+        heap: Math.round(process.memoryUsage().heapUsed / 1024 / 1024)
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao listar arquivos:', error);
+    res.status(500).json({ 
+      error: 'Erro ao listar arquivos',
+      details: error.message,
+      paths: {
+        documentsPath: DOCUMENTS_PATH,
+        thumbnailsPath: THUMBNAILS_PATH
+      }
+    });
+  }
+});
+
 // Rota catch-all para SPAs - deve ser a ÚLTIMA rota
 app.get('*', (req, res) => {
   console.log(`🎯 CATCH-ALL: Redirecionando ${req.path} para index.html`);
