@@ -220,7 +220,10 @@ async function generateGoogleSheetThumbnailOptimized(sheetId, documentId, titulo
 
     const endMemory = process.memoryUsage().rss;
     const memoryDiff = Math.round((endMemory - startMemory) / 1024 / 1024);
-    console.log(`✅ Thumbnail gerado: ${sheetId} (${memoryDiff}MB usado)`);
+    console.log(`✅ Thumbnail gerado: ${imageName} (${memoryDiff}MB usado)`);
+    console.log(`🔍 DEBUG: currentTimestamp = ${currentTimestamp}`);
+    console.log(`🔍 DEBUG: sheetId = ${sheetId}`);
+    console.log(`🔍 DEBUG: imageName = ${imageName}`);
 
     return {
       success: true,
