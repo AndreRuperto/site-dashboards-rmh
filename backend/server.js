@@ -8080,7 +8080,12 @@ app.use((error, req, res, next) => {
 
 // ✅ ROTA PARA DEBUG - LISTAR ARQUIVOS DO SERVIDOR
 app.get('/api/debug/files', async (req, res) => {
+  const requestTimestamp = new Date().toISOString();
+  const requestTime = Date.now();
+  
   try {
+    console.log(`🕐 [${requestTimestamp}] ROTA DEBUG/FILES acessada`);
+    
     // Listar arquivos das duas pastas principais
     const documentsFiles = await fs.readdir(DOCUMENTS_PATH).catch(() => []);
     const thumbnailsFiles = await fs.readdir(THUMBNAILS_PATH).catch(() => []);
@@ -8112,6 +8117,13 @@ app.get('/api/debug/files', async (req, res) => {
 
     res.json({
       success: true,
+      // ✅ TIMESTAMP VISÍVEL NA RESPOSTA
+      requestInfo: {
+        timestamp: requestTimestamp,
+        timestampMs: requestTime,
+        accessedAt: new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+        serverUptime: `${Math.round(process.uptime())}s`
+      },
       environment: process.env.NODE_ENV || 'development',
       serverInfo: {
         currentWorkingDirectory: process.cwd(),
@@ -8139,10 +8151,17 @@ app.get('/api/debug/files', async (req, res) => {
       }
     });
     
+    console.log(`✅ [${requestTimestamp}] ROTA DEBUG/FILES respondida com ${thumbnailsPng.length} thumbnails`);
+    
   } catch (error) {
-    console.error('❌ Erro ao listar arquivos:', error);
+    console.error(`❌ [${requestTimestamp}] Erro ao listar arquivos:`, error);
     res.status(500).json({ 
       error: 'Erro ao listar arquivos',
+      requestInfo: {
+        timestamp: requestTimestamp,
+        timestampMs: requestTime,
+        accessedAt: new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+      },
       details: error.message,
       paths: {
         documentsPath: DOCUMENTS_PATH,
