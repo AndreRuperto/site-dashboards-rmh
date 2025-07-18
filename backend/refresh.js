@@ -313,9 +313,28 @@ async function checkIfSheetIsPublic(page, sheetId) {
 async function refreshWebThumbnailsOptimized() {
   const thumbnailsPath = getThumbnailsPath();
     try {
+      console.log(`🔍 LIMPEZA: Verificando diretório ${thumbnailsPath}`);
       const files = await fs.readdir(thumbnailsPath);
-      await Promise.all(files.map(file => fs.unlink(path.join(thumbnailsPath, file))));
-      console.log(`🗑️ Limpeza de thumbnails antiga concluída`);
+      console.log(`🔍 LIMPEZA: Encontrados ${files.length} arquivos: [${files.join(', ')}]`);
+      
+      if (files.length > 0) {
+        for (const file of files) {
+          const filePath = path.join(thumbnailsPath, file);
+          try {
+            await fs.unlink(filePath);
+            console.log(`🗑️ DELETADO: ${file}`);
+          } catch (deleteError) {
+            console.error(`❌ ERRO ao deletar ${file}: ${deleteError.message}`);
+          }
+        }
+      } else {
+        console.log(`📁 LIMPEZA: Diretório já estava vazio`);
+      }
+      
+      // Verificar se limpeza funcionou
+      const filesAfter = await fs.readdir(thumbnailsPath);
+      console.log(`✅ LIMPEZA: Restaram ${filesAfter.length} arquivos após limpeza: [${filesAfter.join(', ')}]`);
+      
     } catch (error) {
       console.error('❌ Erro ao limpar thumbnails antigos:', error.message);
     }
