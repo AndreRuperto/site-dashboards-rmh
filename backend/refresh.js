@@ -137,6 +137,37 @@ class SafeBrowserManager {
 // ✅ INSTÂNCIA GLOBAL DO BROWSER MANAGER
 const browserManager = new SafeBrowserManager();
 
+// ✅ FUNÇÃO PARA LIMPEZA DE THUMBNAILS
+async function cleanOldThumbnails() {
+  const thumbnailsPath = getThumbnailsPath();
+  try {
+    console.log(`🔍 LIMPEZA: Verificando diretório ${thumbnailsPath}`);
+    const files = await fs.readdir(thumbnailsPath);
+    console.log(`🔍 LIMPEZA: Encontrados ${files.length} arquivos: [${files.join(', ')}]`);
+    
+    if (files.length > 0) {
+      for (const file of files) {
+        const filePath = path.join(thumbnailsPath, file);
+        try {
+          await fs.unlink(filePath);
+          console.log(`🗑️ DELETADO: ${file}`);
+        } catch (deleteError) {
+          console.error(`❌ ERRO ao deletar ${file}: ${deleteError.message}`);
+        }
+      }
+    } else {
+      console.log(`📁 LIMPEZA: Diretório já estava vazio`);
+    }
+    
+    // Verificar se limpeza funcionou
+    const filesAfter = await fs.readdir(thumbnailsPath);
+    console.log(`✅ LIMPEZA: Restaram ${filesAfter.length} arquivos após limpeza: [${filesAfter.join(', ')}]`);
+    
+  } catch (error) {
+    console.error('❌ Erro ao limpar thumbnails antigos:', error.message);
+  }
+}
+
 // ✅ FUNÇÃO OTIMIZADA PARA GERAR THUMBNAIL
 async function generateGoogleSheetThumbnailOptimized(sheetId, documentId, titulo) {
   let page = null;
@@ -222,11 +253,29 @@ async function generateGoogleSheetThumbnailOptimized(sheetId, documentId, titulo
     await page.close();
     page = null;
 
-    // ✅ VERIFICAR SE ARQUIVO FOI CRIADO
-    const stats = await fs.stat(imagePath);
-    if (stats.size === 0) {
-      console.log(`⚠️ Screenshot vazio, gerando fallback`);
-      await generateDefaultThumbnail(imagePath, sheetId);
+    // ✅ VERIFICAR SE ARQUIVO FOI REALMENTE CRIADO
+    try {
+      const stats = await fs.stat(imagePath);
+      console.log(`   ✅ Arquivo criado com sucesso!`);
+      console.log(`   📏 Tamanho: ${stats.size} bytes`);
+      console.log(`   📅 Criado em: ${stats.birthtime}`);
+      console.log(`   🔄 Modificado em: ${stats.mtime}`);
+      
+      if (stats.size === 0) {
+        console.log(`⚠️ Screenshot vazio, gerando fallback`);
+        await generateDefaultThumbnail(imagePath, sheetId);
+      }
+    } catch (statError) {
+      console.error(`❌ ERRO: Arquivo não foi criado! ${statError.message}`);
+      console.log(`   🗂️ Caminho tentado: ${imagePath}`);
+      
+      // Tentar listar arquivos no diretório
+      try {
+        const files = await fs.readdir(thumbnailsPath);
+        console.log(`   📁 Arquivos no diretório: [${files.join(', ')}]`);
+      } catch (listError) {
+        console.error(`   ❌ Erro ao listar diretório: ${listError.message}`);
+      }
     }
 
     const thumbnailUrl = `/thumbnails/${imageName}`;
@@ -309,35 +358,8 @@ async function checkIfSheetIsPublic(page, sheetId) {
   }
 }
 
-// ✅ FUNÇÃO PRINCIPAL OTIMIZADA PARA RAILWAY
+// ✅ FUNÇÃO PRINCIPAL OTIMIZADA PARA RAILWAY (SEM LIMPEZA AQUI)
 async function refreshWebThumbnailsOptimized() {
-  const thumbnailsPath = getThumbnailsPath();
-    try {
-      console.log(`🔍 LIMPEZA: Verificando diretório ${thumbnailsPath}`);
-      const files = await fs.readdir(thumbnailsPath);
-      console.log(`🔍 LIMPEZA: Encontrados ${files.length} arquivos: [${files.join(', ')}]`);
-      
-      if (files.length > 0) {
-        for (const file of files) {
-          const filePath = path.join(thumbnailsPath, file);
-          try {
-            await fs.unlink(filePath);
-            console.log(`🗑️ DELETADO: ${file}`);
-          } catch (deleteError) {
-            console.error(`❌ ERRO ao deletar ${file}: ${deleteError.message}`);
-          }
-        }
-      } else {
-        console.log(`📁 LIMPEZA: Diretório já estava vazio`);
-      }
-      
-      // Verificar se limpeza funcionou
-      const filesAfter = await fs.readdir(thumbnailsPath);
-      console.log(`✅ LIMPEZA: Restaram ${filesAfter.length} arquivos após limpeza: [${filesAfter.join(', ')}]`);
-      
-    } catch (error) {
-      console.error('❌ Erro ao limpar thumbnails antigos:', error.message);
-    }
   const startTime = new Date();
   console.log(`🔄 [${startTime.toISOString()}] INICIANDO REFRESH OTIMIZADO...`);
   
@@ -348,8 +370,9 @@ async function refreshWebThumbnailsOptimized() {
       FROM documentos 
       WHERE ativo = true 
       AND url_arquivo LIKE '%docs.google.com/spreadsheets%'
-      ORDER BY atualizado_em DESC                                                                                                                                                                                                                                                                                                                                                                                                    
-    `);
+      ORDER BY atualizado_em DESC
+      LIMIT $1
+    `, [RAILWAY_LIMITS.MAX_DOCUMENTS_PER_RUN]);
 
     const webDocuments = result.rows;
     console.log(`📊 Processando ${webDocuments.length} documentos (limite: ${RAILWAY_LIMITS.MAX_DOCUMENTS_PER_RUN})`);
@@ -580,6 +603,9 @@ async function main() {
     }
 
     await createLogsTable();
+    
+    // ✅ FAZER LIMPEZA ANTES DE TUDO
+    await cleanOldThumbnails();
     
     const result = await refreshWebThumbnailsOptimized();
     
