@@ -15,23 +15,9 @@ const fs = require('fs/promises');
 const multer = require('multer');
 const puppeteer = require('puppeteer');
 const fsSync = require('fs');
-const cloudinary = require('cloudinary').v2;
-const cronJob = require('node-cron');
 
 const envFile = process.env.ENV_FILE || '.env';
 const envPath = path.resolve(__dirname, envFile);
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
-});
-
-console.log('☁️ Cloudinary configurado:', {
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME ? '✅ Definido' : '❌ Não definido',
-  api_key: process.env.CLOUDINARY_API_KEY ? '✅ Definido' : '❌ Não definido',
-  api_secret: process.env.CLOUDINARY_API_SECRET ? '✅ Definido' : '❌ Não definido'
-});
 
 async function handleSocialMediaSites(page, url) {
   const domain = new URL(url).hostname;
@@ -321,6 +307,9 @@ console.log('🌍 Ambiente atual:', {
 
 const app = express();
 
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }))
+
 function getDocumentsPath() {
   const isProduction = process.env.NODE_ENV === 'production';
   const isRailway = process.env.RAILWAY_VOLUME === 'true'; // ✅ String comparison
@@ -330,12 +319,9 @@ function getDocumentsPath() {
   if (isProduction && isRailway) {
     // ✅ RAILWAY COM VOLUME: Usar o volume persistente
     documentsPath = '/app/storage/documents';
-  } else if (isProduction) {
+  } else {
     // ✅ PRODUÇÃO SEM RAILWAY: backend/dist/documents
     documentsPath = path.join(__dirname, 'dist', 'documents');
-  } else {
-    // ✅ DESENVOLVIMENTO: raiz/public/documents
-    documentsPath = path.join(__dirname, '..', 'public', 'documents');
   }
   
   console.log(`📁 Ambiente: ${isProduction ? 'PRODUÇÃO' : 'DESENVOLVIMENTO'}`);
@@ -484,51 +470,121 @@ express.static.mime.define({
 
 // Configuração do multer para upload de arquivos
 const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    let uploadPath;
+    if (file.fieldname === 'thumbnail') {
+      uploadPath = getThumbnailsPath();
+    } else {
+      uploadPath = getDocumentsPath();
+    }
+    cb(null, uploadPath);
+  },
+  filename: function (req, file, cb) {
+    const timestamp = Date.now();
+    const originalName = file.originalname;
+    const nameWithoutExt = path.parse(originalName).name;
+    const extension = path.extname(originalName);
+    
+    // Remove caracteres especiais e espaços
+    const cleanName = nameWithoutExt
+      .replace(/[^a-zA-Z0-9\-_]/g, '_')
+      .substring(0, 50); // Limita tamanho
+    
+    const filename = `${cleanName}_${timestamp}${extension}`;
+    
+    console.log(`📄 MULTER: "${originalName}" -> "${filename}"`);
+    cb(null, filename);
+  }
+});
+
+// ✅ CONFIGURAÇÃO CORRIGIDA COM LIMITE MAIOR
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 50 * 1024 * 1024 // 10MB
+  },
+  fileFilter: (req, file, cb) => {
+    console.log(`📋 Processando arquivo: ${file.fieldname} - ${file.originalname}`);
+    
+    if (file.fieldname === 'thumbnail') {
+      // Para thumbnails, apenas imagens
+      const allowedThumbnailMimes = [
+        'image/jpeg',
+        'image/jpg',
+        'image/png', 
+        'image/gif',
+        'image/webp'
+      ];
+      
+      if (allowedThumbnailMimes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error('Apenas imagens são permitidas para thumbnails'));
+      }
+    } else {
+      // Para documentos, tipos originais
+      const allowedMimes = [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-powerpoint',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'image/gif',
+        'image/webp'
+      ];
+
+      if (allowedMimes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error('Tipo de arquivo não permitido'));
+      }
+    }
+  }
+});
+
+const thumbnailStorage = multer.diskStorage({
   destination: async (req, file, cb) => {
-    // Usar o caminho dinâmico baseado no ambiente
-    const uploadDir = DOCUMENTS_PATH;
+    // ✅ Usar o diretório de thumbnails
+    const thumbnailDir = getThumbnailsPath();
     
-    console.log(`📁 Upload destination: ${uploadDir}`);
+    console.log(`🖼️ Upload thumbnail destination: ${thumbnailDir}`);
     
-    // Criar diretório se não existir
     try {
-      await fs.mkdir(uploadDir, { recursive: true });
-      console.log(`✅ Diretório confirmado: ${uploadDir}`);
+      await fs.mkdir(thumbnailDir, { recursive: true });
+      console.log(`✅ Diretório de thumbnails confirmado: ${thumbnailDir}`);
     } catch (err) {
-      console.error('❌ Erro ao criar diretório:', err);
+      console.error('❌ Erro ao criar diretório de thumbnails:', err);
       return cb(err);
     }
     
-    cb(null, uploadDir);
+    cb(null, thumbnailDir);
   },
   filename: (req, file, cb) => {
-    // Gerar nome único: timestamp_nome-original
+    // ✅ Gerar nome com timestamp para evitar conflitos
     const timestamp = Date.now();
     const originalName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
     const fileName = `${timestamp}_${originalName}`;
     
-    console.log(`📄 Gerando nome do arquivo: ${fileName}`);
+    console.log(`🖼️ Gerando nome da thumbnail: ${fileName}`);
     cb(null, fileName);
   }
 });
 
-const upload = multer({
-  storage,
+const uploadThumbnail = multer({
+  storage: thumbnailStorage,
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB
+    fileSize: 50 * 1024 * 1024 // 5MB para thumbnails
   },
   fileFilter: (req, file, cb) => {
-    // Tipos permitidos
+    // Apenas imagens para thumbnails
     const allowedMimes = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-powerpoint',
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       'image/jpeg',
-      'image/jpg',
+      'image/jpg', 
       'image/png',
       'image/gif',
       'image/webp'
@@ -537,9 +593,35 @@ const upload = multer({
     if (allowedMimes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Tipo de arquivo não permitido'), false);
+      cb(new Error('Apenas imagens são permitidas para thumbnails'));
     }
   }
+});
+
+app.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        error: 'Arquivo muito grande',
+        message: 'O arquivo deve ter no máximo 50MB',
+        code: 'FILE_TOO_LARGE'
+      });
+    }
+    if (error.code === 'LIMIT_UNEXPECTED_FILE') {
+      return res.status(400).json({
+        error: 'Campo de arquivo inesperado',
+        message: 'Verifique se está enviando o arquivo no campo correto',
+        code: 'UNEXPECTED_FILE'
+      });
+    }
+  }
+  
+  // Outros tipos de erro
+  console.error('❌ ERRO GLOBAL:', error);
+  res.status(500).json({
+    error: 'Erro interno do servidor',
+    message: error.message
+  });
 });
 
 
@@ -1884,10 +1966,10 @@ async function generateWebsiteFallbackThumbnail(imagePath, url) {
   }
 }
 
+// ✅ NOVA FUNÇÃO PARA ATUALIZAR THUMBNAIL NO BANCO
 async function updateThumbnailInDatabase(documentId, thumbnailUrl) {
   try {
-    console.log(`💾 Atualizando thumbnail no banco - Doc ID: ${documentId}`);
-    console.log(`🌐 Nova URL Cloudinary: ${thumbnailUrl}`);
+    console.log(`💾 Atualizando thumbnail no banco - Doc ID: ${documentId}, URL: ${thumbnailUrl}`);
     
     const result = await pool.query(`
       UPDATE documentos 
@@ -1908,522 +1990,6 @@ async function updateThumbnailInDatabase(documentId, thumbnailUrl) {
     return false;
   }
 }
-
-// ================= 3. SCRIPT DE MIGRAÇÃO DO BANCO DE DADOS =================
-
-// ✅ SCRIPT PARA LIMPAR URLs ANTIGAS DO BANCO
-async function migrarThumbnailsParaCloudinary() {
-  try {
-    console.log('🔄 Iniciando migração de thumbnails para Cloudinary...');
-    
-    // Buscar documentos com thumbnails locais
-    const result = await pool.query(`
-      SELECT id, titulo, thumbnail_url, url_arquivo
-      FROM documentos 
-      WHERE thumbnail_url IS NOT NULL 
-      AND thumbnail_url LIKE '/thumbnails/%'
-      AND ativo = true
-    `);
-    
-    console.log(`📊 Encontrados ${result.rows.length} documentos com thumbnails locais`);
-    
-    if (result.rows.length === 0) {
-      console.log('✅ Nenhum thumbnail local encontrado - migração não necessária');
-      return;
-    }
-    
-    // Limpar thumbnails antigos para forçar regeneração
-    await pool.query(`
-      UPDATE documentos 
-      SET thumbnail_url = NULL, atualizado_em = CURRENT_TIMESTAMP
-      WHERE thumbnail_url LIKE '/thumbnails/%'
-    `);
-    
-    console.log(`✅ ${result.rows.length} thumbnails locais removidos do banco`);
-    console.log('🔄 Thumbnails serão regenerados automaticamente pelo Cloudinary');
-    
-  } catch (error) {
-    console.error('❌ Erro na migração:', error);
-  }
-}
-
-// ================= 4. ENDPOINT PARA EXECUTAR A MIGRAÇÃO =================
-
-// ✅ ADICIONAR NO server.js
-app.post('/api/admin/migrate-thumbnails', authMiddleware, requireAdmin, async (req, res) => {
-  try {
-    console.log('🔄 Migração manual iniciada pelo admin...');
-    
-    await migrarThumbnailsParaCloudinary();
-    
-    res.json({
-      success: true,
-      message: 'Migração de thumbnails concluída. Thumbnails serão regenerados automaticamente.'
-    });
-    
-  } catch (error) {
-    console.error('❌ Erro na migração:', error);
-    res.status(500).json({
-      error: 'Erro ao executar migração',
-      details: error.message
-    });
-  }
-});
-
-async function uploadThumbnailToCloudinary(imagePath, sheetId, titulo) {
-  try {
-    console.log(`☁️ Enviando para Cloudinary: ${sheetId}`);
-    
-    const result = await cloudinary.uploader.upload(imagePath, {
-      folder: 'rmh-thumbnails',
-      public_id: `thumbnail_${sheetId}_${Date.now()}`,
-      resource_type: 'image',
-      format: 'png',
-      overwrite: true,
-      transformation: [
-        { width: 400, height: 300, crop: 'fill', quality: 'auto:good' }
-      ],
-      tags: ['thumbnail', 'google-sheets', 'rmh']
-    });
-    
-    console.log(`✅ Upload concluído: ${result.secure_url}`);
-    console.log(`📏 Tamanho otimizado: ${Math.round(result.bytes/1024)}KB`);
-    
-    return {
-      url: result.secure_url,
-      public_id: result.public_id,
-      width: result.width,
-      height: result.height,
-      size: result.bytes
-    };
-    
-  } catch (error) {
-    console.error('❌ Erro no upload para Cloudinary:', error);
-    throw error;
-  }
-}
-
-async function cleanOldCloudinaryThumbnails() {
-  try {
-    console.log('🧹 Limpando thumbnails antigos do Cloudinary...');
-    
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    
-    const result = await cloudinary.search
-      .expression('folder:rmh-thumbnails AND created_at<' + Math.floor(sevenDaysAgo.getTime() / 1000))
-      .max_results(100)
-      .execute();
-    
-    if (result.resources.length > 0) {
-      console.log(`🗑️ Encontrados ${result.resources.length} thumbnails antigos para deletar`);
-      
-      const publicIds = result.resources.map(resource => resource.public_id);
-      const deleteResult = await cloudinary.api.delete_resources(publicIds);
-      
-      console.log(`✅ ${Object.keys(deleteResult.deleted).length} thumbnails antigos removidos`);
-    } else {
-      console.log('✅ Nenhum thumbnail antigo encontrado');
-    }
-    
-  } catch (error) {
-    console.error('❌ Erro na limpeza do Cloudinary:', error);
-  }
-}
-
-async function generateDefaultThumbnailLocal(imagePath, sheetId, title = 'Planilha Privada') {
-  try {
-    const svgImage = `
-      <svg width="400" height="300" xmlns="http://www.w3.org/2000/svg">
-        <rect width="400" height="300" fill="#e8f5e8"/>
-        <g stroke="#4caf50" stroke-width="2" fill="none">
-          <rect x="50" y="50" width="300" height="200"/>
-          <line x1="50" y1="80" x2="350" y2="80"/>
-          <line x1="50" y1="110" x2="350" y2="110"/>
-          <line x1="50" y1="140" x2="350" y2="140"/>
-          <line x1="50" y1="170" x2="350" y2="170"/>
-          <line x1="50" y1="200" x2="350" y2="200"/>
-          <line x1="50" y1="230" x2="350" y2="230"/>
-          <line x1="100" y1="50" x2="100" y2="250"/>
-          <line x1="150" y1="50" x2="150" y2="250"/>
-          <line x1="200" y1="50" x2="200" y2="250"/>
-          <line x1="250" y1="50" x2="250" y2="250"/>
-          <line x1="300" y1="50" x2="300" y2="250"/>
-        </g>
-        <text x="200" y="35" text-anchor="middle" font-family="Arial" font-size="14" fill="#2e7d32">
-          ${title}
-        </text>
-        <circle cx="320" cy="70" r="8" fill="#ff9800"/>
-        <text x="320" y="75" text-anchor="middle" font-family="Arial" font-size="12" fill="white">🔒</text>
-      </svg>
-    `;
-
-    await sharp(Buffer.from(svgImage))
-      .png()
-      .toFile(imagePath);
-      
-    console.log(`✅ Thumbnail padrão local criado: ${path.basename(imagePath)}`);
-    
-  } catch (error) {
-    console.error(`❌ Erro ao gerar thumbnail padrão local:`, error.message);
-    throw error;
-  }
-}
-
-async function generateThumbnailWithCloudinary(sheetId, documentId, titulo) {
-  let tempImagePath = null;
-  let browser = null;
-  
-  try {
-    console.log(`📸 Gerando thumbnail para: ${titulo || sheetId}`);
-    
-    // Verificar cache do Cloudinary
-    try {
-      const searchResult = await cloudinary.search
-        .expression(`folder:rmh-thumbnails AND public_id:*${sheetId}*`)
-        .max_results(1)
-        .execute();
-      
-      if (searchResult.resources.length > 0) {
-        const existing = searchResult.resources[0];
-        const ageInHours = (Date.now() - new Date(existing.created_at).getTime()) / (1000 * 60 * 60);
-        
-        if (ageInHours < 6) {
-          console.log(`♻️ Usando cache do Cloudinary: ${existing.secure_url}`);
-          await updateThumbnailInDatabase(documentId, existing.secure_url);
-          return {
-            success: true,
-            thumbnailUrl: existing.secure_url,
-            status: 'cloudinary_cache_hit'
-          };
-        }
-      }
-    } catch (searchError) {
-      console.log('⚠️ Erro na busca de cache, continuando com geração nova...');
-    }
-
-    // Criar arquivo temporário
-    const tempDir = '/tmp';
-    const timestamp = Date.now();
-    const imageName = `${timestamp}_${sheetId}.png`;
-    tempImagePath = path.join(tempDir, imageName);
-
-    await fs.mkdir(tempDir, { recursive: true });
-
-    console.log(`🚀 Iniciando Puppeteer para: ${sheetId}`);
-    browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-web-security',
-        '--disable-features=VizDisplayCompositor',
-        '--disable-extensions',
-        '--disable-plugins',
-        '--memory-pressure-off',
-        '--max_old_space_size=350',
-        '--single-process'
-      ],
-      timeout: 30000
-    });
-
-    const page = await browser.newPage();
-    await page.setViewport({ width: 1200, height: 800 });
-    await page.setUserAgent('Mozilla/5.0 (compatible; RMH-Bot/1.0)');
-    
-    await page.setRequestInterception(true);
-    page.on('request', (req) => {
-      const resourceType = req.resourceType();
-      if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
-        req.abort();
-      } else {
-        req.continue();
-      }
-    });
-
-    // Verificar se planilha é pública
-    const testUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit#gid=0`;
-    console.log(`🔍 Verificando acesso: ${testUrl}`);
-    
-    const response = await page.goto(testUrl, { 
-      waitUntil: 'domcontentloaded', 
-      timeout: 15000 
-    });
-    
-    const isPublic = response.ok() && !page.url().includes('accounts.google.com');
-    
-    if (!isPublic) {
-      console.log(`🔒 Planilha privada: ${sheetId} - gerando thumbnail padrão`);
-      await browser.close();
-      browser = null;
-      
-      await generateDefaultThumbnailLocal(tempImagePath, sheetId, titulo);
-    } else {
-      console.log(`📸 Capturando screenshot: ${sheetId}`);
-      await page.screenshot({
-        path: tempImagePath,
-        type: 'png',
-        fullPage: false,
-        clip: { x: 0, y: 0, width: 1200, height: 800 }
-      });
-      
-      await browser.close();
-      browser = null;
-    }
-
-    // Verificar se arquivo foi criado
-    const stats = await fs.stat(tempImagePath);
-    if (stats.size === 0) {
-      console.log(`⚠️ Arquivo vazio, gerando thumbnail padrão`);
-      await generateDefaultThumbnailLocal(tempImagePath, sheetId, titulo);
-    }
-
-    console.log(`📏 Arquivo local criado: ${Math.round(stats.size/1024)}KB`);
-
-    // Upload para Cloudinary
-    const cloudinaryResult = await uploadThumbnailToCloudinary(tempImagePath, sheetId, titulo);
-    
-    // Atualizar database
-    await updateThumbnailInDatabase(documentId, cloudinaryResult.url);
-    
-    // Limpar arquivo temporário
-    await fs.unlink(tempImagePath);
-    tempImagePath = null;
-    
-    console.log(`✅ Thumbnail gerado com sucesso: ${cloudinaryResult.url}`);
-
-    return {
-      success: true,
-      thumbnailUrl: cloudinaryResult.url,
-      status: isPublic ? 'cloudinary_screenshot_success' : 'cloudinary_private_fallback',
-      cloudinary: {
-        public_id: cloudinaryResult.public_id,
-        size: cloudinaryResult.size
-      }
-    };
-
-  } catch (error) {
-    console.error(`❌ Erro ao gerar thumbnail ${sheetId}:`, error.message);
-    
-    // Limpeza em caso de erro
-    if (browser) {
-      try {
-        await browser.close();
-      } catch (closeError) {
-        console.error('❌ Erro ao fechar browser:', closeError);
-      }
-    }
-    
-    if (tempImagePath) {
-      try {
-        await fs.unlink(tempImagePath);
-      } catch (cleanupError) {
-        console.error('❌ Erro ao limpar arquivo temp:', cleanupError);
-      }
-    }
-
-    // Fallback: thumbnail padrão no Cloudinary
-    try {
-      console.log(`🔄 Gerando thumbnail padrão de fallback...`);
-      
-      const fallbackPath = path.join('/tmp', `fallback_${sheetId}_${Date.now()}.png`);
-      await generateDefaultThumbnailLocal(fallbackPath, sheetId, 'Erro Técnico');
-      
-      const cloudinaryResult = await uploadThumbnailToCloudinary(fallbackPath, sheetId, titulo);
-      await updateThumbnailInDatabase(documentId, cloudinaryResult.url);
-      await fs.unlink(fallbackPath);
-      
-      return {
-        success: true,
-        thumbnailUrl: cloudinaryResult.url,
-        status: 'cloudinary_error_fallback',
-        error: error.message
-      };
-    } catch (fallbackError) {
-      console.error(`❌ Erro crítico no fallback:`, fallbackError.message);
-      return {
-        success: false,
-        status: 'critical_error',
-        error: fallbackError.message
-      };
-    }
-  }
-}
-
-async function refreshThumbnailsWithCloudinary() {
-  const startTime = new Date();
-  console.log(`🔄 [${startTime.toISOString()}] INICIANDO REFRESH COM CLOUDINARY...`);
-  
-  try {
-    await cleanOldCloudinaryThumbnails();
-    
-    const result = await pool.query(`
-      SELECT id, titulo, url_arquivo, thumbnail_url, categoria
-      FROM documentos 
-      WHERE ativo = true 
-      AND url_arquivo LIKE '%docs.google.com/spreadsheets%'
-      ORDER BY atualizado_em DESC
-      LIMIT 15
-    `);
-
-    const webDocuments = result.rows;
-    console.log(`📊 Processando ${webDocuments.length} documentos`);
-
-    let atualizados = 0;
-    let erros = 0;
-    const resultados = [];
-
-    for (let i = 0; i < webDocuments.length; i++) {
-      const doc = webDocuments[i];
-      
-      try {
-        console.log(`🔄 [${i + 1}/${webDocuments.length}] ${doc.titulo}`);
-
-        const sheetId = doc.url_arquivo.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1];
-        if (!sheetId) {
-          console.log(`⚠️ Sheet ID não encontrado: ${doc.url_arquivo}`);
-          continue;
-        }
-
-        const resultado = await generateThumbnailWithCloudinary(sheetId, doc.id, doc.titulo);
-
-        resultados.push({
-          id: doc.id,
-          titulo: doc.titulo,
-          sheetId: sheetId,
-          status: resultado.status,
-          thumbnailUrl: resultado.thumbnailUrl,
-          cloudinary: resultado.cloudinary || null
-        });
-
-        if (resultado.success) {
-          atualizados++;
-          console.log(`✅ ${doc.titulo} - ${resultado.status}`);
-        } else {
-          erros++;
-          console.log(`❌ ${doc.titulo} - ${resultado.error}`);
-        }
-
-        if (i < webDocuments.length - 1) {
-          console.log(`⏳ Aguardando 2 segundos...`);
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-
-      } catch (error) {
-        erros++;
-        console.error(`❌ Erro ao processar ${doc.titulo}:`, error.message);
-        
-        resultados.push({
-          id: doc.id,
-          titulo: doc.titulo,
-          status: 'error',
-          error: error.message
-        });
-      }
-    }
-
-    const endTime = new Date();
-    const duration = ((endTime - startTime) / 1000).toFixed(2);
-
-    console.log(`🎉 REFRESH CLOUDINARY CONCLUÍDO em ${duration}s:`);
-    console.log(`   📊 Processados: ${webDocuments.length}`);
-    console.log(`   ✅ Atualizados: ${atualizados}`);
-    console.log(`   ❌ Erros: ${erros}`);
-
-    // Salvar log no banco
-    try {
-      await pool.query(`
-        INSERT INTO logs_sistema (evento, detalhes, criado_em)
-        VALUES ('cron_refresh_cloudinary', $1, CURRENT_TIMESTAMP)
-      `, [JSON.stringify({ 
-        total: webDocuments.length, 
-        atualizados,
-        erros,
-        duracao_segundos: parseFloat(duration),
-        executado_via: 'cloudinary_cron',
-        timestamp: endTime.toISOString(),
-        resultados: resultados.slice(0, 10)
-      })]);
-    } catch (logError) {
-      console.error('⚠️ Erro ao salvar log:', logError.message);
-    }
-
-    return { 
-      total: webDocuments.length, 
-      atualizados,
-      erros,
-      duracao: duration,
-      resultados
-    };
-
-  } catch (error) {
-    console.error('❌ Erro crítico no refresh Cloudinary:', error);
-    throw error;
-  }
-}
-
-app.post('/api/admin/refresh-thumbnails-cloudinary', authMiddleware, requireAdmin, async (req, res) => {
-  try {
-    console.log('🔄 Refresh manual Cloudinary iniciado pelo admin...');
-    
-    const resultado = await refreshThumbnailsWithCloudinary();
-    
-    res.json({
-      success: true,
-      message: 'Refresh de thumbnails com Cloudinary concluído',
-      resultado
-    });
-    
-  } catch (error) {
-    console.error('❌ Erro no refresh manual Cloudinary:', error);
-    res.status(500).json({
-      error: 'Erro ao executar refresh de thumbnails',
-      details: error.message
-    });
-  }
-});
-
-app.post('/api/admin/clean-cloudinary', authMiddleware, requireAdmin, async (req, res) => {
-  try {
-    console.log('🧹 Limpeza manual do Cloudinary iniciada...');
-    
-    await cleanOldCloudinaryThumbnails();
-    
-    res.json({
-      success: true,
-      message: 'Limpeza do Cloudinary concluída'
-    });
-    
-  } catch (error) {
-    console.error('❌ Erro na limpeza do Cloudinary:', error);
-    res.status(500).json({
-      error: 'Erro ao limpar Cloudinary',
-      details: error.message
-    });
-  }
-});
-
-// ================= 6. ADICIONAR CRON JOB (próximo ao final do arquivo) =================
-// Procure por algo como app.listen() e adicione ANTES dele:
-
-console.log('⏰ Configurando cron job com Cloudinary...');
-
-// Executar a cada 4 horas
-cronJob.schedule('0 */4 * * *', async () => {
-  console.log('🕐 Iniciando refresh automático com Cloudinary...');
-  
-  try {
-    await refreshThumbnailsWithCloudinary();
-  } catch (error) {
-    console.error('❌ Erro no cron job Cloudinary:', error);
-  }
-}, {
-  scheduled: true,
-  timezone: "America/Sao_Paulo"
-});
-
-console.log('✅ Sistema de thumbnails com Cloudinary configurado!');
 
 // ✅ ENDPOINT ALTERNATIVO PARA ATUALIZAR THUMBNAIL MANUALMENTE
 app.post('/api/documents/:id/thumbnail', authMiddleware, async (req, res) => {
@@ -2451,126 +2017,25 @@ app.listen(3001, () => {
 // ROTAS ATUALIZADAS PARA A NOVA ESTRUTURA DA TABELA "documentos"
 
 // ======================= LISTAGEM DE DOCUMENTOS =======================
-app.get('/api/documents', authMiddleware, async (req, res) => {
+app.post('/api/documents', authMiddleware, upload.single('thumbnail'), async (req, res) => {
   try {
-    const userType = req.user.tipo_colaborador;
-    
-    // Definir quais visibilidades o usuário pode ver
-    let visibilidadeFilter = ['todos'];
-    if (userType === 'clt_associado') {
-      visibilidadeFilter.push('clt_associados');
-    }
-    
-    const result = await pool.query(`
-      SELECT 
-        d.id, d.titulo, d.descricao, d.categoria, d.nome_arquivo,
-        d.url_arquivo, d.tamanho_arquivo, d.tipo_mime, d.qtd_downloads,
-        d.enviado_por, d.enviado_em, d.ativo, d.criado_em, d.atualizado_em,
-        d.visibilidade, d.thumbnail_url,
-        u.nome as enviado_por_nome
-      FROM documentos d
-      LEFT JOIN usuarios u ON d.enviado_por = u.id
-      WHERE d.ativo = true 
-      AND d.visibilidade = ANY($1)
-      ORDER BY d.criado_em DESC
-    `, [visibilidadeFilter]);
+    const { title, description, category, fileName, fileUrl, visibilidade = 'todos' } = req.body;
+    const thumbnailFile = req.file;
 
-    const documentos = result.rows.map(doc => ({
-      id: doc.id,
-      titulo: doc.titulo,
-      descricao: doc.descricao,
-      categoria: doc.categoria,
-      nomeArquivo: doc.nome_arquivo,
-      urlArquivo: doc.url_arquivo,
-      tamanhoArquivo: doc.tamanho_arquivo,
-      tipoMime: doc.tipo_mime,
-      qtdDownloads: doc.qtd_downloads,
-      enviadoPor: doc.enviado_por,
-      enviadoPorNome: doc.enviado_por_nome,
-      enviadoEm: doc.enviado_em,
-      ativo: doc.ativo,
-      criadoEm: doc.criado_em,
-      atualizadoEm: doc.atualizado_em,
-      thumbnailUrl: doc.thumbnail_url,
-      visibilidade: doc.visibilidade // ✅ NOVO CAMPO
-    }));
-
-    console.log(`📄 Listando ${documentos.length} documentos para ${userType} (visibilidades: ${visibilidadeFilter.join(', ')})`);
-
-    res.json({
-      documentos,
-      total: documentos.length,
-      categorias: [...new Set(documentos.map(d => d.categoria))]
-    });
-  } catch (error) {
-    console.error('❌ Erro ao buscar documentos:', error);
-    res.status(500).json({ error: 'Erro interno do servidor', documentos: [] });
-  }
-});
-
-app.post('/api/documents/upload', authMiddleware, upload.single('file'), async (req, res) => {
-  try {
-    const file = req.file;
-    if (!file) return res.status(400).json({ error: 'Arquivo não enviado' });
-
-    const { title, description, category, visibilidade = 'todos' } = req.body; // ✅ ADICIONADO
-    const userId = req.user.id;
-
-    // ✅ Validar visibilidade
-    const visibilidadesValidas = ['todos', 'clt_associados'];
-    if (!visibilidadesValidas.includes(visibilidade)) {
-      return res.status(400).json({ error: 'Visibilidade inválida' });
-    }
-
-    const fileName = file.originalname;
-    const fileUrl = `/documents/${file.filename}`;
-
-    const result = await pool.query(`
-      INSERT INTO documentos (
-        titulo, descricao, categoria, nome_arquivo, url_arquivo,
-        thumbnail_url, tamanho_arquivo, tipo_mime, enviado_por, ativo, visibilidade
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10)
-      RETURNING *
-    `, [
-      title || file.originalname,
-      description || '',
-      category || 'Geral',
-      file.originalname,
-      fileUrl,
-      null,
-      file.size,
-      file.mimetype,
-      userId,
-      visibilidade  // ✅ ADICIONADO
-    ]);
-
-    const documento = result.rows[0];
-
-    res.status(201).json({
-      documento,
-      fileName,
-      fileUrl,
-      tamanhoArquivo: file.size,
-      tipoMime: file.mimetype
-    });
-
-  } catch (error) {
-    console.error('❌ Erro no upload do arquivo:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
-
-// ======================= CRIAR DOCUMENTO VIA URL =======================
-app.post('/api/documents', authMiddleware, async (req, res) => {
-  try {
-    const { title, description, category, fileName, fileUrl, thumbnailUrl, visibilidade = 'todos' } = req.body; // ✅ ADICIONADO
-
-    // ✅ Validar visibilidade
+    // Validar visibilidade
     const visibilidadesValidas = ['todos', 'estagiarios', 'clt_associados'];
     if (!visibilidadesValidas.includes(visibilidade)) {
       return res.status(400).json({ error: 'Visibilidade inválida' });
     }
 
+    // ✅ PROCESSAR THUMBNAIL SE FORNECIDA
+    let thumbnailUrl = null;
+    if (thumbnailFile) {
+      thumbnailUrl = `/thumbnails/${thumbnailFile.filename}`;
+      console.log(`📸 Thumbnail customizada salva: ${thumbnailUrl}`);
+    }
+
+    // ✅ INSERIR NO BANCO COM THUMBNAIL_URL
     const result = await pool.query(`
       INSERT INTO documentos (
         titulo, descricao, categoria, nome_arquivo, url_arquivo,
@@ -2583,56 +2048,201 @@ app.post('/api/documents', authMiddleware, async (req, res) => {
       category, 
       fileName || 'Documento via URL',
       fileUrl, 
-      thumbnailUrl || null,
+      thumbnailUrl, // ✅ SALVAR THUMBNAIL URL NO BANCO
       req.user.id,
-      visibilidade  // ✅ ADICIONADO
+      visibilidade
     ]);
 
-    res.status(201).json({ success: true, documento: result.rows[0] });
+    const documento = result.rows[0];
+
+    // Se não tem thumbnail customizada e é Google Sheets, gerar automaticamente
+    if (!thumbnailFile && fileUrl.includes('docs.google.com/spreadsheets')) {
+      console.log('📋 Gerando thumbnail automática para Google Sheets...');
+      
+      const sheetId = fileUrl.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1];
+      if (sheetId) {
+        // Trigger assíncrono - não bloquear resposta
+        setTimeout(async () => {
+          try {
+            await generateThumbnailForDocument(sheetId, documento.id, title);
+          } catch (error) {
+            console.error('❌ Erro ao gerar thumbnail automática:', error);
+          }
+        }, 100);
+      }
+    }
+
+    console.log(`✅ Documento via URL criado:`, {
+      id: documento.id,
+      titulo: documento.titulo,
+      thumbnail_url: documento.thumbnail_url,
+      tem_thumbnail_customizada: !!thumbnailFile
+    });
+
+    res.status(201).json({ 
+      success: true, 
+      documento,
+      tem_thumbnail_customizada: !!thumbnailFile
+    });
   } catch (error) {
     console.error('❌ Erro ao criar documento:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 
+
+app.post('/api/documents/upload', authMiddleware, upload.fields([
+  { name: 'file', maxCount: 1 },
+  { name: 'thumbnail', maxCount: 1 }
+]), async (req, res) => {
+  const { title, description, category, visibilidade } = req.body;
+  const uploadedFile = req.files?.file?.[0];
+  const uploadedThumbnail = req.files?.thumbnail?.[0];
+
+  try {
+    if (!uploadedFile) {
+      return res.status(400).json({ error: 'Arquivo principal não enviado' });
+    }
+
+    console.log(`📄 Upload recebido:`, {
+      file: uploadedFile?.originalname,
+      thumbnail: uploadedThumbnail?.originalname,
+      title,
+      category
+    });
+
+    // ✅ Processar thumbnail se fornecida
+    let thumbnailUrl = null;
+    if (uploadedThumbnail) {
+      // ✅ Mover thumbnail para o diretório correto
+      const thumbnailDir = getThumbnailsPath();
+      const timestamp = Date.now();
+      const thumbnailName = `${timestamp}_${uploadedThumbnail.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+      const thumbnailPath = path.join(thumbnailDir, thumbnailName);
+      
+      // Mover arquivo para diretório de thumbnails
+      await fs.rename(uploadedThumbnail.path, thumbnailPath);
+      
+      thumbnailUrl = `/thumbnails/${thumbnailName}`;
+      console.log(`🖼️ Thumbnail salva: ${thumbnailUrl}`);
+    }
+
+    // Salvar no banco
+    const result = await pool.query(`
+      INSERT INTO documentos (
+        titulo, descricao, categoria, nome_arquivo, url_arquivo,
+        tamanho_arquivo, tipo_mime, enviado_por, thumbnail_url, visibilidade
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING *
+    `, [
+      title,
+      description, 
+      category,
+      uploadedFile.filename,
+      `/documents/${uploadedFile.filename}`,
+      uploadedFile.size,
+      uploadedFile.mimetype,
+      req.user.email,
+      thumbnailUrl, // ✅ Salvar URL da thumbnail
+      visibilidade || 'todos'
+    ]);
+
+    console.log(`✅ Documento criado com sucesso:`, result.rows[0]);
+
+    res.json({
+      success: true,
+      documento: result.rows[0],
+      message: uploadedThumbnail ? 'Documento e thumbnail enviados!' : 'Documento enviado!'
+    });
+
+  } catch (error) {
+    console.error('❌ Erro no upload:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 // ======================= ATUALIZAR DOCUMENTO =======================
-app.put('/api/documents/:id', authMiddleware, async (req, res) => {
+app.put('/api/documents/:id', authMiddleware, upload.single('thumbnail'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, category, fileName, fileUrl, thumbnailUrl, visibilidade } = req.body; // ✅ ADICIONADO
+    const { title, description, category, fileName, fileUrl, visibilidade } = req.body;
+    const thumbnailFile = req.file;
 
-    // ✅ Validar visibilidade se fornecida
+    // Validar visibilidade se fornecida
     if (visibilidade && !['todos', 'estagiarios', 'clt_associados'].includes(visibilidade)) {
       return res.status(400).json({ error: 'Visibilidade inválida' });
     }
 
     const finalFileUrl = fileUrl || (fileName ? `/documents/${fileName}` : null);
+    
+    // ✅ PROCESSAR THUMBNAIL SE FORNECIDA
+    let thumbnailUrl = null;
+    if (thumbnailFile) {
+      thumbnailUrl = `/thumbnails/${thumbnailFile.filename}`;
+      console.log(`📸 Nova thumbnail customizada: ${thumbnailUrl}`);
+    }
 
-    const result = await pool.query(`
-      UPDATE documentos SET
-        titulo = COALESCE($1, titulo),
-        descricao = COALESCE($2, descricao),
-        categoria = COALESCE($3, categoria),
-        nome_arquivo = COALESCE($4, nome_arquivo),
-        url_arquivo = COALESCE($5, url_arquivo),
-        thumbnail_url = COALESCE($6, thumbnail_url),
-        visibilidade = COALESCE($7, visibilidade),  -- ✅ ADICIONADO
-        atualizado_em = CURRENT_TIMESTAMP
-      WHERE id = $8 AND ativo = true
-      RETURNING *
-    `, [title, description, category, fileName, finalFileUrl, thumbnailUrl, visibilidade, id]); // ✅ ADICIONADO
+    // ✅ ATUALIZAR NO BANCO (só atualizar thumbnail_url se nova thumbnail foi enviada)
+    let query, params;
+    
+    if (thumbnailFile) {
+      // Atualizar COM nova thumbnail
+      query = `
+        UPDATE documentos SET
+          titulo = COALESCE($1, titulo),
+          descricao = COALESCE($2, descricao),
+          categoria = COALESCE($3, categoria),
+          nome_arquivo = COALESCE($4, nome_arquivo),
+          url_arquivo = COALESCE($5, url_arquivo),
+          thumbnail_url = $6,
+          visibilidade = COALESCE($7, visibilidade),
+          atualizado_em = CURRENT_TIMESTAMP
+        WHERE id = $8 AND ativo = true
+        RETURNING *
+      `;
+      params = [title, description, category, fileName, finalFileUrl, thumbnailUrl, visibilidade, id];
+    } else {
+      // Atualizar SEM modificar thumbnail
+      query = `
+        UPDATE documentos SET
+          titulo = COALESCE($1, titulo),
+          descricao = COALESCE($2, descricao),
+          categoria = COALESCE($3, categoria),
+          nome_arquivo = COALESCE($4, nome_arquivo),
+          url_arquivo = COALESCE($5, url_arquivo),
+          visibilidade = COALESCE($6, visibilidade),
+          atualizado_em = CURRENT_TIMESTAMP
+        WHERE id = $7 AND ativo = true
+        RETURNING *
+      `;
+      params = [title, description, category, fileName, finalFileUrl, visibilidade, id];
+    }
+
+    const result = await pool.query(query, params);
 
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Documento não encontrado ou inativo' });
     }
 
-    res.json({ success: true, documento: result.rows[0] });
+    console.log(`📝 Documento atualizado:`, {
+      id: result.rows[0].id,
+      titulo: result.rows[0].titulo,
+      thumbnail_url: result.rows[0].thumbnail_url,
+      nova_thumbnail: !!thumbnailFile
+    });
+
+    res.json({ 
+      success: true, 
+      documento: result.rows[0],
+      nova_thumbnail: !!thumbnailFile
+    });
 
   } catch (error) {
     console.error('❌ Erro ao atualizar documento:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
+
 
 // ======================= ATUALIZAR ARQUIVO EXISTENTE =======================
 app.put('/api/documents/:id/upload', authMiddleware, upload.single('file'), async (req, res) => {
@@ -2686,6 +2296,135 @@ app.put('/api/documents/:id/upload', authMiddleware, upload.single('file'), asyn
   } catch (error) {
     console.error('❌ Erro ao atualizar arquivo:', error);
     res.status(500).json({ error: 'Erro ao atualizar documento' });
+  }
+});
+
+app.post('/api/documents/:id/thumbnail', authMiddleware, upload.single('thumbnail'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const thumbnailFile = req.file;
+
+    if (!thumbnailFile) {
+      return res.status(400).json({ error: 'Nenhum arquivo de thumbnail enviado' });
+    }
+
+    const thumbnailUrl = `/thumbnails/${thumbnailFile.filename}`;
+    
+    // ✅ ATUALIZAR APENAS A THUMBNAIL_URL NO BANCO
+    const result = await pool.query(`
+      UPDATE documentos 
+      SET thumbnail_url = $1, 
+          atualizado_em = CURRENT_TIMESTAMP
+      WHERE id = $2 AND ativo = true
+      RETURNING id, titulo, thumbnail_url
+    `, [thumbnailUrl, id]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Documento não encontrado' });
+    }
+
+    console.log(`📸 Thumbnail customizada adicionada:`, {
+      documento_id: result.rows[0].id,
+      titulo: result.rows[0].titulo,
+      thumbnail_url: result.rows[0].thumbnail_url,
+      arquivo_original: thumbnailFile.originalname,
+      arquivo_salvo: thumbnailFile.filename
+    });
+
+    res.json({
+      success: true,
+      message: 'Thumbnail customizada enviada com sucesso',
+      thumbnailUrl,
+      documento: result.rows[0],
+      arquivo_info: {
+        original: thumbnailFile.originalname,
+        salvo: thumbnailFile.filename,
+        tamanho: thumbnailFile.size,
+        tipo: thumbnailFile.mimetype
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao enviar thumbnail:', error);
+    res.status(500).json({
+      error: 'Erro ao enviar thumbnail',
+      details: error.message
+    });
+  }
+});
+
+app.delete('/api/documents/:id/thumbnail', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Buscar documento atual para pegar thumbnail e URL
+    const docResult = await pool.query(`
+      SELECT thumbnail_url, url_arquivo, titulo 
+      FROM documentos 
+      WHERE id = $1 AND ativo = true
+    `, [id]);
+    
+    if (docResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Documento não encontrado' });
+    }
+    
+    const documento = docResult.rows[0];
+    
+    // Deletar arquivo físico se existir e for customizada (não automática)
+    if (documento.thumbnail_url && documento.thumbnail_url.startsWith('/thumbnails/') && 
+        !documento.thumbnail_url.includes('auto_') && !documento.thumbnail_url.includes('gen_')) {
+      
+      const thumbnailPath = path.join(getThumbnailsPath(), path.basename(documento.thumbnail_url));
+      try {
+        await fs.unlink(thumbnailPath);
+        console.log(`🗑️ Thumbnail removida: ${thumbnailPath}`);
+      } catch (error) {
+        console.error('⚠️ Erro ao remover arquivo físico:', error);
+      }
+    }
+    
+    // ✅ REMOVER THUMBNAIL_URL DO BANCO
+    await pool.query(`
+      UPDATE documentos 
+      SET thumbnail_url = NULL, 
+          atualizado_em = CURRENT_TIMESTAMP
+      WHERE id = $1
+    `, [id]);
+    
+    // Se for Google Sheets, gerar thumbnail automática
+    if (documento.url_arquivo.includes('docs.google.com/spreadsheets')) {
+      console.log('📋 Gerando thumbnail automática após remoção...');
+      
+      const sheetId = documento.url_arquivo.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1];
+      if (sheetId) {
+        setTimeout(async () => {
+          try {
+            await generateThumbnailForDocument(sheetId, id, documento.titulo);
+          } catch (error) {
+            console.error('❌ Erro ao gerar thumbnail automática:', error);
+          }
+        }, 100);
+      }
+    }
+    
+    console.log(`🗑️ Thumbnail customizada removida:`, {
+      documento_id: id,
+      titulo: documento.titulo,
+      thumbnail_removida: documento.thumbnail_url
+    });
+    
+    res.json({
+      success: true,
+      message: 'Thumbnail customizada removida com sucesso',
+      vai_gerar_automatica: documento.url_arquivo.includes('docs.google.com/spreadsheets')
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao remover thumbnail:', error);
+    res.status(500).json({
+      error: 'Erro ao remover thumbnail',
+      details: error.message
+    });
   }
 });
 
@@ -8610,12 +8349,7 @@ app.use((error, req, res, next) => {
 
 // ✅ ROTA PARA DEBUG - LISTAR ARQUIVOS DO SERVIDOR
 app.get('/api/debug/files', async (req, res) => {
-  const requestTimestamp = new Date().toISOString();
-  const requestTime = Date.now();
-  
   try {
-    console.log(`🕐 [${requestTimestamp}] ROTA DEBUG/FILES acessada`);
-    
     // Listar arquivos das duas pastas principais
     const documentsFiles = await fs.readdir(DOCUMENTS_PATH).catch(() => []);
     const thumbnailsFiles = await fs.readdir(THUMBNAILS_PATH).catch(() => []);
@@ -8647,13 +8381,6 @@ app.get('/api/debug/files', async (req, res) => {
 
     res.json({
       success: true,
-      // ✅ TIMESTAMP VISÍVEL NA RESPOSTA
-      requestInfo: {
-        timestamp: requestTimestamp,
-        timestampMs: requestTime,
-        accessedAt: new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
-        serverUptime: `${Math.round(process.uptime())}s`
-      },
       environment: process.env.NODE_ENV || 'development',
       serverInfo: {
         currentWorkingDirectory: process.cwd(),
@@ -8681,17 +8408,10 @@ app.get('/api/debug/files', async (req, res) => {
       }
     });
     
-    console.log(`✅ [${requestTimestamp}] ROTA DEBUG/FILES respondida com ${thumbnailsPng.length} thumbnails`);
-    
   } catch (error) {
-    console.error(`❌ [${requestTimestamp}] Erro ao listar arquivos:`, error);
+    console.error('❌ Erro ao listar arquivos:', error);
     res.status(500).json({ 
       error: 'Erro ao listar arquivos',
-      requestInfo: {
-        timestamp: requestTimestamp,
-        timestampMs: requestTime,
-        accessedAt: new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
-      },
       details: error.message,
       paths: {
         documentsPath: DOCUMENTS_PATH,

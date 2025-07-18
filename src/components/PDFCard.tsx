@@ -297,39 +297,21 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
 
       console.log(`🎯 Processando arquivo: ${document.title}`);
 
-      // Verifica se é um link web comum PRIMEIRO
-      if (isCommonWebLink) {
-        try {
-          const response = await fetch(`/api/website-screenshot?url=${encodeURIComponent(document.fileUrl)}&documentId=${document.id}`);
-          
-          if (response.ok) {
-            const data = await response.json();
-            setThumbnailUrl(data.thumbnailUrl);
-            console.log(`✅ Screenshot do site carregado: ${data.thumbnailUrl}`);
-            setIsLoadingThumbnail(false);
-            return;
-          } else {
-            throw new Error('Falha ao gerar screenshot');
-          }
-        } catch (screenshotError) {
-          console.warn('⚠️ Erro no screenshot, usando fallback:', screenshotError);
-          // Fallback para o método atual
-          const webThumbnail = getWebLinkThumbnail(document.fileUrl);
-          setThumbnailUrl(webThumbnail);
-          setIsLoadingThumbnail(false);
-          return;
-        }
-      }
-
-      // ✅ PRIORIDADE 1: Usar thumbnailUrl salva no documento
+      // ✅ PRIORIDADE 1: Usar thumbnailUrl salva no documento (ARQUIVO UPLOAD)
       if (document.thumbnailUrl) {
         console.log(`✅ Usando miniatura salva: ${document.thumbnailUrl}`);
         
-        // Verificar se precisa do domínio da API
-        const fullThumbnailUrl = document.thumbnailUrl.startsWith('http')
-          ? document.thumbnailUrl
-          : `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'}${document.thumbnailUrl}`;
-          
+        let fullThumbnailUrl;
+        
+        if (document.thumbnailUrl.startsWith('http')) {
+          // ✅ URL completa
+          fullThumbnailUrl = document.thumbnailUrl;
+        } else {
+          // ✅ TODAS as thumbnails agora vão para /thumbnails/ (tanto Puppeteer quanto upload)
+          fullThumbnailUrl = `https://sistema.resendemh.com.br${document.thumbnailUrl}`;
+        }
+        
+        console.log(`🔧 URL final da thumbnail: ${fullThumbnailUrl}`);
         setThumbnailUrl(fullThumbnailUrl);
         setIsLoadingThumbnail(false);
         return;
@@ -338,19 +320,24 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
       const fileType = getFileType(document.fileUrl);
       console.log(`📋 Tipo detectado: ${fileType}`);
       
-      // ✅ PRIORIDADE 2: Gerar miniatura para Google Sheets
+      // ✅ PRIORIDADE 2: Gerar miniatura para Google Sheets (estes são salvos em /thumbnails/)
       if (fileType === 'google-sheet') {
         const sheetId = document.fileUrl.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1];
         if (sheetId) {
           console.log(`🎯 Gerando thumbnail para Google Sheet: ${sheetId}, Doc ID: ${document.id}`);
           
-          // ✅ PASSAR O DOCUMENT ID PARA SALVAR NO BANCO
-          const response = await fetch(`/api/thumbnail?sheetId=${sheetId}&documentId=${document.id}`);
+          const response = await fetch(`https://sistema.resendemh.com.br/api/thumbnail?sheetId=${sheetId}&documentId=${document.id}`);
           
           if (response.ok) {
             const data = await response.json();
-            setThumbnailUrl(data.thumbnailUrl);
-            console.log(`✅ Miniatura Puppeteer carregada e salva no banco - ${data.thumbnailUrl}`);
+            
+            // ✅ Para Google Sheets, usar a URL direta (vai para /thumbnails/)
+            const fullThumbnailUrl = data.thumbnailUrl.startsWith('http')
+              ? data.thumbnailUrl
+              : `https://sistema.resendemh.com.br${data.thumbnailUrl}`;
+              
+            setThumbnailUrl(fullThumbnailUrl);
+            console.log(`✅ Miniatura Puppeteer carregada e salva no banco - ${fullThumbnailUrl}`);
           } else {
             console.error(`❌ Erro ao gerar thumbnail:`, await response.text());
             throw new Error('Falha ao gerar thumbnail');
@@ -359,12 +346,12 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
         }
       }
       
-      // ✅ PRIORIDADE 3: Google Docs - CORRIGIDO
+      // ✅ PRIORIDADE 3: Google Docs
       if (fileType === 'google-doc') {
         const docId = document.fileUrl.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1];
         if (docId) {
-          const googleDocThumbnailUrl = `https://drive.google.com/thumbnail?id=${docId}&sz=w500-h650`;  // ✅ RENOMEADO
-          setThumbnailUrl(googleDocThumbnailUrl);  // ✅ USANDO VARIÁVEL RENOMEADA
+          const docThumbnailUrl = `https://drive.google.com/thumbnail?id=${docId}&sz=w500-h650`;
+          setThumbnailUrl(docThumbnailUrl);
           console.log('✅ Miniatura Google Docs configurada');
           setIsLoadingThumbnail(false);
           return;
@@ -382,14 +369,14 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
       // ✅ PRIORIDADE 5: PDFs
       if (fileType === 'pdf') {
         try {
-          const pdfThumbnailData = await generateHighQualityPDFThumbnail(document.fileUrl);  // ✅ RENOMEADO
-          setThumbnailUrl(pdfThumbnailData);  // ✅ USANDO VARIÁVEL RENOMEADA
+          const pdfThumbnailData = await generateHighQualityPDFThumbnail(document.fileUrl);
+          setThumbnailUrl(pdfThumbnailData);
           console.log('✅ Miniatura PDF HD gerada com sucesso');
         } catch (hdError) {
           console.warn('⚠️ Fallback para miniatura simples:', hdError);
           try {
-            const simplePdfThumbnail = await generateSimplePDFThumbnail(document.fileUrl);  // ✅ RENOMEADO
-            setThumbnailUrl(simplePdfThumbnail);  // ✅ USANDO VARIÁVEL RENOMEADA
+            const simplePdfThumbnailData = await generateSimplePDFThumbnail(document.fileUrl);
+            setThumbnailUrl(simplePdfThumbnailData);
             console.log('✅ Miniatura PDF simples gerada com sucesso');
           } catch (simpleError) {
             console.error('❌ Ambas as versões falharam:', simpleError);
@@ -400,14 +387,6 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
       
     } catch (error) {
       console.error(`❌ Erro ao gerar miniatura para ${document.title}:`, error);
-      console.error('📝 Detalhes do erro:', {
-        message: error.message,
-        stack: error.stack,
-        name: error.name,
-        fileUrl: document.fileUrl,
-        thumbnailUrl: document.thumbnailUrl, // ✅ Esta é a do estado/props, não há conflito
-        fileType: getFileType(document.fileUrl)
-      });
       setThumbnailError(true);
     } finally {
       setIsLoadingThumbnail(false);

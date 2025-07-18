@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { PDFDocument } from '@/contexts/PDFContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { FileText, Upload, Link, X, CheckCircle, AlertCircle } from 'lucide-react';
+import { FileText, Upload, Link, X, CheckCircle, AlertCircle, Image } from 'lucide-react';
 
 interface PDFFormProps {
   isOpen: boolean;
@@ -46,39 +46,45 @@ const PDFForm: React.FC<PDFFormProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
+  const [selectedThumbnail, setSelectedThumbnail] = useState<File | null>(null);
+  const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
 
   // Preencher formulário quando for edição
   useEffect(() => {
-    if (document) {
-      setFormData({
-        title: document.title,
-        description: document.description,
-        category: document.category,
-        fileName: document.fileName,
-        fileUrl: document.fileUrl,
-        visibilidade: document.visibilidade || 'todos'
-      });
-      
-      // Se for URL, definir como upload por URL
-      if (document.fileUrl.startsWith('http')) {
-        setUploadType('url');
-      }
-    } else {
-      // Limpar formulário para novo documento
-      setFormData({
-        title: '',
-        description: '',
-        category: '',
-        fileName: '',
-        fileUrl: '',
-        visibilidade: 'todos'
-      });
-      setSelectedFile(null);
-      setUploadType('file');
-      setUploadStatus('idle');
-      setUploadProgress(0);
+  if (document) {
+    setFormData({
+      title: document.title,
+      description: document.description,
+      category: document.category,
+      fileName: document.fileName,
+      fileUrl: document.fileUrl,
+      visibilidade: document.visibilidade || 'todos'
+    });
+    
+    // Se for URL, definir como upload por URL
+    if (document.fileUrl.startsWith('http')) {
+      setUploadType('url');
     }
-  }, [document, isOpen]);
+  } else {
+    // Limpar formulário para novo documento
+    setFormData({
+      title: '',
+      description: '',
+      category: '',
+      fileName: '',
+      fileUrl: '',
+      visibilidade: 'todos'
+    });
+    setSelectedFile(null);
+    setUploadType('file');
+    setUploadStatus('idle');
+    setUploadProgress(0);
+    
+    // ✅ ADICIONADO: Limpar estados da miniatura
+    setSelectedThumbnail(null);
+    setThumbnailPreview(null);
+  }
+}, [document, isOpen]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -109,7 +115,7 @@ const PDFForm: React.FC<PDFFormProps> = ({
       }
 
       // Validar tamanho (máximo 10MB)
-      if (file.size > 10 * 1024 * 1024) {
+      if (file.size > 50 * 1024 * 1024) {
         toast({
           title: "Erro",
           description: "Arquivo muito grande. Máximo 10MB permitido.",
@@ -127,9 +133,28 @@ const PDFForm: React.FC<PDFFormProps> = ({
       }));
     }
   };
+    const handleThumbnailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.type.startsWith('image/')) {
+        setSelectedThumbnail(file);
+        const reader = new FileReader();
+        reader.onload = (e) => setThumbnailPreview(e.target.result as string);
+        reader.readAsDataURL(file);
+      } else {
+        toast({
+          title: "Erro",
+          description: "Selecione apenas arquivos de imagem para a thumbnail",
+          variant: "destructive"
+        });
+      }
+    }
+  };
 
   // ✅ REMOVIDO: Função uploadFile duplicada 
   // A função uploadFile já vem como prop do contexto
+
+  // ✅ NO PDFForm.tsx - Atualizar a função de upload para incluir thumbnail
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,16 +172,14 @@ const PDFForm: React.FC<PDFFormProps> = ({
         return;
       }
 
-      if (document) { // ✅ CORRIGIDO: usar 'document' em vez de 'editingDocument'
+      if (document) {
         // ✅ EDITANDO DOCUMENTO EXISTENTE
         
-        // Se foi selecionado um novo arquivo, fazer upload primeiro
         if (selectedFile) {
           try {
             setUploadStatus('uploading');
             setUploadProgress(0);
             
-            // Simular progresso para feedback visual
             const progressInterval = setInterval(() => {
               setUploadProgress(prev => {
                 if (prev >= 90) {
@@ -167,40 +190,62 @@ const PDFForm: React.FC<PDFFormProps> = ({
               });
             }, 200);
 
-            // Usar a função uploadFile do contexto
-            const uploadedDocument = await uploadFile(
-              selectedFile,
+            // ✅ CRIAR FormData para incluir thumbnail
+            const uploadFormData = new FormData();
+            uploadFormData.append('file', selectedFile);
+            uploadFormData.append('title', formData.title.trim());
+            uploadFormData.append('description', formData.description.trim());
+            uploadFormData.append('category', categoryToUse);
+            uploadFormData.append('visibilidade', formData.visibilidade);
+            
+            // ✅ Adicionar thumbnail se selecionada
+            if (selectedThumbnail) {
+              uploadFormData.append('thumbnail', selectedThumbnail);
+              console.log('📎 Thumbnail adicionada ao upload');
+            }
+
+            const token = localStorage.getItem('authToken');
+            const response = await fetch(
+              `https://sistema.resendemh.com.br/api/documents/${document.id}/upload`,
               {
-                title: formData.title.trim(),
-                description: formData.description.trim(),
-                category: categoryToUse,
-                isActive: true,
-                visibilidade: formData.visibilidade
-              },
-              document?.id // <-- passa o ID do documento existente
+                method: 'PUT',
+                headers: {
+                  'Authorization': `Bearer ${token}`
+                },
+                body: uploadFormData
+              }
             );
+
+            if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.error || 'Erro no upload');
+            }
+
+            const result = await response.json();
             
             clearInterval(progressInterval);
             setUploadProgress(100);
             setUploadStatus('success');
             
-            // Atualizar o documento com os novos dados incluindo o novo arquivo
+            // ✅ Atualizar com dados do servidor (incluindo thumbnail)
             const updates: Partial<PDFDocument> = {
               title: formData.title.trim(),
               description: formData.description.trim(),
               category: categoryToUse,
-              fileName: uploadedDocument.fileName,
-              fileUrl: uploadedDocument.fileUrl
+              fileName: result.documento.nome_arquivo,
+              fileUrl: result.documento.url_arquivo,
+              thumbnailUrl: result.documento.thumbnail_url // ✅ Nova thumbnail
             };
 
             onSubmit(updates);
             
             toast({
               title: "Sucesso",
-              description: "Documento e arquivo atualizados com sucesso!",
+              description: selectedThumbnail ? 
+                "Documento, arquivo e miniatura atualizados!" : 
+                "Documento e arquivo atualizados!",
             });
 
-            // Fechar modal
             setTimeout(() => {
               onClose();
             }, 1000);
@@ -216,7 +261,7 @@ const PDFForm: React.FC<PDFFormProps> = ({
             return;
           }
         } else {
-          // Edição sem novo arquivo - apenas atualizar metadados
+          // ✅ Edição sem novo arquivo
           const updates: Partial<PDFDocument> = {
             title: formData.title.trim(),
             description: formData.description.trim(),
@@ -224,12 +269,16 @@ const PDFForm: React.FC<PDFFormProps> = ({
             visibilidade: formData.visibilidade
           };
 
-          // Se mudou a URL, incluir nos updates
+          // ✅ Se mudou apenas a thumbnail
+          if (selectedThumbnail) {
+            // TODO: Implementar upload apenas da thumbnail
+            console.log('📎 Upload apenas da thumbnail ainda não implementado');
+          }
+
           if (formData.fileUrl !== document?.fileUrl) {
             updates.fileUrl = formData.fileUrl.trim();
           }
 
-          // Se mudou o nome do arquivo, incluir nos updates
           if (formData.fileName !== document?.fileName) {
             updates.fileName = formData.fileName.trim();
           }
@@ -239,19 +288,9 @@ const PDFForm: React.FC<PDFFormProps> = ({
       } else {
         // ✅ CRIANDO NOVO DOCUMENTO
         if (uploadType === 'file' && selectedFile) {
-          // Upload de arquivo físico - usar função específica do contexto
-          const documentData: Partial<PDFDocument> = {
-            title: formData.title.trim(),
-            description: formData.description.trim(),
-            category: categoryToUse,
-            isActive: true,
-            visibilidade: formData.visibilidade
-          };
-
           setUploadStatus('uploading');
           setUploadProgress(0);
           
-          // Simular progresso para feedback visual
           const progressInterval = setInterval(() => {
             setUploadProgress(prev => {
               if (prev >= 90) {
@@ -263,8 +302,38 @@ const PDFForm: React.FC<PDFFormProps> = ({
           }, 200);
 
           try {
-            // Usar a função uploadFile do contexto
-            const uploadedDocument = await uploadFile(selectedFile, documentData);
+            // ✅ CRIAR FormData para incluir thumbnail
+            const uploadFormData = new FormData();
+            uploadFormData.append('file', selectedFile);
+            uploadFormData.append('title', formData.title.trim());
+            uploadFormData.append('description', formData.description.trim());
+            uploadFormData.append('category', categoryToUse);
+            uploadFormData.append('visibilidade', formData.visibilidade);
+            
+            // ✅ Adicionar thumbnail se selecionada
+            if (selectedThumbnail) {
+              uploadFormData.append('thumbnail', selectedThumbnail);
+              console.log('📎 Thumbnail adicionada ao novo upload');
+            }
+
+            const token = localStorage.getItem('authToken');
+            const response = await fetch(
+              'https://sistema.resendemh.com.br/api/documents/upload',
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${token}`
+                },
+                body: uploadFormData
+              }
+            );
+
+            if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.error || 'Erro no upload');
+            }
+
+            const result = await response.json();
             
             clearInterval(progressInterval);
             setUploadProgress(100);
@@ -272,10 +341,11 @@ const PDFForm: React.FC<PDFFormProps> = ({
             
             toast({
               title: "Sucesso",
-              description: "Arquivo enviado com sucesso!",
+              description: selectedThumbnail ? 
+                "Arquivo e miniatura enviados com sucesso!" : 
+                "Arquivo enviado com sucesso!",
             });
 
-            // Fechar modal
             setTimeout(() => {
               onClose();
             }, 1000);
@@ -292,7 +362,7 @@ const PDFForm: React.FC<PDFFormProps> = ({
             return;
           }
         } else {
-          // ✅ DOCUMENTO VIA URL
+          // ✅ DOCUMENTO VIA URL (sem mudanças)
           const documentData: Partial<PDFDocument> = {
             title: formData.title.trim(),
             description: formData.description.trim(),
@@ -366,7 +436,7 @@ const PDFForm: React.FC<PDFFormProps> = ({
           {/* Categoria e Visibilidade */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="category">Categoria</Label>
+              <Label htmlFor="category">Categoria *</Label>
               <Select 
                 value={formData.category} 
                 onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}
@@ -433,58 +503,80 @@ const PDFForm: React.FC<PDFFormProps> = ({
             <div className="space-y-3">
               <Label htmlFor="file">Arquivo *</Label>
               <div className="space-y-3">
-                <div className="flex items-center space-x-2">
-                  <Input
+                
+                {/* Área de Upload Visual para Arquivo */}
+                <div className="relative">
+                  <input
                     id="file"
                     type="file"
                     accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.webp"
                     onChange={handleFileChange}
-                    className="flex-1"
+                    className="hidden"
                     disabled={uploadStatus === 'uploading'}
                   />
-                  {selectedFile && uploadStatus === 'idle' && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedFile(null);
-                        setFormData(prev => ({ ...prev, fileName: '', title: '' }));
-                        setUploadStatus('idle');
-                      }}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  )}
+                  <label
+                    htmlFor="file"
+                    className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 hover:border-gray-400 transition-colors"
+                  >
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                      <Upload className="w-8 h-8 mb-3 text-gray-400" />
+                      <p className="mb-2 text-sm text-gray-500">
+                        <span className="font-semibold">Clique para enviar</span>
+                      </p>
+                      <p className="text-xs text-gray-500">PDF, DOC, XLS, PPT, imagens até 10MB</p>
+                    </div>
+                  </label>
                 </div>
 
                 {/* Status do Upload */}
                 {selectedFile && (
                   <div className="space-y-2">
-                    <div className="flex items-center space-x-2 text-sm">
-                      {uploadStatus === 'uploading' && (
-                        <div className="flex items-center space-x-2 text-blue-600">
-                          <Upload className="h-4 w-4 animate-pulse" />
-                          <span>Enviando... {Math.round(uploadProgress)}%</span>
-                        </div>
-                      )}
-                      {uploadStatus === 'success' && (
-                        <div className="flex items-center space-x-2 text-green-600">
-                          <CheckCircle className="h-4 w-4" />
-                          <span>Arquivo enviado com sucesso!</span>
-                        </div>
-                      )}
-                      {uploadStatus === 'error' && (
-                        <div className="flex items-center space-x-2 text-red-600">
-                          <AlertCircle className="h-4 w-4" />
-                          <span>Erro no upload. Tente novamente.</span>
-                        </div>
-                      )}
+                    <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center space-x-2 flex-1">
+                        {uploadStatus === 'uploading' && (
+                          <div className="flex items-center space-x-2 text-blue-600">
+                            <Upload className="h-4 w-4 animate-pulse" />
+                            <span className="text-sm">Enviando... {Math.round(uploadProgress)}%</span>
+                          </div>
+                        )}
+                        {uploadStatus === 'success' && (
+                          <div className="flex items-center space-x-2 text-green-600">
+                            <CheckCircle className="h-4 w-4" />
+                            <span className="text-sm">Arquivo enviado com sucesso!</span>
+                          </div>
+                        )}
+                        {uploadStatus === 'error' && (
+                          <div className="flex items-center space-x-2 text-red-600">
+                            <AlertCircle className="h-4 w-4" />
+                            <span className="text-sm">Erro no upload. Tente novamente.</span>
+                          </div>
+                        )}
+                        {uploadStatus === 'idle' && (
+                          <div className="flex items-center space-x-2 text-gray-600">
+                            <FileText className="h-4 w-4" />
+                            <div>
+                              <p className="text-sm font-medium">{selectedFile.name}</p>
+                              <p className="text-xs text-gray-500">
+                                {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      
                       {uploadStatus === 'idle' && (
-                        <div className="flex items-center space-x-2 text-gray-600">
-                          <FileText className="h-4 w-4" />
-                          <span>{selectedFile.name}</span>
-                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedFile(null);
+                            setFormData(prev => ({ ...prev, fileName: '', title: '' }));
+                            setUploadStatus('idle');
+                          }}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
                       )}
                     </div>
 
@@ -499,10 +591,6 @@ const PDFForm: React.FC<PDFFormProps> = ({
                     )}
                   </div>
                 )}
-
-                <p className="text-xs text-gray-500">
-                  Tipos permitidos: PDF, DOC, XLS, PPT, imagens • Máximo: 10MB
-                </p>
               </div>
             </div>
           )}
@@ -524,19 +612,81 @@ const PDFForm: React.FC<PDFFormProps> = ({
               </p>
             </div>
           )}
+          
+          {/* Miniatura */}
+          <div className="space-y-2">
+            <Label htmlFor="thumbnail">Miniatura</Label>
+            <div className="space-y-3">
+              
+              {/* Área de Upload Visual */}
+              <div className="relative">
+                <input
+                  id="thumbnail"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleThumbnailChange}
+                  className="hidden"
+                />
+                <label
+                  htmlFor="thumbnail"
+                  className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 hover:border-gray-400 transition-colors"
+                >
+                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                    <Image className="w-8 h-8 mb-3 text-gray-400" />
+                    <p className="mb-2 text-sm text-gray-500">
+                      <span className="font-semibold">Clique para enviar</span>
+                    </p>
+                    <p className="text-xs text-gray-500">PNG, JPG até 10MB</p>
+                  </div>
+                </label>
+              </div>
 
-          {/* Nome do Arquivo (para URLs) */}
-          {uploadType === 'url' && (
-            <div className="space-y-2">
-              <Label htmlFor="fileName">Nome do Arquivo</Label>
-              <Input
-                id="fileName"
-                value={formData.fileName}
-                onChange={(e) => setFormData(prev => ({ ...prev, fileName: e.target.value }))}
-                placeholder="documento.pdf"
-              />
+              {/* Preview da thumbnail selecionada */}
+              {thumbnailPreview && (
+                <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                  <img 
+                    src={thumbnailPreview} 
+                    alt="Preview da thumbnail" 
+                    className="w-20 h-16 object-cover rounded border"
+                  />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-700">Nova miniatura selecionada</p>
+                    <p className="text-xs text-gray-500">Clique em salvar para aplicar</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedThumbnail(null);
+                      setThumbnailPreview(null);
+                    }}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+
+              {/* Thumbnail atual (se estiver editando) */}
+              {document?.thumbnailUrl && !thumbnailPreview && (
+                <div className="flex items-center space-x-3 p-3 bg-blue-50 rounded-lg">
+                  <img 
+                    src={document.thumbnailUrl} 
+                    alt="Thumbnail atual" 
+                    className="w-20 h-16 object-cover rounded border"
+                  />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-700">Thumbnail atual</p>
+                    <p className="text-xs text-gray-500">Selecione uma nova imagem para substituir</p>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+            
+            <p className="text-xs text-gray-500">
+              Se não enviar uma miniatura, será gerada automaticamente baseada no conteúdo
+            </p>
+          </div>
 
           {/* Para edição, mostrar arquivo atual + opção de substituir */}
           {document && (
