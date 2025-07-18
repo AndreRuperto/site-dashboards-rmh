@@ -151,6 +151,20 @@ async function generateGoogleSheetThumbnailOptimized(sheetId, documentId, titulo
     const thumbnailsPath = getThumbnailsPath();
     const imageName = `${currentTimestamp}_${sheetId}.png`;
     const imagePath = path.join(thumbnailsPath, imageName);
+
+    // ✅ LOGS DETALHADOS DO CAMINHO
+    console.log(`🔍 DEBUG CAMINHOS:`);
+    console.log(`   📁 thumbnailsPath: ${thumbnailsPath}`);
+    console.log(`   📄 imageName: ${imageName}`);
+    console.log(`   🗂️ imagePath completo: ${imagePath}`);
+    
+    // ✅ VERIFICAR SE DIRETÓRIO EXISTE
+    try {
+      const dirStats = await fs.stat(thumbnailsPath);
+      console.log(`   ✅ Diretório existe: ${dirStats.isDirectory()}`);
+    } catch (error) {
+      console.log(`   ❌ Erro ao verificar diretório: ${error.message}`);
+    }
     
     console.log(`📸 Processando: ${titulo || sheetId}`);
 
