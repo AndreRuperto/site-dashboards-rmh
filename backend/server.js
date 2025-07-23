@@ -3701,6 +3701,21 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
       throw new Error('Email do cliente inválido');
     }
 
+    // ✅ FUNÇÃO PARA FORMATAR DATA
+    const formatarData = (dataISO) => {
+      if (!dataISO) return 'Não informado';
+      try {
+        const data = new Date(dataISO);
+        return data.toLocaleDateString('pt-BR', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric'
+        });
+      } catch (error) {
+        return dataISO; // Retorna original se não conseguir formatar
+      }
+    };
+
     // Template do email adaptado para processos jurídicos
     const emailTemplate = `
       <!DOCTYPE html>
@@ -3871,15 +3886,15 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
               <p><strong>Número do processo:</strong> ${numeroProcesso}</p>
               <p><strong>🎯 Objeto da Ação:</strong> ${objetoAtendimento}</p>
               <p><strong>⚖️ Tipo de Ação:</strong> ${tipoProcesso}</p>
-              <p><strong>📅 Data de protocolo do processo:</strong> ${ultimoAndamento}</p>
+              <p><strong>📅 Data de protocolo do processo:</strong> ${formatarData(ultimoAndamento)}</p>
               ${instancia ? `<p><strong>🏛️ Instância:</strong> ${instancia}</p>` : ''}
               <p><strong>👨‍💼 Parte Contrária:</strong> ${responsavel}</p>
-              <p><strong>💲 Previsão de Proveito Econômico:</strong> ${proveito}</p>
+              <!-- <p><strong>💲 Previsão de Proveito Econômico:</strong> ${proveito}</p> -->
             </div>
 
-            <p class="texto-inicial">
+            <!-- <p class="texto-inicial">
               O valor inicial que está sendo requerido na ação descrito acima representa uma expectativa de recebimento a depender da sentença,<strong> APÓS A TRAMITAÇÃO COMPLETA DA AÇÃO</strong>, pois nesse momento <strong>NÃO HÁ PREVISÃO DE RECEBIMENTO DE VALORES</strong>.
-            </p>
+            </p> -->
 
             <!-- AVISO ANTI-GOLPE -->
             <div class="anti-golpe">
@@ -4001,6 +4016,21 @@ app.post('/api/emails/massa', authMiddleware, async (req, res) => {
     }
 
     console.log(`📊 DEBUG: ${processosValidos.length} processos com email válido de ${processos.length} total`);
+
+    // ✅ FUNÇÃO PARA FORMATAR DATA
+    const formatarData = (dataISO) => {
+      if (!dataISO) return 'Não informado';
+      try {
+        const data = new Date(dataISO);
+        return data.toLocaleDateString('pt-BR', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric'
+        });
+      } catch (error) {
+        return dataISO; // Retorna original se não conseguir formatar
+      }
+    };
 
     // ✅ FUNÇÃO PARA GERAR TEMPLATE DO EMAIL
     const gerarTemplateEmail = (processo) => {
@@ -4147,15 +4177,15 @@ app.post('/api/emails/massa', authMiddleware, async (req, res) => {
                 <p><strong>Número do processo:</strong> ${processo.numeroProcesso}</p>
                 <p><strong>🎯 Objeto da Ação:</strong> ${processo.objetoAtendimento || 'Não informado'}</p>
                 <p><strong>⚖️ Tipo de Ação:</strong> ${processo.tipoProcesso}</p>
-                <p><strong>📅 Data de protocolo do processo:</strong> ${processo.ultimoAndamento}</p>
+                <p><strong>📅 Data de protocolo do processo:</strong> ${formatarData(processo.ultimoAndamento)}</p>
                 ${processo.instancia ? `<p><strong>🏛️ Instância:</strong> ${processo.instancia}</p>` : ''}
                 <p><strong>👨‍💼 Parte Contrária:</strong> ${processo.responsavel || processo.exAdverso || 'Não informado'}</p>
-                <p><strong>💲 Previsão de Proveito Econômico:</strong> ${processo.valorCausa || 'Não informado'}</p>
+                <!-- <p><strong>💲 Previsão de Proveito Econômico:</strong> ${processo.valorCausa || 'Não informado'}</p> -->
               </div>
 
-              <p class="texto-inicial">
+              <!-- <p class="texto-inicial">
                 O valor inicial que está sendo requerido na ação descrito acima representa uma expectativa de recebimento a depender da sentença,<strong> APÓS A TRAMITAÇÃO COMPLETA DA AÇÃO</strong>, pois nesse momento <strong>NÃO HÁ PREVISÃO DE RECEBIMENTO DE VALORES</strong>.
-              </p>
+              </p> -->
 
               <!-- AVISO ANTI-GOLPE -->
               <div class="anti-golpe">
@@ -4167,9 +4197,7 @@ app.post('/api/emails/massa', authMiddleware, async (req, res) => {
               
               <div class="contact-info">
                 <p><strong>💬 Precisa tirar dúvidas?</strong></p>
-                <p>Entre em contato conosco através dos nossos canais oficiais:</p>
-                <p>📧 Email: contato@resendemh.com.br</p>
-                <p>📱 WhatsApp Oficial:</p>
+                <p>Entre em contato conosco através do nosso Whatsapp:</p>
                 <div style="text-align: center;">
                   <a href="https://wa.me/556130314400" class="whatsapp-btn">
                     <img src="https://sistema.resendemh.com.br/whatsapp.png" alt="WhatsApp" style="height: 30px; margin: 0 5px; vertical-align: middle;">
