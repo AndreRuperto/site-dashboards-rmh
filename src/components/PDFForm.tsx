@@ -317,8 +317,10 @@ const PDFForm: React.FC<PDFFormProps> = ({
             }
 
             const token = localStorage.getItem('authToken');
+            const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+
             const response = await fetch(
-              'https://sistema.resendemh.com.br/api/documents/upload',
+              `${API_BASE_URL}/api/documents/upload`, // ✅ USA VARIÁVEL DE AMBIENTE
               {
                 method: 'POST',
                 headers: {

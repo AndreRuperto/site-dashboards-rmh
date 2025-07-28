@@ -1991,6 +1991,84 @@ async function updateThumbnailInDatabase(documentId, thumbnailUrl) {
   }
 }
 
+app.get('/api/documents', authMiddleware, async (req, res) => {
+  try {
+    const userType = req.user.tipo_usuario;
+    const tipoColaborador = req.user.tipo_colaborador;
+    
+    console.log(`📄 GET /api/documents - Usuário: ${req.user.email_login} (${userType}/${tipoColaborador})`);
+
+    // ✅ QUERY PARA BUSCAR TODOS OS DOCUMENTOS ATIVOS
+    const result = await pool.query(`
+      SELECT 
+        d.id, d.titulo, d.descricao, d.categoria, d.nome_arquivo, 
+        d.url_arquivo, d.tamanho_arquivo, d.tipo_mime, d.qtd_downloads,
+        d.enviado_por, d.enviado_em, d.ativo, d.criado_em, d.atualizado_em,
+        d.visibilidade, d.thumbnail_url,
+        u.nome as enviado_por_nome
+      FROM documentos d
+      LEFT JOIN usuarios u ON d.enviado_por = u.id
+      WHERE d.ativo = true 
+      ORDER BY d.criado_em DESC
+    `);
+
+    console.log(`📄 Query executada - encontrados ${result.rows.length} documentos`);
+
+    // ✅ MAPEAR DOCUMENTOS PARA O FORMATO ESPERADO PELO FRONTEND
+    const documentos = result.rows.map(doc => {
+      console.log(`📄 Mapeando documento: ${doc.id} - ${doc.titulo}`);
+      
+      return {
+        id: doc.id,
+        titulo: doc.titulo,
+        descricao: doc.descricao || '',
+        categoria: doc.categoria,
+        nomeArquivo: doc.nome_arquivo,
+        urlArquivo: doc.url_arquivo,
+        tamanhoArquivo: doc.tamanho_arquivo,
+        tipoMime: doc.tipo_mime,
+        qtdDownloads: doc.qtd_downloads || 0,
+        enviadoPor: doc.enviado_por,
+        enviadoPorNome: doc.enviado_por_nome,
+        enviadoEm: doc.enviado_em,
+        ativo: doc.ativo,
+        criadoEm: doc.criado_em,
+        atualizadoEm: doc.atualizado_em,
+        thumbnailUrl: doc.thumbnail_url,
+        visibilidade: doc.visibilidade || 'todos'
+      };
+    });
+
+    // ✅ EXTRAIR CATEGORIAS ÚNICAS
+    const categorias = [...new Set(documentos.map(d => d.categoria).filter(Boolean))];
+    
+    console.log(`📄 Enviando resposta: ${documentos.length} documentos, ${categorias.length} categorias`);
+    console.log(`📄 Categorias encontradas:`, categorias);
+
+    // ✅ GARANTIR RESPOSTA JSON
+    res.setHeader('Content-Type', 'application/json');
+    res.status(200).json({
+      success: true,
+      documentos,
+      total: documentos.length,
+      categorias
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro na rota GET /api/documents:', error);
+    
+    // ✅ RESPOSTA DE ERRO TAMBÉM EM JSON
+    res.setHeader('Content-Type', 'application/json');
+    res.status(500).json({ 
+      success: false,
+      error: 'Erro interno do servidor', 
+      documentos: [],
+      categorias: [],
+      message: error.message 
+    });
+  }
+});
+
 // ✅ ENDPOINT ALTERNATIVO PARA ATUALIZAR THUMBNAIL MANUALMENTE
 app.post('/api/documents/:id/thumbnail', authMiddleware, async (req, res) => {
   try {
@@ -2142,7 +2220,7 @@ app.post('/api/documents/upload', authMiddleware, upload.fields([
       `/documents/${uploadedFile.filename}`,
       uploadedFile.size,
       uploadedFile.mimetype,
-      req.user.email,
+      req.user.id,
       thumbnailUrl, // ✅ Salvar URL da thumbnail
       visibilidade || 'todos'
     ]);
@@ -4197,7 +4275,7 @@ app.post('/api/emails/massa', authMiddleware, async (req, res) => {
               
               <div class="contact-info">
                 <p><strong>💬 Precisa tirar dúvidas?</strong></p>
-                <p>Entre em contato conosco através do nosso Whatsapp:</p>
+                <p>Entre em contato conosco através do nosso Whatsapp, clicando no botão abaixo:</p>
                 <div style="text-align: center;">
                   <a href="https://wa.me/556130314400" class="whatsapp-btn">
                     <img src="https://sistema.resendemh.com.br/whatsapp.png" alt="WhatsApp" style="height: 30px; margin: 0 5px; vertical-align: middle;">
@@ -6778,7 +6856,7 @@ app.post('/api/admin/aprovar-usuario/:userId', adminMiddleware, async (req, res)
         const emailResult = await resend.emails.send({
           from: 'andre.macedo@resendemh.com.br',
           to: [user.email_pessoal],
-          subject: '✅ Cadastro aprovado - Dashboards RMH',
+          subject: 'Cadastro aprovado - RMH',
           html: await gerarTemplateValidacaoEstagiario(user.nome, linkValidacao, user.email_pessoal)
         });
 
