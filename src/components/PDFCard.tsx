@@ -12,6 +12,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 
 // ✅ CONFIGURAÇÃO OTIMIZADA DO PDF.js
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.9.179/pdf.worker.min.js';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
 interface PDFCardProps {
   document: PDFDocument;
@@ -297,7 +298,7 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
 
       console.log(`🎯 Processando arquivo: ${document.title}`);
 
-      // ✅ PRIORIDADE 1: Usar thumbnailUrl salva no documento (ARQUIVO UPLOAD)
+      // ✅ PRIORIDADE 1: Usar thumbnailUrl salva no documento
       if (document.thumbnailUrl) {
         console.log(`✅ Usando miniatura salva: ${document.thumbnailUrl}`);
         
@@ -307,8 +308,8 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
           // ✅ URL completa
           fullThumbnailUrl = document.thumbnailUrl;
         } else {
-          // ✅ TODAS as thumbnails agora vão para /thumbnails/ (tanto Puppeteer quanto upload)
-          fullThumbnailUrl = `https://sistema.resendemh.com.br${document.thumbnailUrl}`;
+          // ✅ USAR API_BASE_URL em vez de URL hardcoded
+          fullThumbnailUrl = `${API_BASE_URL}${document.thumbnailUrl}`;
         }
         
         console.log(`🔧 URL final da thumbnail: ${fullThumbnailUrl}`);
@@ -320,30 +321,15 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
       const fileType = getFileType(document.fileUrl);
       console.log(`📋 Tipo detectado: ${fileType}`);
       
-      // ✅ PRIORIDADE 2: Gerar miniatura para Google Sheets (estes são salvos em /thumbnails/)
+      // ✅ PRIORIDADE 2: Para Google Sheets, aguardar thumbnail automática do backend
       if (fileType === 'google-sheet') {
-        const sheetId = document.fileUrl.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1];
-        if (sheetId) {
-          console.log(`🎯 Gerando thumbnail para Google Sheet: ${sheetId}, Doc ID: ${document.id}`);
-          
-          const response = await fetch(`https://sistema.resendemh.com.br/api/thumbnail?sheetId=${sheetId}&documentId=${document.id}`);
-          
-          if (response.ok) {
-            const data = await response.json();
-            
-            // ✅ Para Google Sheets, usar a URL direta (vai para /thumbnails/)
-            const fullThumbnailUrl = data.thumbnailUrl.startsWith('http')
-              ? data.thumbnailUrl
-              : `https://sistema.resendemh.com.br${data.thumbnailUrl}`;
-              
-            setThumbnailUrl(fullThumbnailUrl);
-            console.log(`✅ Miniatura Puppeteer carregada e salva no banco - ${fullThumbnailUrl}`);
-          } else {
-            console.error(`❌ Erro ao gerar thumbnail:`, await response.text());
-            throw new Error('Falha ao gerar thumbnail');
-          }
-          return;
-        }
+        console.log(`📋 Google Sheet detectado - aguardando thumbnail automática do backend`);
+        
+        // ✅ Mostrar ícone de planilha temporariamente
+        // A thumbnail automática será gerada pelo backend quando o documento foi criado
+        // e aparecerá na próxima atualização da página ou refresh
+        setIsLoadingThumbnail(false);
+        return;
       }
       
       // ✅ PRIORIDADE 3: Google Docs
@@ -366,7 +352,16 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
         return;
       }
       
-      // ✅ PRIORIDADE 5: PDFs
+      // ✅ PRIORIDADE 5: Links web comuns
+      if (fileType === 'web-link') {
+        const webThumbnail = getWebLinkThumbnail(document.fileUrl);
+        setThumbnailUrl(webThumbnail);
+        console.log('✅ Miniatura de link web configurada');
+        setIsLoadingThumbnail(false);
+        return;
+      }
+      
+      // ✅ PRIORIDADE 6: PDFs
       if (fileType === 'pdf') {
         try {
           const pdfThumbnailData = await generateHighQualityPDFThumbnail(document.fileUrl);
@@ -418,7 +413,7 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
 
       // ✅ FAZER REQUISIÇÃO AUTENTICADA
       const response = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'}/api/documents/${document.id}/download`,
+        `${API_BASE_URL}/api/documents/${document.id}/download`,
         {
           method: 'GET',
           headers: {

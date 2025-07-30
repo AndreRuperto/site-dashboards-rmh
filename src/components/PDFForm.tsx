@@ -14,9 +14,9 @@ interface PDFFormProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (documentData: Partial<PDFDocument>) => void;
-  document?: PDFDocument | null; // Para edição
+  document?: PDFDocument | null;
   categories: string[];
-  uploadFile: (file: File, documentData: Partial<PDFDocument>, existingId?: string) => Promise<PDFDocument>; // Função de upload
+  uploadFile: (file: File, documentData: Partial<PDFDocument>, existingId?: string, thumbnail?: File) => Promise<PDFDocument>; // ✅ Adicionar thumbnail
 }
 
 type UploadType = 'file' | 'url';
@@ -190,54 +190,17 @@ const PDFForm: React.FC<PDFFormProps> = ({
               });
             }, 200);
 
-            // ✅ CRIAR FormData para incluir thumbnail
-            const uploadFormData = new FormData();
-            uploadFormData.append('file', selectedFile);
-            uploadFormData.append('title', formData.title.trim());
-            uploadFormData.append('description', formData.description.trim());
-            uploadFormData.append('category', categoryToUse);
-            uploadFormData.append('visibilidade', formData.visibilidade);
-            
-            // ✅ Adicionar thumbnail se selecionada
-            if (selectedThumbnail) {
-              uploadFormData.append('thumbnail', selectedThumbnail);
-              console.log('📎 Thumbnail adicionada ao upload');
-            }
-
-            const token = localStorage.getItem('authToken');
-            const response = await fetch(
-              `https://sistema.resendemh.com.br/api/documents/${document.id}/upload`,
-              {
-                method: 'PUT',
-                headers: {
-                  'Authorization': `Bearer ${token}`
-                },
-                body: uploadFormData
-              }
-            );
-
-            if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(errorData.error || 'Erro no upload');
-            }
-
-            const result = await response.json();
-            
-            clearInterval(progressInterval);
-            setUploadProgress(100);
-            setUploadStatus('success');
-            
-            // ✅ Atualizar com dados do servidor (incluindo thumbnail)
-            const updates: Partial<PDFDocument> = {
+            // ✅ USAR uploadFile DO CONTEXTO com thumbnail
+            await uploadFile(selectedFile, {
               title: formData.title.trim(),
               description: formData.description.trim(),
               category: categoryToUse,
-              fileName: result.documento.nome_arquivo,
-              fileUrl: result.documento.url_arquivo,
-              thumbnailUrl: result.documento.thumbnail_url // ✅ Nova thumbnail
-            };
+              visibilidade: formData.visibilidade
+            }, document.id, selectedThumbnail); // ✅ Passar thumbnail aqui
 
-            onSubmit(updates);
+            clearInterval(progressInterval);
+            setUploadProgress(100);
+            setUploadStatus('success');
             
             toast({
               title: "Sucesso",
@@ -261,19 +224,95 @@ const PDFForm: React.FC<PDFFormProps> = ({
             return;
           }
         } else {
-          // ✅ Edição sem novo arquivo
+          // ✅ Edição sem novo arquivo - mas pode ter nova thumbnail
+          if (selectedThumbnail) {
+            try {
+              setUploadStatus('uploading');
+              setUploadProgress(0);
+              
+              const token = localStorage.getItem('authToken');
+              const thumbnailFormData = new FormData();
+              thumbnailFormData.append('thumbnail', selectedThumbnail);
+              
+              const response = await fetch(`/api/documents/${document.id}/thumbnail`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: thumbnailFormData
+              });
+              
+              if (!response.ok) {
+                throw new Error('Erro ao enviar thumbnail');
+              }
+              
+              // ✅ BUSCAR A RESPOSTA COM A NOVA THUMBNAIL URL
+              const result = await response.json();
+              
+              setUploadProgress(100);
+              setUploadStatus('success');
+              
+              toast({
+                title: "Sucesso",
+                description: "Miniatura atualizada com sucesso!"
+              });
+              
+              // ✅ ATUALIZAR O DOCUMENTO COM A NOVA THUMBNAIL
+              const updates: Partial<PDFDocument> = {
+                title: formData.title.trim(),
+                description: formData.description.trim(),
+                category: categoryToUse,
+                visibilidade: formData.visibilidade,
+                thumbnailUrl: result.thumbnailUrl  // ✅ INCLUIR A NOVA THUMBNAIL URL
+              };
+
+              if (formData.fileUrl !== document?.fileUrl) {
+                updates.fileUrl = formData.fileUrl.trim();
+              }
+
+              if (formData.fileName !== document?.fileName) {
+                updates.fileName = formData.fileName.trim();
+              }
+
+              onSubmit(updates); // ✅ Vai atualizar o contexto com a nova thumbnail
+              
+              setTimeout(() => {
+                onClose();
+              }, 1000);
+              
+            } catch (error) {
+              setUploadStatus('error');
+              toast({
+                title: "Erro",
+                description: "Erro ao enviar miniatura",
+                variant: "destructive"
+              });
+            }
+          } else {
+            // ✅ CASO SEM THUMBNAIL, só atualizar outros campos
+            const updates: Partial<PDFDocument> = {
+              title: formData.title.trim(),
+              description: formData.description.trim(),
+              category: categoryToUse,
+              visibilidade: formData.visibilidade
+            };
+
+            if (formData.fileUrl !== document?.fileUrl) {
+              updates.fileUrl = formData.fileUrl.trim();
+            }
+
+            if (formData.fileName !== document?.fileName) {
+              updates.fileName = formData.fileName.trim();
+            }
+
+            onSubmit(updates);
+          }
+          
+          // Atualizar outros campos do documento
           const updates: Partial<PDFDocument> = {
             title: formData.title.trim(),
             description: formData.description.trim(),
             category: categoryToUse,
             visibilidade: formData.visibilidade
           };
-
-          // ✅ Se mudou apenas a thumbnail
-          if (selectedThumbnail) {
-            // TODO: Implementar upload apenas da thumbnail
-            console.log('📎 Upload apenas da thumbnail ainda não implementado');
-          }
 
           if (formData.fileUrl !== document?.fileUrl) {
             updates.fileUrl = formData.fileUrl.trim();
@@ -283,7 +322,7 @@ const PDFForm: React.FC<PDFFormProps> = ({
             updates.fileName = formData.fileName.trim();
           }
 
-          onSubmit(updates);
+          onSubmit(updates); // ✅ Chama updateDocument via Documents.tsx
         }
       } else {
         // ✅ CRIANDO NOVO DOCUMENTO
@@ -302,40 +341,13 @@ const PDFForm: React.FC<PDFFormProps> = ({
           }, 200);
 
           try {
-            // ✅ CRIAR FormData para incluir thumbnail
-            const uploadFormData = new FormData();
-            uploadFormData.append('file', selectedFile);
-            uploadFormData.append('title', formData.title.trim());
-            uploadFormData.append('description', formData.description.trim());
-            uploadFormData.append('category', categoryToUse);
-            uploadFormData.append('visibilidade', formData.visibilidade);
-            
-            // ✅ Adicionar thumbnail se selecionada
-            if (selectedThumbnail) {
-              uploadFormData.append('thumbnail', selectedThumbnail);
-              console.log('📎 Thumbnail adicionada ao novo upload');
-            }
-
-            const token = localStorage.getItem('authToken');
-            const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
-
-            const response = await fetch(
-              `${API_BASE_URL}/api/documents/upload`, // ✅ USA VARIÁVEL DE AMBIENTE
-              {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${token}`
-                },
-                body: uploadFormData
-              }
-            );
-
-            if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(errorData.error || 'Erro no upload');
-            }
-
-            const result = await response.json();
+            // ✅ USAR uploadFile DO CONTEXTO com thumbnail
+            await uploadFile(selectedFile, {
+              title: formData.title.trim(),
+              description: formData.description.trim(),
+              category: categoryToUse,
+              visibilidade: formData.visibilidade
+            }, undefined, selectedThumbnail); // ✅ Passar thumbnail aqui
             
             clearInterval(progressInterval);
             setUploadProgress(100);
@@ -364,18 +376,67 @@ const PDFForm: React.FC<PDFFormProps> = ({
             return;
           }
         } else {
-          // ✅ DOCUMENTO VIA URL (sem mudanças)
-          const documentData: Partial<PDFDocument> = {
-            title: formData.title.trim(),
-            description: formData.description.trim(),
-            category: categoryToUse,
-            fileName: formData.fileName || 'Documento via URL',
-            fileUrl: formData.fileUrl.trim(),
-            isActive: true,
-            visibilidade: formData.visibilidade
-          };
+          // ✅ DOCUMENTO VIA URL - AGORA COM THUMBNAIL
+          try {
+            setUploadStatus('uploading');
+            setUploadProgress(0);
+            
+            const token = localStorage.getItem('authToken');
+            
+            // ✅ USAR FormData para enviar URL + thumbnail
+            const formDataToSend = new FormData();
+            formDataToSend.append('title', formData.title.trim());
+            formDataToSend.append('description', formData.description.trim());
+            formDataToSend.append('category', categoryToUse);
+            formDataToSend.append('fileName', formData.fileName || 'Documento via URL');
+            formDataToSend.append('fileUrl', formData.fileUrl.trim());
+            formDataToSend.append('visibilidade', formData.visibilidade);
+            
+            // ✅ Adicionar thumbnail se selecionada
+            if (selectedThumbnail) {
+              formDataToSend.append('thumbnail', selectedThumbnail);
+              console.log('📎 Thumbnail adicionada ao documento via URL');
+            }
+            
+            const response = await fetch('/api/documents', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${token}` },
+              body: formDataToSend
+            });
 
-          onSubmit(documentData);
+            console.log('process.env.VITE_API_BASE_URL:', process.env.VITE_API_BASE_URL);
+
+            if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.error || 'Erro ao criar documento');
+            }""
+
+            const result = await response.json();
+            
+            setUploadProgress(100);
+            setUploadStatus('success');
+            
+            toast({
+              title: "Sucesso",
+              description: selectedThumbnail ? 
+                "Documento e miniatura criados com sucesso!" : 
+                "Documento criado com sucesso!"
+            });
+
+            setTimeout(() => {
+              onClose();
+            }, 1000);
+            
+          } catch (error) {
+            setUploadStatus('error');
+            console.error('Erro ao criar documento via URL:', error);
+            toast({
+              title: "Erro",
+              description: error instanceof Error ? error.message : "Erro ao criar documento",
+              variant: "destructive"
+            });
+            return;
+          }
         }
       }
       

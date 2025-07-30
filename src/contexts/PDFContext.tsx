@@ -36,7 +36,7 @@ interface PDFContextType {
   refreshDocuments: () => Promise<void>;
   
   // Upload functionality
-  uploadFile: (file: File, documentData: Partial<PDFDocument>) => Promise<PDFDocument>;
+  uploadFile: (file: File, documentData: Partial<PDFDocument>, existingId?: string, thumbnail?: File) => Promise<PDFDocument>; // ✅ Adicionar thumbnail
 }
 
 const PDFContext = createContext<PDFContextType | undefined>(undefined);
@@ -100,14 +100,22 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // ✅ Função para buscar documentos da API
   const fetchDocuments = async () => {
+    console.log('🚀 fetchDocuments iniciado');
+    console.log('📊 Documentos atuais antes da busca:', documents.length);
+    
     setIsLoading(true);
     setError(null);
-        
+          
     try {
       const token = localStorage.getItem('authToken');
-            
+      console.log('🔑 Token status:', {
+        exists: !!token,
+        length: token?.length,
+        prefix: token?.substring(0, 20) + '...'
+      });
+              
       if (!token) {
-        console.log('📄 Sem token - usando dados locais');
+        console.log('❌ Sem token - usando dados locais');
         setDocuments(initialDocuments);
         setCategories(
           Array.from(new Set(initialDocuments.filter(doc => doc.isActive).map(doc => doc.category))).sort()
@@ -115,81 +123,175 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return;
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/documents`, {
+      const url = `${API_BASE_URL}/api/documents`;
+      console.log('🌐 Fazendo requisição para:', url);
+
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
 
+      console.log('📡 Response recebida:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok,
+        headers: Object.fromEntries(response.headers.entries())
+      });
+
       if (!response.ok) {
         if (response.status === 401) {
-          console.log('📄 Token inválido - usando dados locais');
-          setDocuments(initialDocuments);
-          setCategories(
-            Array.from(new Set(initialDocuments.filter(doc => doc.isActive).map(doc => doc.category))).sort()
-          );
+          console.log('❌ Token inválido (401) - limpando localStorage');
+          localStorage.removeItem('authToken');
+          localStorage.removeItem('user');
+          
+          // ✅ NÃO usar dados hardcoded quando token é inválido
+          setError('Sessão expirada. Por favor, faça login novamente.');
+          setDocuments([]);
+          setCategories([]);
+          
+          // ✅ Redirecionar para login se necessário
+          if (!window.location.pathname.includes('/login')) {
+            window.location.href = '/login';
+          }
           return;
         }
-        throw new Error('Erro ao buscar documentos');
+        
+        // ✅ Pegar texto da resposta para erro mais detalhado
+        const errorText = await response.text();
+        console.error('❌ Erro HTTP:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText
+        });
+        
+        throw new Error(`Erro ${response.status}: ${response.statusText}`);
       }
 
-      const data = await response.json();
-            
-      // ✅ MAPEAR documentos com conversões seguras para Date
-      const documentsWithDates: PDFDocument[] = (data.documentos || []).map((doc: any) => ({
-        id: doc.id,
-        title: doc.titulo || doc.title,
-        description: doc.descricao || doc.description || '',
-        category: doc.categoria || doc.category,
-        fileName: doc.nomeArquivo || doc.nome_arquivo || doc.fileName,
-        fileUrl: doc.urlArquivo || doc.url_arquivo || doc.fileUrl,
-        thumbnailUrl: doc.thumbnail_url || doc.thumbnailUrl,
-        uploadedBy: doc.enviadoPor || doc.enviado_por || doc.uploadedBy,
-        visibilidade: doc.visibilidade || 'todos', // ✅ NOVO CAMPO ADICIONADO
-                
-        // ✅ CONVERSÕES SEGURAS para Date
-        uploadedAt: (() => {
-          if (doc.enviadoEm) return new Date(doc.enviadoEm);
-          if (doc.enviado_em) return new Date(doc.enviado_em);
-          if (doc.data_upload) return new Date(doc.data_upload);
-          if (doc.uploadedAt) return new Date(doc.uploadedAt);
-          return new Date(); // Fallback
-        })(),
-                
-        createdAt: (() => {
-          if (doc.criadoEm) return new Date(doc.criadoEm);
-          if (doc.criado_em) return new Date(doc.criado_em);
-          if (doc.createdAt) return new Date(doc.createdAt);
-          return undefined; // Opcional
-        })(),
-                
-        updatedAt: (() => {
-          if (doc.atualizadoEm) return new Date(doc.atualizadoEm);
-          if (doc.atualizado_em) return new Date(doc.atualizado_em);
-          if (doc.updatedAt) return new Date(doc.updatedAt);
-          return undefined; // Opcional
-        })(),
-                
-        uploadedByName: doc.enviadoPorNome || doc.enviado_por_nome || doc.uploadedByName,
-        isActive: doc.ativo ?? doc.isActive ?? true,
-        downloadCount: doc.qtdDownloads || doc.qtd_downloads || doc.downloadCount || 0,
-        mimeType: doc.tipoMime || doc.tipo_mime || doc.mimeType,
-        fileSize: doc.tamanhoArquivo || doc.tamanho_arquivo || doc.fileSize
-      }));
+      // ✅ VALIDAR SE A RESPOSTA É JSON VÁLIDO
+      let data;
+      try {
+        const responseText = await response.text();
+        console.log('📦 Response text (primeiros 200 chars):', responseText.substring(0, 200));
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('❌ Erro ao parsear JSON:', parseError);
+        console.error('📄 Response text completo:', await response.text());
+        throw new Error('Resposta da API não é JSON válido');
+      }
+
+      console.log('📦 Dados parseados:', {
+        success: data.success,
+        documentosCount: data.documentos?.length || 0,
+        categoriasCount: data.categorias?.length || 0
+      });
+
+      // ✅ VALIDAR ESTRUTURA DA RESPOSTA
+      if (!data.documentos || !Array.isArray(data.documentos)) {
+        console.error('❌ Estrutura de resposta inválida:', data);
+        throw new Error('Resposta da API não contém array de documentos');
+      }
+              
+      // ✅ MAPEAR documentos com validação individual
+      const documentsWithDates: PDFDocument[] = data.documentos.map((doc: any, index: number) => {
+        console.log(`📄 Mapeando documento ${index + 1}:`, {
+          id: doc.id,
+          title: doc.titulo,
+          category: doc.categoria
+        });
+
+        return {
+          id: doc.id?.toString() || `doc_${Date.now()}_${index}`, // ✅ GARANTIR STRING
+          title: doc.titulo || doc.title || 'Documento sem título',
+          description: doc.descricao || doc.description || '',
+          category: doc.categoria || doc.category || 'Sem categoria',
+          fileName: doc.nomeArquivo || doc.nome_arquivo || doc.fileName || 'arquivo',
+          fileUrl: doc.urlArquivo || doc.url_arquivo || doc.fileUrl || '',
+          thumbnailUrl: doc.thumbnail_url || doc.thumbnailUrl,
+          uploadedBy: doc.enviadoPor || doc.enviado_por || doc.uploadedBy || '',
+          visibilidade: doc.visibilidade || 'todos',
+                  
+          // ✅ CONVERSÕES SEGURAS para Date com validação
+          uploadedAt: (() => {
+            const dateFields = [doc.enviadoEm, doc.enviado_em, doc.criado_em, doc.data_upload, doc.uploadedAt];
+            for (const field of dateFields) {
+              if (field) {
+                const date = new Date(field);
+                if (!isNaN(date.getTime())) return date;
+              }
+            }
+            return new Date(); // Fallback seguro
+          })(),
+                  
+          createdAt: (() => {
+            const dateFields = [doc.criadoEm, doc.criado_em, doc.createdAt];
+            for (const field of dateFields) {
+              if (field) {
+                const date = new Date(field);
+                if (!isNaN(date.getTime())) return date;
+              }
+            }
+            return undefined;
+          })(),
+                  
+          updatedAt: (() => {
+            const dateFields = [doc.atualizadoEm, doc.atualizado_em, doc.updatedAt];
+            for (const field of dateFields) {
+              if (field) {
+                const date = new Date(field);
+                if (!isNaN(date.getTime())) return date;
+              }
+            }
+            return undefined;
+          })(),
+                  
+          uploadedByName: doc.enviadoPorNome || doc.enviado_por_nome || doc.uploadedByName,
+          isActive: doc.ativo ?? doc.isActive ?? true,
+          downloadCount: parseInt(doc.qtdDownloads || doc.qtd_downloads || doc.downloadCount || '0'),
+          mimeType: doc.tipoMime || doc.tipo_mime || doc.mimeType,
+          fileSize: parseInt(doc.tamanhoArquivo || doc.tamanho_arquivo || doc.fileSize || '0')
+        };
+      });
+
+      console.log('✅ Documentos mapeados com sucesso:', {
+        total: documentsWithDates.length,
+        primeiros3: documentsWithDates.slice(0, 3).map(d => ({ id: d.id, title: d.title }))
+      });
 
       setDocuments(documentsWithDates);
-      if (data.categorias) setCategories(data.categorias);
-    
+      
+      if (data.categorias && Array.isArray(data.categorias)) {
+        setCategories(data.categorias);
+        console.log('✅ Categorias definidas:', data.categorias);
+      } else {
+        // ✅ Extrair categorias dos documentos
+        const extractedCategories = Array.from(
+          new Set(documentsWithDates.filter(doc => doc.isActive).map(doc => doc.category))
+        ).sort();
+        setCategories(extractedCategories);
+        console.log('✅ Categorias extraídas dos documentos:', extractedCategories);
+      }
+
+      console.log('🎉 fetchDocuments concluído com sucesso!');
+      
     } catch (err) {
-      console.error('❌ Erro ao buscar documentos da API:', err);
-      setError(null);
-      setDocuments(initialDocuments);
-      setCategories(
-        Array.from(new Set(initialDocuments.filter(doc => doc.isActive).map(doc => doc.category))).sort()
-      );
+      console.error('❌ Erro completo ao buscar documentos:', err);
+      
+      // ✅ DEFINIR ERRO PARA O USUÁRIO
+      const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido ao carregar documentos';
+      setError(errorMessage);
+      
+      // ✅ NÃO usar dados hardcoded em caso de erro real
+      // Deixar vazio para mostrar o erro ao usuário
+      setDocuments([]);
+      setCategories([]);
+      
+      console.log('📄 Estado definido como vazio devido ao erro');
+      
     } finally {
       setIsLoading(false);
+      console.log('🏁 fetchDocuments finalizado');
     }
   };
 
@@ -303,107 +405,75 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const token = localStorage.getItem('authToken');
       
       if (!token) {
-        // ✅ Fallback local - manter tipos consistentes
+        // Fallback local
         setDocuments(prev => 
           prev.map(doc => 
             doc.id === id ? { 
               ...doc, 
               ...updates,
-              // ✅ Garantir que uploadedAt sempre existe como Date
-              uploadedAt: updates.uploadedAt || doc.uploadedAt || new Date(),
-              // ✅ Atualizar updatedAt como Date
+              thumbnailUrl: updates.thumbnailUrl || doc.thumbnailUrl, // ✅ MANTER THUMBNAIL
               updatedAt: new Date()
             } : doc
           )
         );
-        console.log('📄 Documento atualizado localmente');
         return;
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/documents/${id}`, {
+      const response = await fetch(`/api/documents/${id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          title: updates.title,
-          description: updates.description,
-          category: updates.category,
-          fileName: updates.fileName,
-          fileUrl: updates.fileUrl,
-          thumbnailUrl: updates.thumbnailUrl,
-          visibilidade: updates.visibilidade // ✅ ADICIONAR
-        })
+        body: JSON.stringify(updates)
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Erro ao atualizar documento');
+        throw new Error('Erro ao atualizar documento');
       }
 
       const data = await response.json();
-      const rawDoc = data.document || data.documento;
+      const rawDoc = data.documento;
 
-      // ✅ CONSTRUIR documento com conversões seguras de tipos
-      const updatedDocument: PDFDocument = {
-        id: id,
-        title: rawDoc?.titulo || rawDoc?.title || updates.title || 'Documento sem título',
-        description: rawDoc?.descricao || rawDoc?.description || updates.description || '',
-        category: rawDoc?.categoria || rawDoc?.category || updates.category || 'Geral',
-        fileName: rawDoc?.nome_arquivo || rawDoc?.fileName || updates.fileName || 'arquivo.pdf',
-        fileUrl: rawDoc?.url_arquivo || rawDoc?.fileUrl || updates.fileUrl || '',
-        uploadedBy: rawDoc?.enviado_por || rawDoc?.uploadedBy || 'api@user.com',
-        visibilidade: rawDoc?.visibilidade || updates.visibilidade || 'todos',
-        
-        // ✅ CONVERSÕES SEGURAS para Date
-        uploadedAt: (() => {
-          if (rawDoc?.data_upload) return new Date(rawDoc.data_upload);
-          if (rawDoc?.uploadedAt) return new Date(rawDoc.uploadedAt);
-          if (updates.uploadedAt) return new Date(updates.uploadedAt);
-          return new Date();
-        })(),
-        
-        createdAt: (() => {
-          if (rawDoc?.criado_em) return new Date(rawDoc.criado_em);
-          if (rawDoc?.createdAt) return new Date(rawDoc.createdAt);
-          return undefined; // Opcional na interface
-        })(),
-        
-        updatedAt: new Date(), // ✅ Sempre definir como Date atual
-        
-        isActive: rawDoc?.ativo ?? rawDoc?.isActive ?? true,
-        uploadedByName: rawDoc?.enviado_por_nome || rawDoc?.uploadedByName,
-        mimeType: rawDoc?.tipo_mime || rawDoc?.mimeType,
-        fileSize: rawDoc?.tamanho_arquivo || rawDoc?.fileSize,
-        downloadCount: rawDoc?.qtd_downloads || rawDoc?.downloadCount,
-        thumbnailUrl: rawDoc?.thumbnail_url || rawDoc?.thumbnailUrl
-      };
+      if (rawDoc) {
+        const updatedDocument: PDFDocument = {
+          id,
+          title: rawDoc.titulo || updates.title,
+          description: rawDoc.descricao || updates.description,
+          category: rawDoc.categoria || updates.category,
+          fileName: rawDoc.nome_arquivo || updates.fileName,
+          fileUrl: rawDoc.url_arquivo || updates.fileUrl,
+          visibilidade: rawDoc.visibilidade || updates.visibilidade,
+          thumbnailUrl: updates.thumbnailUrl || rawDoc.thumbnail_url, // ✅ PRIORIZAR A NOVA THUMBNAIL
+          uploadedBy: rawDoc.enviado_por || updates.uploadedBy,
+          uploadedAt: new Date(rawDoc.enviado_em || Date.now()),
+          isActive: rawDoc.ativo ?? true,
+          uploadedByName: rawDoc.enviado_por_nome || updates.uploadedByName,
+          mimeType: rawDoc.tipo_mime || updates.mimeType,
+          fileSize: rawDoc.tamanho_arquivo || updates.fileSize,
+          downloadCount: rawDoc.qtd_downloads || updates.downloadCount
+        };
 
-      setDocuments(prev => 
-        prev.map(doc => 
-          doc.id === id ? updatedDocument : doc
-        )
-      );
-      
-      console.log(`✅ Documento "${id}" atualizado com sucesso`);
+        setDocuments(prev => 
+          prev.map(doc => 
+            doc.id === id ? updatedDocument : doc
+          )
+        );
+      }
       
     } catch (err) {
       console.error('❌ Erro ao atualizar documento:', err);
       
-      // ✅ Fallback: atualizar localmente com tipos corretos
+      // Fallback local
       setDocuments(prev => 
         prev.map(doc => 
           doc.id === id ? { 
             ...doc, 
             ...updates,
-            // ✅ Garantir tipos Date
-            uploadedAt: updates.uploadedAt ? new Date(updates.uploadedAt) : doc.uploadedAt || new Date(),
             updatedAt: new Date()
           } : doc
         )
       );
-      console.log('📄 Documento atualizado localmente (fallback)');
       
       throw err;
     }
@@ -451,7 +521,8 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const uploadFile = async (
     file: File,
     documentData: Partial<PDFDocument>,
-    existingId?: string
+    existingId?: string,
+    thumbnail?: File // ✅ Adicionar parâmetro thumbnail
   ): Promise<PDFDocument> => {
     try {
       const token = localStorage.getItem('authToken');
@@ -462,6 +533,12 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       formData.append('description', documentData.description || '');
       formData.append('category', documentData.category || '');
       formData.append('visibilidade', documentData.visibilidade || 'todos');
+
+      // ✅ ADICIONAR THUMBNAIL SE FORNECIDA
+      if (thumbnail) {
+        formData.append('thumbnail', thumbnail);
+        console.log('📎 Thumbnail adicionada ao FormData:', thumbnail.name);
+      }
 
       let response: Response;
 
@@ -498,6 +575,7 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         category: rawDoc.categoria || documentData.category || 'Geral',
         fileName: rawDoc.nome_arquivo || file.name,
         fileUrl: rawDoc.url_arquivo,
+        thumbnailUrl: rawDoc.thumbnail_url, // ✅ INCLUIR THUMBNAIL URL
         uploadedBy: rawDoc.enviado_por || 'api@user.com',
         uploadedAt: new Date(rawDoc.data_upload || Date.now()),
         isActive: rawDoc.ativo ?? true,
@@ -516,35 +594,18 @@ export const PDFProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setDocuments(prev => [updatedDocument, ...prev]);
       }
 
-      console.log(`✅ ${existingId ? 'Atualizado' : 'Upload concluído'}: "${file.name}"`);
+      console.log(`✅ ${existingId ? 'Documento atualizado' : 'Documento criado'} com sucesso:`, {
+        id: updatedDocument.id,
+        title: updatedDocument.title,
+        thumbnailUrl: updatedDocument.thumbnailUrl,
+        temThumbnail: !!thumbnail
+      });
+
       return updatedDocument;
 
-    } catch (err) {
-      console.error('❌ Erro no upload:', err);
-
-      const fallbackDoc: PDFDocument = {
-        id: existingId || `local_${Date.now()}`,
-        title: documentData.title || file.name,
-        description: documentData.description || '',
-        category: documentData.category || 'Geral',
-        fileName: file.name,
-        fileUrl: URL.createObjectURL(file),
-        uploadedBy: 'local@user.com',
-        uploadedAt: new Date(),
-        isActive: true
-      };
-
-      if (existingId) {
-        setDocuments(prev =>
-          prev.map(doc =>
-            doc.id === existingId ? { ...doc, ...fallbackDoc } : doc
-          )
-        );
-      } else {
-        setDocuments(prev => [fallbackDoc, ...prev]);
-      }
-
-      return fallbackDoc;
+    } catch (error) {
+      console.error('❌ Erro no upload:', error);
+      throw error;
     }
   };
 

@@ -1991,6 +1991,77 @@ async function updateThumbnailInDatabase(documentId, thumbnailUrl) {
   }
 }
 
+// ✅ FUNÇÃO PRINCIPAL PARA GERAR THUMBNAIL DE DOCUMENTO
+async function generateThumbnailForDocument(sheetId, documentId, title) {
+  console.log(`🎯 generateThumbnailForDocument iniciado - Sheet: ${sheetId}, Doc: ${documentId}, Title: ${title}`);
+  
+  try {
+    const thumbnailsPath = getThumbnailsPath();
+    const timestamp = Date.now();
+    const imageName = `auto_${timestamp}_${sheetId}.png`;
+    const imagePath = path.join(thumbnailsPath, imageName);
+    
+    console.log(`📁 Caminho da thumbnail: ${imagePath}`);
+    
+    // ✅ VERIFICAR SE DIRETÓRIO EXISTE
+    await fs.mkdir(thumbnailsPath, { recursive: true });
+    
+    // ✅ POR ENQUANTO, USAR APENAS THUMBNAIL PADRÃO (sem Puppeteer)
+    // Isso evita problemas de memória e dependências
+    await generateDefaultThumbnail(imagePath, sheetId, title);
+    
+    const thumbnailUrl = `/thumbnails/${imageName}`;
+    const success = await updateThumbnailInDatabase(documentId, thumbnailUrl);
+    
+    if (success) {
+      console.log(`✅ Thumbnail automática criada e salva no banco: ${thumbnailUrl}`);
+      return {
+        success: true,
+        thumbnailUrl,
+        status: 'default_generated'
+      };
+    } else {
+      throw new Error('Falha ao atualizar banco de dados');
+    }
+    
+  } catch (error) {
+    console.error(`❌ Erro em generateThumbnailForDocument:`, error);
+    
+    // ✅ FALLBACK: Tentar criar pelo menos um arquivo básico
+    try {
+      const thumbnailsPath = getThumbnailsPath();
+      const timestamp = Date.now();
+      const imageName = `error_${timestamp}_${sheetId}.png`;
+      const imagePath = path.join(thumbnailsPath, imageName);
+      
+      await generateDefaultThumbnail(imagePath, sheetId, 'Erro ao Gerar');
+      
+      const thumbnailUrl = `/thumbnails/${imageName}`;
+      await updateThumbnailInDatabase(documentId, thumbnailUrl);
+      
+      console.log(`⚠️ Thumbnail de fallback criada: ${thumbnailUrl}`);
+      
+      return {
+        success: true,
+        thumbnailUrl,
+        status: 'error_fallback'
+      };
+      
+    } catch (fallbackError) {
+      console.error(`❌ Erro crítico no fallback:`, fallbackError);
+      return {
+        success: false,
+        status: 'critical_error',
+        error: fallbackError.message
+      };
+    }
+  }
+}
+
+app.listen(3001, () => {
+  console.log('Servidor rodando em http://localhost:3001');
+});
+
 app.get('/api/documents', authMiddleware, async (req, res) => {
   try {
     const userType = req.user.tipo_usuario;
@@ -2088,12 +2159,6 @@ app.post('/api/documents/:id/thumbnail', authMiddleware, async (req, res) => {
   }
 });
 
-app.listen(3001, () => {
-  console.log('Servidor rodando em http://localhost:3001');
-});
-
-// ROTAS ATUALIZADAS PARA A NOVA ESTRUTURA DA TABELA "documentos"
-
 // ======================= LISTAGEM DE DOCUMENTOS =======================
 app.post('/api/documents', authMiddleware, upload.single('thumbnail'), async (req, res) => {
   try {
@@ -2133,9 +2198,12 @@ app.post('/api/documents', authMiddleware, upload.single('thumbnail'), async (re
 
     const documento = result.rows[0];
 
-    // Se não tem thumbnail customizada e é Google Sheets, gerar automaticamente
-    if (!thumbnailFile && fileUrl.includes('docs.google.com/spreadsheets')) {
-      console.log('📋 Gerando thumbnail automática para Google Sheets...');
+    // ✅ CORRIGIDO: Verificar se JÁ TEM thumbnail salva (thumbnailUrl, não thumbnailFile)
+    const jaTemThumbnail = documento.thumbnail_url !== null;
+    const ehGoogleSheets = fileUrl && fileUrl.includes('docs.google.com/spreadsheets');
+
+    if (!jaTemThumbnail && ehGoogleSheets) {
+      console.log('📋 Gerando thumbnail automática para Google Sheets (sem thumbnail customizada)...');
       
       const sheetId = fileUrl.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1];
       if (sheetId) {
@@ -2143,31 +2211,44 @@ app.post('/api/documents', authMiddleware, upload.single('thumbnail'), async (re
         setTimeout(async () => {
           try {
             await generateThumbnailForDocument(sheetId, documento.id, title);
+            console.log(`✅ Thumbnail automática gerada para documento ${documento.id}`);
           } catch (error) {
             console.error('❌ Erro ao gerar thumbnail automática:', error);
           }
         }, 100);
       }
+    } else if (jaTemThumbnail) {
+      console.log('✅ Thumbnail customizada detectada - pulando geração automática');
     }
 
     console.log(`✅ Documento via URL criado:`, {
       id: documento.id,
       titulo: documento.titulo,
       thumbnail_url: documento.thumbnail_url,
-      tem_thumbnail_customizada: !!thumbnailFile
+      tem_thumbnail_customizada: !!thumbnailFile,
+      vai_gerar_automatica: !jaTemThumbnail && ehGoogleSheets
     });
 
+    // ✅ RESPOSTA PADRONIZADA
     res.status(201).json({ 
       success: true, 
       documento,
-      tem_thumbnail_customizada: !!thumbnailFile
+      message: thumbnailFile ? 
+        'Documento criado com thumbnail customizada!' : 
+        'Documento criado com sucesso!',
+      tem_thumbnail_customizada: !!thumbnailFile,
+      vai_gerar_automatica: !jaTemThumbnail && ehGoogleSheets
     });
+
   } catch (error) {
     console.error('❌ Erro ao criar documento:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    res.status(500).json({ 
+      success: false,
+      error: 'Erro interno do servidor',
+      details: error.message 
+    });
   }
 });
-
 
 app.post('/api/documents/upload', authMiddleware, upload.fields([
   { name: 'file', maxCount: 1 },
@@ -2179,7 +2260,10 @@ app.post('/api/documents/upload', authMiddleware, upload.fields([
 
   try {
     if (!uploadedFile) {
-      return res.status(400).json({ error: 'Arquivo principal não enviado' });
+      return res.status(400).json({ 
+        success: false,
+        error: 'Arquivo principal não enviado' 
+      });
     }
 
     console.log(`📄 Upload recebido:`, {
@@ -2192,7 +2276,6 @@ app.post('/api/documents/upload', authMiddleware, upload.fields([
     // ✅ Processar thumbnail se fornecida
     let thumbnailUrl = null;
     if (uploadedThumbnail) {
-      // ✅ Mover thumbnail para o diretório correto
       const thumbnailDir = getThumbnailsPath();
       const timestamp = Date.now();
       const thumbnailName = `${timestamp}_${uploadedThumbnail.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
@@ -2221,21 +2304,28 @@ app.post('/api/documents/upload', authMiddleware, upload.fields([
       uploadedFile.size,
       uploadedFile.mimetype,
       req.user.id,
-      thumbnailUrl, // ✅ Salvar URL da thumbnail
+      thumbnailUrl,
       visibilidade || 'todos'
     ]);
 
     console.log(`✅ Documento criado com sucesso:`, result.rows[0]);
 
+    // ✅ RESPOSTA PADRONIZADA
     res.json({
       success: true,
       documento: result.rows[0],
-      message: uploadedThumbnail ? 'Documento e thumbnail enviados!' : 'Documento enviado!'
+      message: uploadedThumbnail ? 
+        'Documento e thumbnail enviados com sucesso!' : 
+        'Documento enviado com sucesso!'
     });
 
   } catch (error) {
     console.error('❌ Erro no upload:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    res.status(500).json({ 
+      success: false,
+      error: 'Erro interno do servidor',
+      details: error.message 
+    });
   }
 });
 
@@ -2251,56 +2341,39 @@ app.put('/api/documents/:id', authMiddleware, upload.single('thumbnail'), async 
       return res.status(400).json({ error: 'Visibilidade inválida' });
     }
 
-    const finalFileUrl = fileUrl || (fileName ? `/documents/${fileName}` : null);
+    // ✅ BUSCAR DOCUMENTO ATUAL PRIMEIRO
+    const currentDoc = await pool.query(`
+      SELECT * FROM documentos WHERE id = $1 AND ativo = true
+    `, [id]);
+
+    if (currentDoc.rows.length === 0) {
+      return res.status(404).json({ error: 'Documento não encontrado ou inativo' });
+    }
+
+    const documento = currentDoc.rows[0];
+    const finalFileUrl = fileUrl || (fileName ? `/documents/${fileName}` : documento.url_arquivo);
     
     // ✅ PROCESSAR THUMBNAIL SE FORNECIDA
-    let thumbnailUrl = null;
+    let thumbnailUrl = documento.thumbnail_url; // Manter atual por padrão
     if (thumbnailFile) {
       thumbnailUrl = `/thumbnails/${thumbnailFile.filename}`;
       console.log(`📸 Nova thumbnail customizada: ${thumbnailUrl}`);
     }
 
-    // ✅ ATUALIZAR NO BANCO (só atualizar thumbnail_url se nova thumbnail foi enviada)
-    let query, params;
-    
-    if (thumbnailFile) {
-      // Atualizar COM nova thumbnail
-      query = `
-        UPDATE documentos SET
-          titulo = COALESCE($1, titulo),
-          descricao = COALESCE($2, descricao),
-          categoria = COALESCE($3, categoria),
-          nome_arquivo = COALESCE($4, nome_arquivo),
-          url_arquivo = COALESCE($5, url_arquivo),
-          thumbnail_url = $6,
-          visibilidade = COALESCE($7, visibilidade),
-          atualizado_em = CURRENT_TIMESTAMP
-        WHERE id = $8 AND ativo = true
-        RETURNING *
-      `;
-      params = [title, description, category, fileName, finalFileUrl, thumbnailUrl, visibilidade, id];
-    } else {
-      // Atualizar SEM modificar thumbnail
-      query = `
-        UPDATE documentos SET
-          titulo = COALESCE($1, titulo),
-          descricao = COALESCE($2, descricao),
-          categoria = COALESCE($3, categoria),
-          nome_arquivo = COALESCE($4, nome_arquivo),
-          url_arquivo = COALESCE($5, url_arquivo),
-          visibilidade = COALESCE($6, visibilidade),
-          atualizado_em = CURRENT_TIMESTAMP
-        WHERE id = $7 AND ativo = true
-        RETURNING *
-      `;
-      params = [title, description, category, fileName, finalFileUrl, visibilidade, id];
-    }
-
-    const result = await pool.query(query, params);
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Documento não encontrado ou inativo' });
-    }
+    // ✅ ATUALIZAR NO BANCO
+    const result = await pool.query(`
+      UPDATE documentos SET
+        titulo = COALESCE($1, titulo),
+        descricao = COALESCE($2, descricao),
+        categoria = COALESCE($3, categoria),
+        nome_arquivo = COALESCE($4, nome_arquivo),
+        url_arquivo = COALESCE($5, url_arquivo),
+        thumbnail_url = $6,
+        visibilidade = COALESCE($7, visibilidade),
+        atualizado_em = CURRENT_TIMESTAMP
+      WHERE id = $8 AND ativo = true
+      RETURNING *
+    `, [title, description, category, fileName, finalFileUrl, thumbnailUrl, visibilidade, id]);
 
     console.log(`📝 Documento atualizado:`, {
       id: result.rows[0].id,
@@ -2309,18 +2382,25 @@ app.put('/api/documents/:id', authMiddleware, upload.single('thumbnail'), async 
       nova_thumbnail: !!thumbnailFile
     });
 
+    // ✅ RESPOSTA PADRONIZADA
     res.json({ 
       success: true, 
       documento: result.rows[0],
+      message: thumbnailFile ? 
+        'Documento e thumbnail atualizados!' : 
+        'Documento atualizado com sucesso!',
       nova_thumbnail: !!thumbnailFile
     });
 
   } catch (error) {
     console.error('❌ Erro ao atualizar documento:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    res.status(500).json({ 
+      success: false,
+      error: 'Erro interno do servidor',
+      details: error.message 
+    });
   }
 });
-
 
 // ======================= ATUALIZAR ARQUIVO EXISTENTE =======================
 app.put('/api/documents/:id/upload', authMiddleware, upload.single('file'), async (req, res) => {
@@ -2435,7 +2515,7 @@ app.delete('/api/documents/:id/thumbnail', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Buscar documento atual para pegar thumbnail e URL
+    // Buscar documento atual
     const docResult = await pool.query(`
       SELECT thumbnail_url, url_arquivo, titulo 
       FROM documentos 
@@ -2443,21 +2523,29 @@ app.delete('/api/documents/:id/thumbnail', authMiddleware, async (req, res) => {
     `, [id]);
     
     if (docResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Documento não encontrado' });
+      return res.status(404).json({ 
+        success: false,
+        error: 'Documento não encontrado' 
+      });
     }
     
     const documento = docResult.rows[0];
     
-    // Deletar arquivo físico se existir e for customizada (não automática)
-    if (documento.thumbnail_url && documento.thumbnail_url.startsWith('/thumbnails/') && 
-        !documento.thumbnail_url.includes('auto_') && !documento.thumbnail_url.includes('gen_')) {
+    // ✅ Deletar arquivo físico se for thumbnail customizada
+    if (documento.thumbnail_url && documento.thumbnail_url.startsWith('/thumbnails/')) {
+      // ✅ MELHORADO: Verificar se não é thumbnail automática
+      const isAutoGenerated = documento.thumbnail_url.includes('auto_') || 
+                             documento.thumbnail_url.includes('gen_') ||
+                             /\d{13}_[a-zA-Z0-9-_]+\.png$/.test(documento.thumbnail_url); // Timestamp pattern
       
-      const thumbnailPath = path.join(getThumbnailsPath(), path.basename(documento.thumbnail_url));
-      try {
-        await fs.unlink(thumbnailPath);
-        console.log(`🗑️ Thumbnail removida: ${thumbnailPath}`);
-      } catch (error) {
-        console.error('⚠️ Erro ao remover arquivo físico:', error);
+      if (!isAutoGenerated) {
+        const thumbnailPath = path.join(getThumbnailsPath(), path.basename(documento.thumbnail_url));
+        try {
+          await fs.unlink(thumbnailPath);
+          console.log(`🗑️ Thumbnail customizada removida: ${thumbnailPath}`);
+        } catch (error) {
+          console.error('⚠️ Erro ao remover arquivo físico:', error);
+        }
       }
     }
     
@@ -2469,8 +2557,10 @@ app.delete('/api/documents/:id/thumbnail', authMiddleware, async (req, res) => {
       WHERE id = $1
     `, [id]);
     
-    // Se for Google Sheets, gerar thumbnail automática
-    if (documento.url_arquivo.includes('docs.google.com/spreadsheets')) {
+    // ✅ Se for Google Sheets, gerar thumbnail automática
+    const vaiGerarAutomatica = documento.url_arquivo && documento.url_arquivo.includes('docs.google.com/spreadsheets');
+    
+    if (vaiGerarAutomatica) {
       console.log('📋 Gerando thumbnail automática após remoção...');
       
       const sheetId = documento.url_arquivo.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1];
@@ -2478,6 +2568,7 @@ app.delete('/api/documents/:id/thumbnail', authMiddleware, async (req, res) => {
         setTimeout(async () => {
           try {
             await generateThumbnailForDocument(sheetId, id, documento.titulo);
+            console.log(`✅ Thumbnail automática regenerada para documento ${id}`);
           } catch (error) {
             console.error('❌ Erro ao gerar thumbnail automática:', error);
           }
@@ -2488,18 +2579,21 @@ app.delete('/api/documents/:id/thumbnail', authMiddleware, async (req, res) => {
     console.log(`🗑️ Thumbnail customizada removida:`, {
       documento_id: id,
       titulo: documento.titulo,
-      thumbnail_removida: documento.thumbnail_url
+      thumbnail_removida: documento.thumbnail_url,
+      vai_gerar_automatica: vaiGerarAutomatica
     });
     
+    // ✅ RESPOSTA PADRONIZADA
     res.json({
       success: true,
       message: 'Thumbnail customizada removida com sucesso',
-      vai_gerar_automatica: documento.url_arquivo.includes('docs.google.com/spreadsheets')
+      vai_gerar_automatica: vaiGerarAutomatica
     });
     
   } catch (error) {
     console.error('❌ Erro ao remover thumbnail:', error);
     res.status(500).json({
+      success: false,
       error: 'Erro ao remover thumbnail',
       details: error.message
     });
