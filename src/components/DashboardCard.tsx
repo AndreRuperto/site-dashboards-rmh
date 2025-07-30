@@ -238,7 +238,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
   const handleDelete = async () => {
     const confirmed = await confirm({
       title: 'Excluir Dashboard',
-      description: `Tem certeza que deseja excluir o dashboard "${dashboard.titulo}"? Esta ação não pode ser desfeita.`,
+      description: `Tem certeza que deseja excluir o dashboard "${dashboard.titulo}"?`,
       confirmText: 'Sim, Excluir',
       cancelText: 'Cancelar',
       variant: 'destructive',

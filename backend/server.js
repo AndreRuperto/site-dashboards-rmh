@@ -792,7 +792,10 @@ app.use(
           "https://sistema.resendemh.com.br",
           "https://docs.google.com",
           "https://drive.google.com",
-          "https://*.googleusercontent.com"
+          "https://*.googleusercontent.com",
+          // ✅ ADICIONAR ESTES DOMÍNIOS PARA THUMBNAILS DO GOOGLE DRIVE
+          "https://work.fife.usercontent.google.com",
+          "https://*.usercontent.google.com"
         ].filter(Boolean), // Remove valores null
         frameSrc: [
           "'self'",
@@ -809,7 +812,7 @@ app.use(
           "https://app.fabric.microsoft.com",
           "https://cdnjs.cloudflare.com"
         ],
-        // ✅ ADICIONAR worker-src ESPECÍFICO
+        // ✅ WORKER-SRC PARA PDF.js
         workerSrc: [
           "'self'",
           "blob:",
@@ -820,7 +823,13 @@ app.use(
           "'unsafe-inline'",
           "https://fonts.googleapis.com"
         ],
-        imgSrc: ["'self'", "data:", "https:"],
+        // ✅ CORRIGIR: ADICIONAR "blob:" PARA SVGs GERADOS
+        imgSrc: [
+          "'self'", 
+          "data:", 
+          "https:",
+          "blob:"  // ← ESTA É A CORREÇÃO PRINCIPAL
+        ],
         fontSrc: ["'self'", "https:", "data:"]
       }
     }
@@ -1152,14 +1161,250 @@ async function generateDefaultThumbnail(imagePath, sheetId, title = 'Planilha Pr
   }
 }
 
+// ✅ ADICIONAR ESTA FUNÇÃO APÓS generateDefaultThumbnail no seu server.js:
+async function generateDefaultPresentationThumbnail(imagePath, presentationId, title = 'Apresentação Privada') {
+  const sharp = require('sharp');
+  const path = require('path');
+  
+  console.log(`🎨 Gerando thumbnail padrão para presentation...`);
+  
+  // ✅ MESMA ESTRUTURA - CORES AMARELAS
+  const svgImage = `
+    <svg width="400" height="300" xmlns="http://www.w3.org/2000/svg">
+      <!-- Background gradient amarelo -->
+      <defs>
+        <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#fbbf24;stop-opacity:0.1" />
+          <stop offset="100%" style="stop-color:#fbbf24;stop-opacity:0.3" />
+        </linearGradient>
+      </defs>
+      
+      <!-- Background -->
+      <rect width="400" height="300" fill="url(#bgGradient)"/>
+      
+      <!-- Slide principal (centro) -->
+      <rect x="80" y="60" width="240" height="180" rx="8" fill="white" stroke="#fbbf24" stroke-width="2"/>
+      
+      <!-- Linhas de conteúdo simulando texto -->
+      <rect x="90" y="70" width="200" height="8" rx="4" fill="#d1d5db"/>
+      <rect x="90" y="85" width="200" height="8" rx="4" fill="#d1d5db"/>
+      <rect x="90" y="100" width="200" height="8" rx="4" fill="#d1d5db"/>
+      <rect x="90" y="115" width="200" height="8" rx="4" fill="#d1d5db"/>
+      <rect x="90" y="130" width="140" height="8" rx="4" fill="#d1d5db"/>
+      <rect x="90" y="145" width="200" height="8" rx="4" fill="#d1d5db"/>
+      <rect x="90" y="160" width="200" height="8" rx="4" fill="#d1d5db"/>
+      <rect x="90" y="175" width="200" height="8" rx="4" fill="#d1d5db"/>
+      <rect x="90" y="190" width="200" height="8" rx="4" fill="#d1d5db"/>
+      <rect x="90" y="205" width="200" height="8" rx="4" fill="#d1d5db"/>
+      <rect x="90" y="220" width="160" height="8" rx="4" fill="#d1d5db"/>
+
+      <!-- Slides em miniatura (lateral) -->
+      <rect x="30" y="80" width="40" height="30" rx="3" fill="white" stroke="#9ca3af"/>
+      <rect x="30" y="120" width="40" height="30" rx="3" fill="#fbbf24" opacity="0.3" stroke="#fbbf24"/>
+      <rect x="30" y="160" width="40" height="30" rx="3" fill="white" stroke="#9ca3af"/>
+      <rect x="30" y="200" width="40" height="30" rx="3" fill="white" stroke="#9ca3af"/>
+  
+    </svg>
+  `;
+
+  // Criar a imagem base com sharp
+  const baseImage = await sharp(Buffer.from(svgImage))
+    .png()
+    .toBuffer();
+
+  // Caminho para o cadeado (reutilizar o mesmo do sheets)
+  const cadeadoPath = path.join(__dirname, '..', 'public', 'cadeado.png');
+  console.log(`Cadeado localizado em: ${cadeadoPath}`);
+  
+  try {
+    // Redimensionar o cadeado para 20x20 pixels bem pequeno
+    const cadeadoResized = await sharp(cadeadoPath)
+      .resize(20, 20)
+      .png()
+      .toBuffer();
+    
+    // Compor a imagem base com o cadeado bem pequeno no canto superior direito
+    await sharp(baseImage)
+      .composite([
+        {
+          input: cadeadoResized,
+          top: 5,
+          left: 375,
+        }
+      ])
+      .png()
+      .toFile(imagePath);
+      
+    console.log(`✅ Thumbnail de presentation criado com cadeado sobreposto`);
+    
+  } catch (error) {
+    console.log(`⚠️ Erro ao sobrepor cadeado, salvando só o design:`, error.message);
+    
+    // Fallback: salvar só a imagem base se der erro com o cadeado
+    await sharp(baseImage)
+      .toFile(imagePath);
+      
+    console.log(`✅ Thumbnail simples de presentation criado (sem cadeado)`);
+  }
+}
+
+// ✅ 2. ADICIONAR FUNÇÃO PARA GERAR THUMBNAIL DE PRESENTATION:
+async function generateThumbnailForPresentation(presentationId, documentId, title) {
+  console.log(`🎬 generateThumbnailForPresentation iniciado - Presentation: ${presentationId}, Doc: ${documentId}, Title: ${title}`);
+  
+  try {
+    const thumbnailsPath = getThumbnailsPath();
+    const timestamp = Date.now();
+    const imageName = `auto_${timestamp}_${presentationId}.png`;
+    const imagePath = path.join(thumbnailsPath, imageName);
+    
+    console.log(`📁 Caminho da thumbnail: ${imagePath}`);
+    
+    // ✅ VERIFICAR SE DIRETÓRIO EXISTE
+    await fs.mkdir(thumbnailsPath, { recursive: true });
+    
+    // ✅ TENTAR CAPTURAR COM PUPPETEER PRIMEIRO
+    let browser = null;
+    let useDefaultThumbnail = false;
+    
+    try {
+      console.log(`🌐 Iniciando Puppeteer para Google Presentation...`);
+      
+      browser = await puppeteer.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-web-security',
+          '--no-first-run'
+        ]
+      });
+
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 720 });
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+      
+      // URL do Google Presentation
+      const presentationUrl = `https://docs.google.com/presentation/d/${presentationId}/edit#slide=id.p`;
+      
+      const response = await page.goto(presentationUrl, { 
+        waitUntil: 'domcontentloaded', 
+        timeout: 15000 
+      });
+      
+      // Verificar se é público (não redirecionou para login)
+      const currentUrl = page.url();
+      const isPublic = !currentUrl.includes('accounts.google.com') && response.ok();
+      
+      if (isPublic) {
+        console.log(`📸 Presentation público detectado - capturando screenshot`);
+        
+        // Aguardar carregar o conteúdo
+        await page.waitForTimeout(3000);
+        
+        // Tentar aguardar elementos específicos do Google Slides carregarem
+        try {
+          await page.waitForSelector('[data-test-id="presentation-canvas"], .punch-filmstrip, .punch-viewer-container', { timeout: 5000 });
+        } catch (selectorError) {
+          console.log('⚠️ Seletores específicos não encontrados, prosseguindo...');
+        }
+        
+        // Capturar screenshot
+        await page.screenshot({
+          path: imagePath,
+          fullPage: false,
+          clip: {
+            x: 0,
+            y: 0,
+            width: 1280,
+            height: 720
+          }
+        });
+        
+        console.log(`✅ Screenshot de presentation capturado: ${imageName}`);
+      } else {
+        console.log(`🔒 Presentation privado detectado - gerando thumbnail padrão`);
+        useDefaultThumbnail = true;
+      }
+      
+      if (browser) {
+        await browser.close();
+      }
+      
+    } catch (puppeteerError) {
+      console.error(`❌ Erro no Puppeteer para presentation:`, puppeteerError.message);
+      
+      if (browser) {
+        await browser.close();
+      }
+      
+      useDefaultThumbnail = true;
+    }
+    
+    // ✅ USAR THUMBNAIL PADRÃO SE NECESSÁRIO
+    if (useDefaultThumbnail) {
+      await generateDefaultPresentationThumbnail(imagePath, presentationId, title);
+    }
+    
+    // Atualizar banco de dados
+    const thumbnailUrl = `/thumbnails/${imageName}`;
+    const success = await updateThumbnailInDatabase(documentId, thumbnailUrl);
+    
+    if (success) {
+      console.log(`✅ Thumbnail de presentation criada e salva no banco: ${thumbnailUrl}`);
+      return {
+        success: true,
+        thumbnailUrl,
+        status: useDefaultThumbnail ? 'default_generated' : 'screenshot_captured'
+      };
+    } else {
+      throw new Error('Falha ao atualizar banco de dados');
+    }
+    
+  } catch (error) {
+    console.error(`❌ Erro em generateThumbnailForPresentation:`, error);
+    
+    // ✅ FALLBACK: Tentar criar pelo menos um arquivo básico
+    try {
+      const thumbnailsPath = getThumbnailsPath();
+      const timestamp = Date.now();
+      const imageName = `error_${timestamp}_${presentationId}.png`;
+      const imagePath = path.join(thumbnailsPath, imageName);
+      
+      await generateDefaultPresentationThumbnail(imagePath, presentationId, 'Erro ao Gerar');
+      
+      const thumbnailUrl = `/thumbnails/${imageName}`;
+      await updateThumbnailInDatabase(documentId, thumbnailUrl);
+      
+      console.log(`⚠️ Thumbnail de fallback para presentation criada: ${thumbnailUrl}`);
+      
+      return {
+        success: true,
+        thumbnailUrl,
+        status: 'error_fallback'
+      };
+      
+    } catch (fallbackError) {
+      console.error(`❌ Erro crítico no fallback de presentation:`, fallbackError);
+      return {
+        success: false,
+        status: 'critical_error',
+        error: fallbackError.message
+      };
+    }
+  }
+}
+
 app.get('/api/thumbnail', async (req, res) => {
   const sheetId = req.query.sheetId;
+  const presentationId = req.query.presentationId;
   const url = req.query.url;
   const documentId = req.query.documentId;
   
   // ✅ VALIDAR PARÂMETROS
-  if (!sheetId && !url) {
-    return res.status(400).send('Faltando sheetId ou url');
+  if (!sheetId && !presentationId && !url) {
+    return res.status(400).send('Faltando sheetId, presentationId ou url');
   }
 
   let browser = null;
@@ -1353,6 +1598,225 @@ app.get('/api/thumbnail', async (req, res) => {
       });
     }
 
+    // ✅ PROCESSAMENTO PARA GOOGLE PRESENTATIONS
+    if (presentationId) {
+      console.log(`🎬 Gerando thumbnail para Google Presentation: ${presentationId}`);
+      
+      const timestamp = Date.now();
+      const imageName = `auto_${timestamp}_${presentationId}.png`;
+      const imagePath = path.join(thumbnailDir, imageName);
+      
+      // Verificar cache primeiro
+      try {
+        const existingFiles = await fs.readdir(thumbnailDir);
+        const cachedFile = existingFiles.find(file => file.includes(presentationId) && file.endsWith('.png'));
+        
+        if (cachedFile) {
+          const cachedPath = path.join(thumbnailDir, cachedFile);
+          const stats = await fs.stat(cachedPath);
+          
+          if (stats.size > 0) {
+            console.log(`♻️ Cache encontrado: ${cachedFile}`);
+            const thumbnailUrl = `/thumbnails/${cachedFile}`;
+            
+            if (documentId) {
+              await updateThumbnailInDatabase(documentId, thumbnailUrl);
+            }
+            
+            return res.json({ thumbnailUrl, cached: true });
+          }
+        }
+      } catch (error) {
+        console.log(`📸 Gerando novo thumbnail para presentation...`);
+      }
+
+      console.log(`🌐 Iniciando Puppeteer para Google Presentation...`);
+      
+      let useDefaultThumbnail = false;
+      
+      try {
+        browser = await puppeteer.launch({
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-web-security',
+            '--no-first-run',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-blink-features=AutomationControlled',
+            '--disable-component-extensions-with-background-pages',
+            '--disable-default-apps',
+            '--mute-audio',
+            '--no-zygote',
+            '--disable-background-networking'
+          ]
+        });
+
+        const page = await browser.newPage();
+        await page.setViewport({ width: 1280, height: 720 });
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+        
+        // URL do Google Presentation
+        const presentationUrl = `https://docs.google.com/presentation/d/${presentationId}/edit#slide=id.p`;
+        
+        const response = await page.goto(presentationUrl, { 
+          waitUntil: 'domcontentloaded', 
+          timeout: 15000 
+        });
+        
+        // Verificar se é público (não redirecionou para login)
+        const currentUrl = page.url();
+        const isPublic = !currentUrl.includes('accounts.google.com') && response.ok();
+        
+        if (isPublic) {
+          console.log(`📸 Presentation público detectado - capturando screenshot`);
+          
+          // Aguardar carregar o conteúdo
+          await page.waitForTimeout(3000);
+          
+          // Tentar aguardar elementos específicos do Google Slides carregarem
+          try {
+            await page.waitForSelector('[data-test-id="presentation-canvas"], .punch-filmstrip, .punch-viewer-container', { timeout: 5000 });
+          } catch (selectorError) {
+            console.log('⚠️ Seletores específicos não encontrados, prosseguindo...');
+          }
+          
+          // Tentar fechar avisos como no Sheets
+          try {
+            await page.evaluate(() => {
+              const closeSelectors = [
+                '[aria-label*="Close"]',
+                '[aria-label*="Dismiss"]',
+                '[aria-label*="Fechar"]',
+                '[data-testid*="close"]',
+                '.close-button',
+                '[title*="Close"]',
+                'button[aria-label*="Close"]',
+                '[class*="dismiss"]',
+                '[class*="close"]',
+                '.docs-butterbar [role="button"]',
+                '.docs-butterbar button',
+                '[jsname][role="button"]',
+                '[data-tooltip*="Close"]',
+                '[data-tooltip*="Dismiss"]'
+              ];
+              
+              closeSelectors.forEach(selector => {
+                const elements = document.querySelectorAll(selector);
+                elements.forEach(el => {
+                  const text = el.textContent || '';
+                  const ariaLabel = el.getAttribute('aria-label') || '';
+                  
+                  if (text.includes('×') || 
+                      ariaLabel.includes('Close') ||
+                      ariaLabel.includes('Fechar') ||
+                      ariaLabel.includes('Dismiss') ||
+                      el.getAttribute('data-tooltip')?.includes('Close')) {
+                    console.log('🎯 Tentando clicar para fechar aviso');
+                    el.click();
+                  }
+                });
+              });
+              
+              // Remover banners diretamente
+              const bannerSelectors = [
+                '[class*="upgrade"]',
+                '[class*="banner"]',
+                '[class*="notification"]',
+                '.docs-butterbar-container',
+                '.docs-butterbar',
+                '[role="banner"]',
+                '.docs-omnibox-upgrade-tip',
+                '.docs-butterbar-wrap',
+                '[jsname="butterBarContent"]'
+              ];
+              
+              bannerSelectors.forEach(selector => {
+                const elements = document.querySelectorAll(selector);
+                elements.forEach(el => {
+                  const text = el.textContent || '';
+                  if (text.includes('compatível') || 
+                      text.includes('upgrade') ||
+                      text.includes('navegador') ||
+                      text.includes('browser') ||
+                      text.includes('versão') ||
+                      text.includes('atualiz')) {
+                    console.log('🗑️ Removendo banner de aviso');
+                    el.style.display = 'none';
+                    el.remove();
+                  }
+                });
+              });
+            });
+            
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          } catch (closeError) {
+            console.log(`⚠️ Erro ao tentar fechar avisos:`, closeError.message);
+          }
+          
+          // Capturar screenshot
+          await page.screenshot({
+            path: imagePath,
+            fullPage: false,
+            clip: {
+              x: 0,
+              y: 0,
+              width: 1280,
+              height: 720
+            }
+          });
+          
+          console.log(`✅ Screenshot de presentation capturado: ${imageName}`);
+        } else {
+          console.log(`🔒 Presentation privado detectado - gerando thumbnail padrão`);
+          useDefaultThumbnail = true;
+        }
+        
+        await browser.close();
+        browser = null;
+        
+      } catch (puppeteerError) {
+        console.error(`❌ Erro no Puppeteer para presentation:`, puppeteerError.message);
+        
+        if (browser) {
+          await browser.close();
+          browser = null;
+        }
+        
+        useDefaultThumbnail = true;
+      }
+      
+      // ✅ USAR THUMBNAIL PADRÃO SE NECESSÁRIO
+      if (useDefaultThumbnail) {
+        await generateDefaultPresentationThumbnail(imagePath, presentationId, 'Apresentação');
+      }
+      
+      // Verificar se arquivo foi criado
+      const stats = await fs.stat(imagePath);
+      console.log(`📏 Thumbnail de presentation: ${stats.size} bytes`);
+      
+      if (stats.size === 0) {
+        console.log(`⚠️ Thumbnail vazio - gerando padrão`);
+        await generateDefaultPresentationThumbnail(imagePath, presentationId, 'Erro na Captura');
+      }
+      
+      const thumbnailUrl = `/thumbnails/${imageName}`;
+      
+      if (documentId) {
+        await updateThumbnailInDatabase(documentId, thumbnailUrl);
+      }
+      
+      return res.json({ 
+        thumbnailUrl,
+        isPublic: !useDefaultThumbnail,
+        method: useDefaultThumbnail ? 'thumbnail-padrao' : 'screenshot-captured',
+        message: 'Thumbnail de presentation gerado com sucesso'
+      });
+    }
+
     // ✅ PROCESSAMENTO PARA SITES COMUNS
     if (url) {
       console.log(`🌐 Gerando screenshot para site: ${url}`);
@@ -1498,6 +1962,7 @@ app.get('/api/thumbnail', async (req, res) => {
     console.error('❌ Erro ao gerar thumbnail:', {
       message: error.message,
       sheetId: sheetId,
+      presentationId: presentationId,
       url: url,
       timestamp: new Date().toISOString()
     });
@@ -1511,6 +1976,12 @@ app.get('/api/thumbnail', async (req, res) => {
         imagePath = path.join(thumbnailDir, `${sheetId}.png`);
         await generateDefaultThumbnail(imagePath, sheetId, 'Erro Técnico');
         thumbnailUrl = `/thumbnails/${sheetId}.png`;
+      } else if (presentationId) {
+        const timestamp = Date.now();
+        const imageName = `error_${timestamp}_${presentationId}.png`;
+        imagePath = path.join(thumbnailDir, imageName);
+        await generateDefaultPresentationThumbnail(imagePath, presentationId, 'Erro Técnico');
+        thumbnailUrl = `/thumbnails/${imageName}`;
       } else if (url) {
         const domain = new URL(url).hostname.replace(/[^a-zA-Z0-9]/g, '-');
         imagePath = path.join(thumbnailDir, `website-${domain}.png`);
@@ -1530,6 +2001,7 @@ app.get('/api/thumbnail', async (req, res) => {
         error: 'Erro ao gerar thumbnail',
         details: error.message,
         sheetId: sheetId,
+        presentationId: presentationId,
         url: url
       });
     }
@@ -2137,25 +2609,6 @@ app.get('/api/documents', authMiddleware, async (req, res) => {
       categorias: [],
       message: error.message 
     });
-  }
-});
-
-// ✅ ENDPOINT ALTERNATIVO PARA ATUALIZAR THUMBNAIL MANUALMENTE
-app.post('/api/documents/:id/thumbnail', authMiddleware, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { thumbnailUrl } = req.body;
-    
-    const success = await updateThumbnailInDatabase(id, thumbnailUrl);
-    
-    if (success) {
-      res.json({ success: true, message: 'Thumbnail atualizado com sucesso' });
-    } else {
-      res.status(404).json({ error: 'Documento não encontrado' });
-    }
-  } catch (error) {
-    console.error('❌ Erro ao atualizar thumbnail:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 

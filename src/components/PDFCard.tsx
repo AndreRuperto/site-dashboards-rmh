@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, User, Eye, Edit, Trash2, Download, FileText, BarChart3, Image, AlertCircle, Loader2, ExternalLink, Globe } from 'lucide-react';
+import { Calendar, User, Eye, Edit, Trash2, Download, FileText, BarChart3, Image, AlertCircle, Loader2, ExternalLink, Globe, Monitor } from 'lucide-react';
 import { PDFDocument } from '@/contexts/PDFContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -28,6 +28,7 @@ const isWebLink = (url: string): boolean => {
   const specialPatterns = [
     /docs\.google\.com\/spreadsheets/i,
     /docs\.google\.com\/document/i,
+    /docs\.google\.com\/presentation/i,
     /drive\.google\.com/i,
     /\.xlsx?$/i,
     /\.docx?$/i,
@@ -101,18 +102,19 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
   };
 
   // Detect file type
-  const getFileType = (url: string): 'pdf' | 'google-sheet' | 'google-doc' | 'image' | 'web-link' | 'unknown' => {
-    if (isWebLink(url)) return 'web-link';
+  const getFileType = (url: string): 'pdf' | 'google-sheet' | 'google-doc' | 'google-presentation' | 'image' | 'web-link' | 'unknown' => {
     if (url.includes('docs.google.com/spreadsheets')) return 'google-sheet';
     if (url.includes('docs.google.com/document')) return 'google-doc';
+    if (url.includes('docs.google.com/presentation')) return 'google-presentation';
     if (url.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) return 'image';
     if (url.includes('.pdf') || url.includes('pdf')) return 'pdf';
+    if (isWebLink(url)) return 'web-link';
     return 'unknown';
   };
 
   const isExternalLink = (url: string): boolean => {
     const fileType = getFileType(url);
-    return fileType === 'google-sheet' || fileType === 'google-doc' || fileType === 'web-link';
+    return fileType === 'google-sheet' || fileType === 'google-doc' || fileType === 'google-presentation' ||fileType === 'web-link';
   };
 
   // Função para abrir link externo
@@ -135,6 +137,8 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
         return { icon: BarChart3, label: 'Planilha', color: 'text-green-600' };
       case 'google-doc': 
         return { icon: FileText, label: 'Documento', color: 'text-blue-600' };
+      case 'google-presentation': // ✅ NOVO
+        return { icon: Monitor, label: 'Apresentação', color: 'text-orange-600' };
       case 'image': 
         return { icon: Image, label: 'Imagem', color: 'text-purple-600' };
       case 'pdf': 
@@ -342,6 +346,50 @@ const PDFCard: React.FC<PDFCardProps> = ({ document, onEdit, onDelete }) => {
           setIsLoadingThumbnail(false);
           return;
         }
+      }
+      // Na função generateThumbnail() do frontend, seção google-presentation:
+
+      if (fileType === 'google-presentation') {
+        const presentationId = document.fileUrl.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1];
+        if (presentationId) {
+          console.log(`🎬 Processando Google Presentation: ${presentationId}`);
+          
+          // ✅ TENTAR GERAR THUMBNAIL AUTOMÁTICA
+          try {
+            const response = await fetch(`${API_BASE_URL}/api/thumbnail?presentationId=${presentationId}&documentId=${document.id}`);
+            
+            if (response.ok) {
+              const data = await response.json();
+              const fullThumbnailUrl = data.thumbnailUrl.startsWith('http')
+                ? data.thumbnailUrl
+                : `${API_BASE_URL}${data.thumbnailUrl}`;
+                
+              setThumbnailUrl(fullThumbnailUrl);
+              console.log(`✅ Miniatura backend carregada: ${fullThumbnailUrl}`);
+              setIsLoadingThumbnail(false);
+              return;
+            }
+          } catch (error) {
+            console.warn('⚠️ Backend falhou, tentando Google Drive:', error);
+          }
+          
+          // ✅ FALLBACK: Google Drive apenas
+          const driveThumbUrl = `https://drive.google.com/thumbnail?id=${presentationId}&sz=w500-h650`;
+          
+          fetch(driveThumbUrl, { method: 'HEAD', mode: 'no-cors' })
+            .then(() => {
+              setThumbnailUrl(driveThumbUrl);
+              console.log('✅ Miniatura Google Drive carregada');
+              setIsLoadingThumbnail(false);
+            })
+            .catch(() => {
+              // ✅ SEM FALLBACK LOCAL - apenas ícone
+              console.warn('⚠️ Todas as opções falharam');
+              setThumbnailError(true);
+              setIsLoadingThumbnail(false);
+            });
+        }
+        return;
       }
       
       // ✅ PRIORIDADE 4: Imagens

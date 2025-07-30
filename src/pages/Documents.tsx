@@ -353,7 +353,7 @@ const DocumentsPage = () => {
         onClose={handleCloseConfirmDialog}
         onConfirm={handleConfirmDelete}
         title="Confirmar Exclusão"
-        description={`Tem certeza que deseja excluir o documento "${confirmDialog.documentTitle}"? Esta ação não pode ser desfeita.`}
+        description={`Tem certeza que deseja excluir o documento "${confirmDialog.documentTitle}"?`}
         confirmText="Excluir"
         cancelText="Cancelar"
         variant="destructive"
