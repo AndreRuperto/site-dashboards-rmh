@@ -109,15 +109,15 @@ const AppContent = () => {
             } 
           />
           
-          {/* ORGANOGRAMA - Todos podem ver */}
-          <Route 
+          {/* ORGANOGRAMA - Todos podem ver - ADICIONAR QUANDO FOR MEXER COM ORGANOGRAMA*/}
+          {/* <Route 
             path="/organograma" 
             element={
               <ProtectedRoute>
                 <Organograma />
               </ProtectedRoute>
             } 
-          />
+          /> */}
           
           {/* ROTAS ADMINISTRATIVAS - SÓ ADMINS */}
           <Route 

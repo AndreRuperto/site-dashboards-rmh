@@ -1186,16 +1186,16 @@ async function generateDefaultPresentationThumbnail(imagePath, presentationId, t
       <rect x="80" y="60" width="240" height="180" rx="8" fill="white" stroke="#fbbf24" stroke-width="2"/>
       
       <!-- Linhas de conteúdo simulando texto -->
-      <rect x="90" y="70" width="200" height="8" rx="4" fill="#d1d5db"/>
-      <rect x="90" y="85" width="200" height="8" rx="4" fill="#d1d5db"/>
-      <rect x="90" y="100" width="200" height="8" rx="4" fill="#d1d5db"/>
-      <rect x="90" y="115" width="200" height="8" rx="4" fill="#d1d5db"/>
+      <rect x="90" y="70" width="220" height="8" rx="4" fill="#d1d5db"/>
+      <rect x="90" y="85" width="220" height="8" rx="4" fill="#d1d5db"/>
+      <rect x="90" y="100" width="220" height="8" rx="4" fill="#d1d5db"/>
+      <rect x="90" y="115" width="220" height="8" rx="4" fill="#d1d5db"/>
       <rect x="90" y="130" width="140" height="8" rx="4" fill="#d1d5db"/>
-      <rect x="90" y="145" width="200" height="8" rx="4" fill="#d1d5db"/>
-      <rect x="90" y="160" width="200" height="8" rx="4" fill="#d1d5db"/>
-      <rect x="90" y="175" width="200" height="8" rx="4" fill="#d1d5db"/>
-      <rect x="90" y="190" width="200" height="8" rx="4" fill="#d1d5db"/>
-      <rect x="90" y="205" width="200" height="8" rx="4" fill="#d1d5db"/>
+      <rect x="90" y="145" width="220" height="8" rx="4" fill="#d1d5db"/>
+      <rect x="90" y="160" width="220" height="8" rx="4" fill="#d1d5db"/>
+      <rect x="90" y="175" width="220" height="8" rx="4" fill="#d1d5db"/>
+      <rect x="90" y="190" width="220" height="8" rx="4" fill="#d1d5db"/>
+      <rect x="90" y="205" width="220" height="8" rx="4" fill="#d1d5db"/>
       <rect x="90" y="220" width="160" height="8" rx="4" fill="#d1d5db"/>
 
       <!-- Slides em miniatura (lateral) -->

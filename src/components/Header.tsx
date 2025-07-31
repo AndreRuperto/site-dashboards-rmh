@@ -103,14 +103,14 @@ const Header = () => {
               >
                 <span>Emails</span>
               </Button>
-
-              <Button
+              {/* ADICIONAR QUANDO FOR MEXER COM ORGANOGRAMA */}
+              {/* <Button
                 variant="ghost"
                 onClick={goToOrganograma}
                 className="text-rmh-white hover:text-white hover:bg-rmh-lightGreen/20 flex items-center space-x-2"
               >
                 <span>Organograma</span>
-              </Button>
+              </Button> */}
             </nav>
           </div>
 

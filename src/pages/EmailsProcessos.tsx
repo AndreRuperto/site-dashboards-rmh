@@ -79,9 +79,12 @@ const EmailsProcessos = () => {
   const [filtroStatus, setFiltroStatus] = useState('todos');
   const [filtroEmail, setFiltroEmail] = useState('todos');
   const [filtroPessoa, setFiltroPessoa] = useState('todos');
+  const [filtroObjetoAtendimento, setFiltroObjetoAtendimento] = useState('todos');
   const [termoBusca, setTermoBusca] = useState('');
   const [processoDetalhado, setProcessoDetalhado] = useState<ProcessoData | null>(null);
   const [buscaIdAtendimento, setBuscaIdAtendimento] = useState('');
+  const [objetoBusca, setObjetoBusca] = useState('');
+  const [objetoSelectorAberto, setObjetoSelectorAberto] = useState(false);
   
   // Estados para paginação
   const [dataInicioFiltro, setDataInicioFiltro] = useState('');
@@ -217,10 +220,25 @@ const EmailsProcessos = () => {
 
   // Obter setores únicos dos processos
   const setoresUnicos = [...new Set(processos.map(p => p.tipoProcesso).filter(Boolean))];
-  
+  const objetosAtendimentoUnicos = [...new Set(processos.map(p => p.objetoAtendimento).filter(Boolean))]
+  .sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
   // Obter responsáveis únicos
   const responsaveisUnicos = [...new Set(processos.map(p => p.responsavel).filter(Boolean))];
+  const objetosFiltrados = objetosAtendimentoUnicos.filter(objeto =>
+    objeto.toLowerCase().includes(objetoBusca.toLowerCase())
+  );
+  const selecionarObjeto = (objeto: string) => {
+    setFiltroObjetoAtendimento(objeto);
+    setObjetoSelectorAberto(false);
+    setObjetoBusca('');
+  };
 
+  // ✅ 5. FUNÇÃO para obter texto exibido no select
+  const getObjetoSelecionadoTexto = () => {
+    if (filtroObjetoAtendimento === 'todos') return 'Todos os objetos';
+    const objeto = filtroObjetoAtendimento;
+    return objeto.length > 50 ? `${objeto.substring(0, 50)}...` : objeto;
+  };
   const verificarDataNoIntervalo = (dataProcesso: string, dataInicio: string, dataFim: string): boolean => {
   if (!dataInicio && !dataFim) return true;
   
@@ -281,8 +299,10 @@ const EmailsProcessos = () => {
       processo.cliente?.toLowerCase().includes(termoBusca.toLowerCase()) ||
       processo.numeroProcesso?.toLowerCase().includes(termoBusca.toLowerCase());
     const matchData = verificarDataNoIntervalo(processo.dataAjuizamento, dataInicioFiltro, dataFimFiltro);
-
-    return matchSetor && matchStatus && matchEmail && matchPessoa && matchBusca && matchData && matchIdAtendimento;
+    const matchObjetoAtendimento = filtroObjetoAtendimento === 'todos' || 
+      processo.objetoAtendimento === filtroObjetoAtendimento ||  // Seleção exata
+      (objetoBusca !== '' && processo.objetoAtendimento?.toLowerCase().includes(objetoBusca.toLowerCase()));
+    return matchSetor && matchStatus && matchEmail && matchPessoa && matchBusca && matchData && matchIdAtendimento && matchObjetoAtendimento;
   });
 
   const stats = {
@@ -320,7 +340,22 @@ const EmailsProcessos = () => {
   // Resetar página quando os filtros mudarem
   useEffect(() => {
     setPaginaAtual(1);
-  }, [filtroSetor, filtroStatus, filtroEmail, filtroPessoa, termoBusca, buscaIdAtendimento]);
+  }, [filtroSetor, filtroStatus, filtroEmail, filtroPessoa, termoBusca, buscaIdAtendimento, filtroObjetoAtendimento]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (!target.closest('[data-objeto-selector]')) {
+        setObjetoSelectorAberto(false);
+        setObjetoBusca('');
+      }
+    };
+
+    if (objetoSelectorAberto) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [objetoSelectorAberto]);
 
   // Função para gerar números das páginas a serem exibidas
   const gerarPaginasExibicao = () => {
@@ -355,10 +390,18 @@ const EmailsProcessos = () => {
   const toggleSelecionarTodos = () => {
     if (!podeEnviarEmails) return;
     
-    if (processosSelecionados.length === processosFiltrados.length) {
-      setProcessosSelecionados([]);
+    // ✅ Usar processosPaginaAtual em vez de processosFiltrados para selecionar apenas a página atual
+    const processosVisiveisPagina = processosPaginaAtual.map(p => p.id);
+    
+    // Verificar se todos os processos da página atual estão selecionados
+    const todosSelecionados = processosVisiveisPagina.every(id => processosSelecionados.includes(id));
+    
+    if (todosSelecionados) {
+      // Desmarcar todos da página atual
+      setProcessosSelecionados(prev => prev.filter(id => !processosVisiveisPagina.includes(id)));
     } else {
-      setProcessosSelecionados(processosFiltrados.map(p => p.id));
+      // Marcar todos da página atual
+      setProcessosSelecionados(prev => [...new Set([...prev, ...processosVisiveisPagina])]);
     }
   };
 
@@ -589,7 +632,18 @@ const EmailsProcessos = () => {
                       />
                     </div>
                   </div>
-
+                                    <div>
+                    <label className="block text-sm font-medium mb-2">ID do Atendimento</label>
+                    <div className="relative">
+                      <Hash className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                      <input
+                        type="text"
+                        value={buscaIdAtendimento}
+                        onChange={(e) => setBuscaIdAtendimento(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                      />
+                    </div>
+                  </div>
                   <div>
                     <label className="block text-sm font-medium mb-2">Tipo de processo</label>
                     <select
@@ -616,23 +670,87 @@ const EmailsProcessos = () => {
                       <option value="Pendente">Email Pendente</option>
                     </select>
                   </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2">ID do Atendimento</label>
-                    <div className="relative">
-                      <Hash className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                      <input
-                        type="text"
-                        value={buscaIdAtendimento}
-                        onChange={(e) => setBuscaIdAtendimento(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                      />
-                    </div>
-                  </div>
                 </div>
 
                 {/* Segunda linha */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  {/* OBJETO DE ATENDIMENTO */}
+                  <div className="relative" data-objeto-selector>
+                    <label className="block text-sm font-medium mb-2">Objeto de Atendimento</label>
+                    
+                    {/* Botão principal do select */}
+                    <button
+                      type="button"
+                      onClick={() => setObjetoSelectorAberto(!objetoSelectorAberto)}
+                      className="w-full px-3 py-2 text-left border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white flex items-center justify-between hover:bg-gray-50"
+                    >
+                      <span className="truncate">{getObjetoSelecionadoTexto()}</span>
+                      <svg className={`w-4 h-4 transition-transform ${objetoSelectorAberto ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+
+                    {/* Dropdown com busca */}
+                    {objetoSelectorAberto && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-hidden">
+                        {/* Campo de busca */}
+                        <div className="p-2 border-b">
+                          <div className="relative">
+                            <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
+                            <input
+                              type="text"
+                              placeholder="Buscar objeto..."
+                              value={objetoBusca}
+                              onChange={(e) => setObjetoBusca(e.target.value)}
+                              className="w-full pl-8 pr-3 py-2 text-sm border rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              autoFocus
+                            />
+                          </div>
+                        </div>
+
+                        {/* Lista de opções */}
+                        <div className="max-h-48 overflow-y-auto">
+                          {/* Opção "Todos" */}
+                          <button
+                            type="button"
+                            onClick={() => selecionarObjeto('todos')}
+                            className={`w-full px-3 py-2 text-left text-sm hover:bg-blue-50 flex items-center ${
+                              filtroObjetoAtendimento === 'todos' ? 'bg-blue-100 text-blue-700' : 'text-gray-700'
+                            }`}
+                          >
+                            <span className="truncate">Todos os objetos</span>
+                            {filtroObjetoAtendimento === 'todos' && (
+                              <Check className="ml-auto h-4 w-4 text-blue-600" />
+                            )}
+                          </button>
+
+                          {/* Opções filtradas */}
+                          {objetosFiltrados.length > 0 ? (
+                            objetosFiltrados.map((objeto, index) => (
+                              <button
+                                key={index}
+                                type="button"
+                                onClick={() => selecionarObjeto(objeto)}
+                                className={`w-full px-3 py-2 text-left text-sm hover:bg-blue-50 flex items-center ${
+                                  filtroObjetoAtendimento === objeto ? 'bg-blue-100 text-blue-700' : 'text-gray-700'
+                                }`}
+                                title={objeto} // Tooltip com texto completo
+                              >
+                                <span className="truncate">{objeto}</span>
+                                {filtroObjetoAtendimento === objeto && (
+                                  <Check className="ml-auto h-4 w-4 text-blue-600 flex-shrink-0" />
+                                )}
+                              </button>
+                            ))
+                          ) : (
+                            <div className="px-3 py-2 text-sm text-gray-500 text-center">
+                              Nenhum objeto encontrado
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   <div>
                     <label className="block text-sm font-medium mb-2">Autuação do processo de</label>
                     <input
