@@ -2552,7 +2552,7 @@ app.get('/api/documents', authMiddleware, async (req, res) => {
       FROM documentos d
       LEFT JOIN usuarios u ON d.enviado_por = u.id
       WHERE d.ativo = true 
-      ORDER BY d.criado_em DESC
+      ORDER BY d.criado_em ASC
     `);
 
     console.log(`📄 Query executada - encontrados ${result.rows.length} documentos`);
