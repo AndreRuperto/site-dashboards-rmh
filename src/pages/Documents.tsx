@@ -20,7 +20,7 @@ const DocumentsPage = () => {
   
   const categories = [
     "Institucional",
-    "Pessoas",
+    "Colaboradores",
     "TI / Acessos",
     "Escalas e Rotinas",
     "Documentos Operacionais",
@@ -336,7 +336,7 @@ const DocumentsPage = () => {
           document={editingDocument}
           categories={[
             "Institucional",
-            "Pessoas",
+            "Colaboradores",
             "TI / Acessos",
             "Escalas e Rotinas",
             "Documentos Operacionais",
