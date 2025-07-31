@@ -131,9 +131,9 @@ const AppContent = () => {
           
           {/* CONFIGURAÇÕES DO SISTEMA */}
           <Route 
-            path="/admin/settings" 
+            path="/configuracoes" 
             element={
-              <ProtectedRoute requireAdmin={true}>
+              <ProtectedRoute>
                 <ConfiguracoesPessoais />
               </ProtectedRoute>
             } 

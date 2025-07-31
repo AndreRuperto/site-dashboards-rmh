@@ -185,19 +185,21 @@ const Header = () => {
                   <DropdownMenuSeparator />
                 </div>
 
-                {/* ✅ ADMINISTRAÇÃO */}
+                {/* ✅ CONFIGURAÇÕES PESSOAIS - TODOS OS USUÁRIOS */}
+                <DropdownMenuItem onClick={() => navigate('/configuracoes')} className="cursor-pointer">
+                  <Settings className="h-4 w-4 mr-2" />
+                  Configurações
+                </DropdownMenuItem>
+
+                {/* ✅ ADMINISTRAÇÃO - SÓ ADMINS */}
                 {user?.tipo_usuario === 'admin' && (
                   <>
+                    <DropdownMenuSeparator />
                     <DropdownMenuLabel>Administração</DropdownMenuLabel>
                     <DropdownMenuItem onClick={goToAdminUsers} className="cursor-pointer">
                       <Users className="h-4 w-4 mr-2" />
                       Controle de Usuários
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => navigate('/admin/settings')} className="cursor-pointer">
-                      <Settings className="h-4 w-4 mr-2" />
-                      Configurações
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
                   </>
                 )}
 

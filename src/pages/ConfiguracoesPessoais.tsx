@@ -25,7 +25,8 @@ import {
   Settings,
   CheckCircle,
   UserCircle,
-  Briefcase
+  Briefcase,
+  Info
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -58,6 +59,10 @@ const ConfiguracoesPessoais: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
+
+  // ✅ VERIFICAR PERMISSÕES
+  const isAdmin = user?.tipo_usuario === 'admin';
+  const podeEditarSetorETipo = isAdmin; // Só admin pode editar setor e tipo
 
   // Estados dos formulários
   const [dadosForm, setDadosForm] = useState<FormularioDados>({
@@ -97,8 +102,12 @@ const ConfiguracoesPessoais: React.FC = () => {
         tipo_colaborador: user.tipo_colaborador || 'clt_associado'
       });
     }
-    carregarSetores();
-  }, [user]);
+    
+    // Só carregar setores se for admin
+    if (isAdmin) {
+      carregarSetores();
+    }
+  }, [user, isAdmin]);
 
   // Função para obter token de autenticação
   const getAuthToken = () => localStorage.getItem("authToken");
@@ -127,7 +136,7 @@ const ConfiguracoesPessoais: React.FC = () => {
     return response;
   };
 
-  // Carregar setores disponíveis
+  // Carregar setores disponíveis (só para admin)
   const carregarSetores = async () => {
     try {
       const response = await fetchWithAuth(`${API_BASE_URL}/api/admin/setores`);
@@ -139,31 +148,51 @@ const ConfiguracoesPessoais: React.FC = () => {
       console.error('Erro ao carregar setores:', error);
       // Setores padrão se não conseguir carregar
       setSetores([
-        'Administração',
-        'Protocolo', 
-        'Jurídico',
+        'Diretores',
+        'Carteira',
+        'Atendimento',
+        'Prazos',
+        'Trabalhista',
+        'Projetos',
+        'Inicial',
+        'Criminal',
         'Financeiro',
-        'Recursos Humanos',
-        'TI'
+        'Saúde',
+        'Comercial/Marketing',
+        'Administrativo',
+        'Família e Sucessões'
       ]);
     }
   };
 
-  // Atualizar dados pessoais
+  // ✅ ATUALIZAR DADOS COM RESTRIÇÕES
   const atualizarDados = async () => {
     try {
       setCarregandoDados(true);
 
+      // ✅ Filtrar apenas campos que o usuário pode editar
+      const dadosParaEnviar = {
+        nome: dadosForm.nome,
+        email_pessoal: dadosForm.email_pessoal,
+        // ✅ Só incluir setor e tipo se for admin
+        ...(podeEditarSetorETipo && {
+          setor: dadosForm.setor,
+          tipo_colaborador: dadosForm.tipo_colaborador
+        })
+      };
+
+      console.log('📝 Enviando dados:', dadosParaEnviar);
+
       const response = await fetchWithAuth(`${API_BASE_URL}/api/usuario/atualizar-dados`, {
         method: 'PUT',
-        body: JSON.stringify(dadosForm)
+        body: JSON.stringify(dadosParaEnviar)
       });
 
       if (response.ok) {
         const data = await response.json();
         
         // Atualizar apenas o localStorage (o contexto será atualizado no próximo reload)
-        const usuarioAtualizado = { ...user, ...dadosForm };
+        const usuarioAtualizado = { ...user, ...dadosParaEnviar };
         localStorage.setItem('user', JSON.stringify(usuarioAtualizado));
 
         toast({
@@ -219,7 +248,7 @@ const ConfiguracoesPessoais: React.FC = () => {
       setCarregandoSenha(true);
 
       const response = await fetchWithAuth(`${API_BASE_URL}/api/usuario/alterar-senha`, {
-        method: 'PUT',
+        method: 'POST',
         body: JSON.stringify({
           senhaAtual: senhaForm.senhaAtual,
           novaSenha: senhaForm.novaSenha
@@ -292,7 +321,7 @@ const ConfiguracoesPessoais: React.FC = () => {
                 ⚙️ Configurações Pessoais
               </h1>
               <p className="text-corporate-gray mt-1">
-                Gerencie suas informações pessoais e preferências
+                Gerencie suas informações pessoais
               </p>
             </div>
             
@@ -317,6 +346,7 @@ const ConfiguracoesPessoais: React.FC = () => {
               {/* Formulário de edição */}
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* ✅ NOME - TODOS PODEM EDITAR */}
                   <div className="space-y-2">
                     <Label htmlFor="nome">Nome Completo</Label>
                     <Input
@@ -327,11 +357,12 @@ const ConfiguracoesPessoais: React.FC = () => {
                     />
                   </div>
 
-                  {/* Email Corporativo - apenas para CLT/Associado */}
+                  {/* ✅ EMAIL CORPORATIVO - APENAS LEITURA */}
                   {user.tipo_colaborador === 'clt_associado' && (
                     <div className="space-y-2">
                       <Label className="flex items-center gap-2">
                         Email Corporativo
+                        <Badge variant="outline" className="text-xs">Somente leitura</Badge>
                       </Label>
                       <Input
                         value={user.email || 'Não informado'}
@@ -342,6 +373,7 @@ const ConfiguracoesPessoais: React.FC = () => {
                     </div>
                   )}
 
+                  {/* ✅ EMAIL PESSOAL - TODOS PODEM EDITAR */}
                   <div className="space-y-2">
                     <Label htmlFor="email_pessoal">
                       Email Pessoal {user.tipo_colaborador === 'estagiario' && <span className="text-red-500">*</span>}
@@ -353,58 +385,81 @@ const ConfiguracoesPessoais: React.FC = () => {
                       onChange={(e) => handleDadosChange('email_pessoal', e.target.value)}
                       placeholder="seu.email@exemplo.com"
                     />
-                    {user.tipo_colaborador === 'estagiario' && (
-                      <p className="text-xs text-gray-500">
-                        📧 Este será seu email de login
-                      </p>
+                  </div>
+
+                  {/* ✅ SETOR - SÓ ADMIN PODE EDITAR */}
+                  <div className="space-y-2">
+                    <Label htmlFor="setor" className="flex items-center gap-2">
+                      Setor
+                      {!podeEditarSetorETipo && (
+                        <Badge variant="outline" className="text-xs">Somente administrador</Badge>
+                      )}
+                    </Label>
+                    {podeEditarSetorETipo ? (
+                      <Select
+                        value={dadosForm.setor}
+                        onValueChange={(value) => handleDadosChange('setor', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione o setor" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {setores.map(setor => (
+                            <SelectItem key={setor} value={setor}>
+                              {setor}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        value={user.setor || 'Não informado'}
+                        disabled
+                        className="bg-gray-100 text-gray-600"
+                      />
                     )}
                   </div>
 
+                  {/* ✅ TIPO DE COLABORADOR - SÓ ADMIN PODE EDITAR */}
                   <div className="space-y-2">
-                    <Label htmlFor="setor">Setor</Label>
-                    <Select
-                      value={dadosForm.setor}
-                      onValueChange={(value) => handleDadosChange('setor', value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione o setor" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {setores.map(setor => (
-                          <SelectItem key={setor} value={setor}>
-                            {setor}
+                    <Label htmlFor="tipo_colaborador" className="flex items-center gap-2">
+                      Perfil (Tipo de Colaborador)
+                      {!podeEditarSetorETipo && (
+                        <Badge variant="outline" className="text-xs">Somente administrador</Badge>
+                      )}
+                    </Label>
+                    {podeEditarSetorETipo ? (
+                      <Select
+                        value={dadosForm.tipo_colaborador}
+                        onValueChange={(value: 'estagiario' | 'clt_associado') => 
+                          handleDadosChange('tipo_colaborador', value)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="estagiario">
+                            <div className="flex items-center gap-2">
+                              <Briefcase className="h-4 w-4" />
+                              Estagiário
+                            </div>
                           </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="tipo_colaborador">Perfil (Tipo de Colaborador)</Label>
-                    <Select
-                      value={dadosForm.tipo_colaborador}
-                      onValueChange={(value: 'estagiario' | 'clt_associado') => 
-                        handleDadosChange('tipo_colaborador', value)
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="estagiario">
-                          <div className="flex items-center gap-2">
-                            <Briefcase className="h-4 w-4" />
-                            Estagiário
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="clt_associado">
-                          <div className="flex items-center gap-2">
-                            <Building className="h-4 w-4" />
-                            CLT/Associado
-                          </div>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
+                          <SelectItem value="clt_associado">
+                            <div className="flex items-center gap-2">
+                              <Building className="h-4 w-4" />
+                              CLT/Associado
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        value={user.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}
+                        disabled
+                        className="bg-gray-100 text-gray-600"
+                      />
+                    )}
                   </div>
                 </div>
 
@@ -433,7 +488,7 @@ const ConfiguracoesPessoais: React.FC = () => {
 
           <Separator />
 
-          {/* Formulário de alteração de senha */}
+          {/* ✅ FORMULÁRIO DE ALTERAÇÃO DE SENHA - TODOS PODEM USAR */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">

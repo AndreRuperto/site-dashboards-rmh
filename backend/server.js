@@ -9074,6 +9074,56 @@ app.get('/api/debug/files', async (req, res) => {
   }
 });
 
+// No arquivo do servidor (app.js, server.js, etc.)
+// ROTA: Alterar senha do usuário
+app.post('/api/usuario/alterar-senha', authMiddleware, async (req, res) => {
+  try {
+    const { senhaAtual, novaSenha } = req.body;
+    const userId = req.user.id;
+
+    if (!senhaAtual || !novaSenha) {
+      return res.status(400).json({ error: 'Senha atual e nova senha são obrigatórias' });
+    }
+
+    if (novaSenha.length < 6) {
+      return res.status(400).json({ error: 'Nova senha deve ter pelo menos 6 caracteres' });
+    }
+
+    // Buscar usuário atual
+    const userResult = await pool.query('SELECT senha FROM usuarios WHERE id = $1', [userId]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const user = userResult.rows[0];
+
+    // Verificar senha atual
+    const senhaValida = await bcrypt.compare(senhaAtual, user.senha);
+    if (!senhaValida) {
+      return res.status(400).json({ error: 'Senha atual incorreta' });
+    }
+
+    // Hash da nova senha
+    const novaSenhaHash = await bcrypt.hash(novaSenha, 10);
+
+    // Atualizar no banco
+    await pool.query(
+      'UPDATE usuarios SET senha = $1, atualizado_em = NOW() WHERE id = $2',
+      [novaSenhaHash, userId]
+    );
+
+    console.log(`✅ Senha alterada para usuário ${userId}`);
+
+    res.json({
+      message: 'Senha alterada com sucesso!'
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao alterar senha:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 // Rota catch-all para SPAs - deve ser a ÚLTIMA rota
 app.get('*', (req, res) => {
   console.log(`🎯 CATCH-ALL: Redirecionando ${req.path} para index.html`);
