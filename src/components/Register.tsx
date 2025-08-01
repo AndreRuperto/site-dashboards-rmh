@@ -270,7 +270,7 @@ const Register: React.FC<RegisterProps> = ({
             Criar Conta
           </CardTitle>
           <CardDescription className="text-center">
-            Cadastre-se na plataforma de dashboards RMH
+            Cadastre-se na plataforma
           </CardDescription>
         </CardHeader>
         

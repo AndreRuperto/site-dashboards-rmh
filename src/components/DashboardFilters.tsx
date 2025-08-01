@@ -73,22 +73,28 @@ const DashboardFilters: React.FC<DashboardFiltersProps> = ({
         )}
       </div>
 
-      {/* Campo de busca - SEMPRE VISÍVEL para todos */}
       <div className="space-y-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-          <Input
-            placeholder="Nome do dashboard..."
-            value={searchTerm}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-
         {/* Filtros avançados - CONDICIONAIS baseados no tipo de usuário */}
         {(isAdmin || (isCoordenador && isExpanded)) && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Filtro por Setor - ADMINS e COORDENADORES */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Campo de busca por nome */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700 flex items-center">
+                <Search className="h-4 w-4 mr-1" />
+                Nome do Dashboard
+              </label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  placeholder="Nome do dashboard"
+                  value={searchTerm}
+                  onChange={(e) => onSearchChange(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+
+            {/* Filtro por Setor */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700 flex items-center">
                 <User className="h-4 w-4 mr-1" />
@@ -108,64 +114,6 @@ const DashboardFilters: React.FC<DashboardFiltersProps> = ({
                 </SelectContent>
               </Select>
             </div>
-
-            {/* Filtro por Período - ADMINS e COORDENADORES */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700 flex items-center">
-                <Calendar className="h-4 w-4 mr-1" />
-                Criado
-              </label>
-              <Select value={selectedPeriodo} onValueChange={onPeriodoChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Qualquer período" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Qualquer período</SelectItem>
-                  <SelectItem value="ultima_semana">Última semana</SelectItem>
-                  <SelectItem value="ultimo_mes">Último mês</SelectItem>
-                  <SelectItem value="ultimo_trimestre">Último trimestre</SelectItem>
-                  <SelectItem value="ultimo_ano">Último ano</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Filtro por Criador - APENAS ADMINS */}
-            {isAdmin && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 flex items-center">
-                  <User className="h-4 w-4 mr-1" />
-                  Criado por
-                </label>
-                <Select value={selectedCriador} onValueChange={onCriadorChange}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Qualquer pessoa" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Qualquer pessoa</SelectItem>
-                    {criadores.map((criador) => (
-                      <SelectItem key={criador.id} value={criador.id}>
-                        {criador.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Botão limpar filtros - SÓ APARECE SE HOUVER FILTROS ATIVOS */}
-        {(hasActiveFilters || searchTerm) && (
-          <div className="flex justify-end">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onClearFilters}
-              className="text-gray-600 hover:text-gray-900"
-            >
-              <X className="h-4 w-4 mr-1" />
-              Limpar Filtros
-            </Button>
           </div>
         )}
       </div>

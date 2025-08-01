@@ -4116,13 +4116,15 @@ app.get('/ping', (req, res) => {
 // ROTAS PARA PROCESSOS - ESTRUTURA CORRIGIDA
 // ===============================================
 
-async function moverProcessoParaEnviados(numeroProcesso, idProcessoPlanilha, dataEnvio) {
+async function moverProcessoParaEnviados({ numeroProcesso, idProcessoPlanilha, dataEnvio }) {
+  //                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  //                                     ADICIONAR as chaves { } para destructuring
   const client = await pool.connect();
   
   try {
     await client.query('BEGIN');
     
-    console.log(`📋 INICIANDO transferência do processo ${numeroProcesso} para tabela de enviados`);
+    console.log(`📋 INICIANDO transferência do processo ${numeroProcesso} (ID: ${idProcessoPlanilha}) para tabela de enviados`);
 
     // 1. Buscar o processo na tabela de pendentes
     const resultadoBusca = await client.query(
@@ -4148,18 +4150,18 @@ async function moverProcessoParaEnviados(numeroProcesso, idProcessoPlanilha, dat
 
     // 3. Inserir na tabela de enviados (com nova coluna de data_envio)
     await client.query(
-      `INSERT INTO processo_emails_enviados (
-        id_processo, numero_unico, cpf_assistido, nome_assistido, emails, telefones,
-        id_atendimento_vinculado, tipo_atendimento, natureza_processo, data_autuacao,
-        ex_adverso, instancia, objeto_atendimento, data_envio
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
-      )`,
+        `INSERT INTO processo_emails_enviados (
+          id_processo, numero_unico, cpf_assistido, nome_assistido, emails, telefones,
+          id_atendimento_vinculado, tipo_atendimento, natureza_processo, data_autuacao,
+          ex_adverso, instancia, objeto_atendimento, valor_causa, data_envio
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+        )`,
       [
         dados.id_processo, dados.numero_unico, dados.cpf_assistido, dados.nome_assistido,
         dados.emails, dados.telefones, dados.id_atendimento_vinculado, dados.tipo_atendimento,
         dados.natureza_processo, dados.data_autuacao, dados.ex_adverso, dados.instancia,
-        dados.objeto_atendimento, dataEnvio
+        dados.objeto_atendimento, dados.valor_causa, dataEnvio
       ]
     );
 
@@ -4170,7 +4172,7 @@ async function moverProcessoParaEnviados(numeroProcesso, idProcessoPlanilha, dat
     );
 
     await client.query('COMMIT');
-    console.log(`✅ SUCESSO: Processo ${numeroProcesso} movido para "processo_emails_enviados"`);
+    console.log(`✅ SUCESSO: Processo ${numeroProcesso} (ID: ${idProcessoPlanilha}) movido para "processo_emails_enviados"`);
 
     return {
       success: true,
@@ -4213,6 +4215,7 @@ app.get('/api/processos', authMiddleware, async (req, res) => {
           ex_adverso AS exAdverso,
           instancia,
           objeto_atendimento AS objetoAtendimento,
+          valor_causa AS valorCausa,
           false AS emailEnviado,
           null AS dataUltimoEmail,
           'Pendente' AS statusEmail
@@ -4234,6 +4237,7 @@ app.get('/api/processos', authMiddleware, async (req, res) => {
           ex_adverso AS exAdverso,
           instancia,
           objeto_atendimento AS objetoAtendimento,
+          valor_causa AS valorCausa,
           true AS emailEnviado,
           data_envio AS dataUltimoEmail,
           'Enviado' AS statusEmail
@@ -4268,7 +4272,7 @@ app.get('/api/processos', authMiddleware, async (req, res) => {
         : 'Aguardando análise',
       ultimoAndamento: row.dataajuizamento || '',
       responsavel: row.exadverso || 'Não informado',
-      valorCausa: 'A definir',
+      valorCausa: row.valorcausa,
       observacoes: ''
     }));
 
@@ -4344,227 +4348,229 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
     // Template do email adaptado para processos jurídicos
     const emailTemplate = `
       <!DOCTYPE html>
-      <html lang="pt-BR">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Atualização do Processo Jurídico</title>
-        <style>
-          body { 
-            font-family: 'Arial', sans-serif; 
-            line-height: 1.6; 
-            color: #333; 
-            margin: 0; 
-            padding: 0; 
-            background-color: #f5f5f5;
-          }
-          .container { 
-            max-width: 600px; 
-            margin: 0 auto; 
-            padding: 20px; 
-            background-color: #ffffff; 
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            border-radius: 8px;
-          }
-          .header { 
-            background: linear-gradient(135deg, #165A5D 0%, #1a6b6f 100%);
-            color: white; 
-            padding: 25px; 
-            text-align: center; 
-            border-radius: 8px 8px 0 0; 
-          }
-          .header h1 { 
-            margin: 0; 
-            font-size: 24px; 
-            font-weight: bold; 
-          }
-          .content { 
-            padding: 30px; 
-            background-color: #f9f9f9; 
-            border-radius: 0 0 8px 8px; 
-          }
-          .texto-inicial{
-            color: #000000;
-            text-align: justify;
-          }
-          .info-box { 
-            background-color: #e3f2fd; 
-            padding: 20px; 
-            margin: 20px 0; 
-            border-left: 4px solid #165A5D; 
-            border-radius: 4px; 
-          }
-          .info-box p { 
-            margin: 8px 0; 
-          }
+        <html lang="pt-BR">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Atualização do Processo Jurídico</title>
+          <style>
+            body { 
+              font-family: 'Arial', sans-serif; 
+              line-height: 1.6; 
+              color: #333; 
+              margin: 0; 
+              padding: 0; 
+              background-color: #f5f5f5;
+            }
+            .container { 
+              max-width: 600px; 
+              margin: 0 auto; 
+              padding: 20px; 
+              background-color: #ffffff; 
+              box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+              border-radius: 8px;
+            }
+            .header { 
+              background: linear-gradient(135deg, #165A5D 0%, #1a6b6f 100%);
+              color: white; 
+              padding: 25px; 
+              text-align: center; 
+              border-radius: 8px 8px 0 0; 
+            }
+            .header h1 { 
+              margin: 0; 
+              font-size: 24px; 
+              font-weight: bold; 
+            }
+            .content { 
+              padding: 30px; 
+              background-color: #f9f9f9; 
+              border-radius: 0 0 8px 8px; 
+            }
+            .texto-inicial{
+              color: #000000;
+              text-align: justify;
+            }
+            .info-box { 
+              background-color: #e3f2fd; 
+              padding: 20px; 
+              margin: 20px 0; 
+              border-left: 4px solid #165A5D; 
+              border-radius: 4px; 
+            }
+            .info-box p { 
+              margin: 8px 0; 
+            }
 
-          .info-box p{
-            color: #000000;
-          }
+            .info-box p{
+              color: #000000;
+            }
 
-          .info-box strong {
-            color: #000000;
-          }
+            .info-box strong {
+              color: #000000;
+            }
 
-          .highlight { 
-            color: #165A5D; 
-            font-weight: bold; 
-          }
-          .valor-box {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-            color: white;
-            padding: 20px;
-            border-radius: 8px;
-            text-align: center;
-            margin: 20px 0;
-            font-size: 18px;
-            font-weight: bold;
-          }
-          .valor-box .valor-label {
-            font-size: 14px;
-            opacity: 0.9;
-            margin-bottom: 5px;
-          }
-          .anti-golpe {
-            background-color: #dc2626;
-            color: white;
-            padding: 20px;
-            border-radius: 8px;
-            margin: 25px 0;
-            border: 3px solid #b91c1c;
-          }
-          .anti-golpe h3 {
-            margin: 0 0 10px 0;
-            font-size: 18px;
-            text-align: center;
-          }
-          .anti-golpe ul {
-            margin: 10px 0;
-            padding-left: 20px;
-          }
-          .anti-golpe li {
-            margin: 5px 0;
-          }
+            .highlight { 
+              color: #165A5D; 
+              font-weight: bold; 
+            }
+            .valor-box {
+              background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+              color: white;
+              padding: 20px;
+              border-radius: 8px;
+              text-align: center;
+              margin: 20px 0;
+              font-size: 18px;
+              font-weight: bold;
+            }
+            .valor-box .valor-label {
+              font-size: 14px;
+              opacity: 0.9;
+              margin-bottom: 5px;
+            }
+            .anti-golpe {
+              background-color: #dc2626;
+              color: white;
+              padding: 20px;
+              border-radius: 8px;
+              margin: 25px 0;
+              border: 3px solid #b91c1c;
+            }
+            .anti-golpe h3 {
+              margin: 0 0 10px 0;
+              font-size: 18px;
+              text-align: center;
+            }
+            .anti-golpe ul {
+              margin: 10px 0;
+              padding-left: 20px;
+            }
+            .anti-golpe li {
+              margin: 5px 0;
+            }
 
-          .anti-golpe p {
-            text-align: justify;
-          }
-          .contact-info { 
-            background-color: #fff3cd; 
-            padding: 20px; 
-            border: 1px solid #ffeaa7; 
-            border-radius: 8px; 
-            margin: 20px 0; 
-          }
-          .whatsapp-btn {
-            display: inline-block;
-            background-color: #25d366;
-            color: white;
-            padding: 12px 20px;
-            text-decoration: none;
-            border-radius: 25px;
-            font-weight: bold;
-            margin: 10px 5px;
-            text-align: center;
-          }
-          .social-links {
-            text-align: center;
-            padding: 20px;
-            background-color: #f8f9fa;
-            border-radius: 8px;
-            margin: 20px 0;
-          }
-          .social-links p {
-            margin-bottom: 25px;
-          }
-          .social-links a {
-            display: inline-block;
-            margin: 0 10px;
-            color: #165A5D;
-            text-decoration: none;
-            font-weight: bold;
-          }
-          .footer { 
-            text-align: center; 
-            padding: 20px; 
-            font-size: 14px;
-            color: #222222; 
-            background-color: #f5f5f5; 
-            margin-top: 20px; 
-            border-radius: 4px; 
-          }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <img src="https://sistema.resendemh.com.br/logo-rmh.png" alt="Logo RMH" style="height: 55px; margin-bottom: 20px;" />
-            <h1>ATUALIZAÇÃO DO PROCESSO</h1>
-          </div>
-          
-          <div class="content">
-            <p class="texto-inicial">Prezado(a) <strong>${cliente}</strong>,</p>
-            
-            <p class="texto-inicial">Entramos em contato para informar sobre a situação atual do seu processo jurídico:</p>
-            
-            <div class="info-box">
-              <p><strong>Número do processo:</strong> ${numeroProcesso}</p>
-              <p><strong>🎯 Objeto da Ação:</strong> ${objetoAtendimento}</p>
-              <p><strong>⚖️ Tipo de Ação:</strong> ${tipoProcesso}</p>
-              <p><strong>📅 Data de protocolo do processo:</strong> ${formatarData(ultimoAndamento)}</p>
-              ${instancia ? `<p><strong>🏛️ Instância:</strong> ${instancia}</p>` : ''}
-              <p><strong>👨‍💼 Parte Contrária:</strong> ${responsavel}</p>
-              <!-- <p><strong>💲 Previsão de Proveito Econômico:</strong> ${proveito}</p> -->
-            </div>
-
-            <!-- <p class="texto-inicial">
-              O valor inicial que está sendo requerido na ação descrito acima representa uma expectativa de recebimento a depender da sentença,<strong> APÓS A TRAMITAÇÃO COMPLETA DA AÇÃO</strong>, pois nesse momento <strong>NÃO HÁ PREVISÃO DE RECEBIMENTO DE VALORES</strong>.
-            </p> -->
-
-            <!-- AVISO ANTI-GOLPE -->
-            <div class="anti-golpe">
-              <h3>⚠️ CUIDADO COM OS GOLPES</h3>
-              <p>A Resende Mori Hutchison <strong>NUNCA SOLICITA</strong> informações ou pagamentos para liberação de créditos de processos e não entra em contato por outros números além do oficial.</p>
-              <p>Caso receba qualquer mensagem ou ligação de outro número além do nosso canal oficial, entre em contato conosco para confirmar a veracidade.</p>
-              <p>Estamos disponíveis exclusivamente no whatsapp pelo (61) 3031-4400.</p>
+            .anti-golpe p {
+              text-align: justify;
+            }
+            .contact-info { 
+              background-color: #fff3cd; 
+              padding: 20px; 
+              border: 1px solid #ffeaa7; 
+              border-radius: 8px; 
+              margin: 20px 0; 
+            }
+            .whatsapp-btn {
+              display: inline-block;
+              background-color: #25d366;
+              color: white;
+              padding: 12px 20px;
+              text-decoration: none;
+              border-radius: 25px;
+              font-weight: bold;
+              margin: 10px 5px;
+              text-align: center;
+            }
+            .social-links {
+              text-align: center;
+              padding: 20px;
+              background-color: #f8f9fa;
+              border-radius: 8px;
+              margin: 20px 0;
+            }
+            .social-links p {
+              margin-bottom: 25px;
+            }
+            .social-links a {
+              display: inline-block;
+              margin: 0 10px;
+              color: #165A5D;
+              text-decoration: none;
+              font-weight: bold;
+            }
+            .footer { 
+              text-align: center; 
+              padding: 20px; 
+              font-size: 14px;
+              color: #222222; 
+              background-color: #f5f5f5; 
+              margin-top: 20px; 
+              border-radius: 4px; 
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <img src="https://sistema.resendemh.com.br/logo-rmh.png" alt="Logo RMH" style="height: 55px; margin-bottom: 20px;" />
+              <h1>ATUALIZAÇÃO DO PROCESSO</h1>
             </div>
             
-            <div class="contact-info">
-              <p><strong>💬 Precisa tirar dúvidas?</strong></p>
-              <p>Entre em contato conosco através dos nossos canais oficiais:</p>
-              <p>📧 Email: contato@resendemh.com.br</p>
-              <p>📱 WhatsApp Oficial:</p>
-              <div style="text-align: center;">
-                <a href="https://wa.me/556130314400" class="whatsapp-btn">
-                  <img src="https://sistema.resendemh.com.br/whatsapp.png" alt="YouTube" style="height: 30px; margin: 0 5px; vertical-align: middle;">
-                  WhatsApp
+            <div class="content">
+              <p class="texto-inicial">Prezado(a) <strong>${cliente}</strong>,</p>
+              
+              <p class="texto-inicial">Entramos em contato para informar sobre a situação atual do seu processo jurídico:</p>
+              
+              <div class="info-box">
+                <p><strong>Número do processo:</strong> ${numeroProcesso}</p>
+                <p><strong>🎯 Objeto da Ação:</strong> ${objetoAtendimento}</p>
+                <p><strong>⚖️ Tipo de Ação:</strong> ${tipoProcesso}</p>
+                <p><strong>📅 Data de protocolo do processo:</strong> ${formatarData(ultimoAndamento)}</p>
+                ${instancia ? `<p><strong>🏛️ Instância:</strong> ${instancia}</p>` : ''}
+                <p><strong>👨‍💼 Parte Contrária:</strong> ${responsavel}</p>
+                ${valorCausa ? `<p><strong>💲 Previsão de Proveito Econômico:</strong> R$ ${parseFloat(valorCausa).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>` : ''}
+              </div>
+
+              ${valorCausa ? `
+                <p class="texto-inicial">
+                  O valor inicial que está sendo requerido na ação descrito acima representa uma expectativa de recebimento a depender da sentença,<strong> APÓS A TRAMITAÇÃO COMPLETA DA AÇÃO</strong>, pois nesse momento <strong>NÃO HÁ PREVISÃO DE RECEBIMENTO DE VALORES</strong>.
+                </p>
+              ` : ''}
+
+              <!-- AVISO ANTI-GOLPE -->
+              <div class="anti-golpe">
+                <h3>⚠️ CUIDADO COM OS GOLPES</h3>
+                <p>A Resende Mori Hutchison <strong>NUNCA SOLICITA</strong> informações ou pagamentos para liberação de créditos de processos e não entra em contato por outros números além do oficial.</p>
+                <p>Caso receba qualquer mensagem ou ligação de outro número além do nosso canal oficial, entre em contato conosco para confirmar a veracidade.</p>
+                <p>Estamos disponíveis exclusivamente no whatsapp pelo (61) 3031-4400.</p>
+              </div>
+              
+              <div class="contact-info">
+                <p><strong>💬 Precisa tirar dúvidas?</strong></p>
+                <p>Entre em contato conosco através dos nossos canais oficiais:</p>
+                <p>📧 Email: contato@resendemh.com.br</p>
+                <p>📱 WhatsApp Oficial:</p>
+                <div style="text-align: center;">
+                  <a href="https://wa.me/556130314400" class="whatsapp-btn">
+                    <img src="https://sistema.resendemh.com.br/whatsapp.png" alt="WhatsApp" style="height: 30px; margin: 0 5px; vertical-align: middle;">
+                    WhatsApp
+                  </a>
+                </div>
+              </div>
+
+              <!-- Redes Sociais -->
+              <div class="social-links">
+                <p><strong>🌐 Nos acompanhe nas redes sociais:</strong></p>
+                <a href="https://www.resendemh.com.br">
+                  <img src="https://sistema.resendemh.com.br/resendemh-logo.png" alt="Site RMH" style="height: 30px; margin: 0 5px; vertical-align: middle;">
+                  Site Oficial
+                </a>
+                <a href="https://www.instagram.com/advocaciarmh">
+                  <img src="https://sistema.resendemh.com.br/instagram.png" alt="Instagram" style="height: 30px; margin: 0 5px; vertical-align: middle;">
+                  Instagram
+                </a>
+                <a href="https://www.youtube.com/@ResendeMoriHutchison">
+                  <img src="https://sistema.resendemh.com.br/youtube.png" alt="YouTube" style="height: 30px; margin: 0 5px; vertical-align: middle;">
+                  YouTube
                 </a>
               </div>
             </div>
-
-            <!-- Redes Sociais -->
-            <div class="social-links">
-              <p><strong>🌐 Nos acompanhe nas redes sociais:</strong></p>
-              <a href="https://www.resendemh.com.br">
-                <img src="https://sistema.resendemh.com.br/resendemh-logo.png" alt="Site RMH" style="height: 30px; margin: 0 5px; vertical-align: middle;">
-                Site Oficial
-              </a>
-              <a href="https://www.instagram.com/advocaciarmh">
-                <img src="https://sistema.resendemh.com.br/instagram.png" alt="Instagram" style="height: 30px; margin: 0 5px; vertical-align: middle;">
-                Instagram
-              </a>
-              <a href="https://www.youtube.com/@ResendeMoriHutchison">
-                <img src="https://sistema.resendemh.com.br/youtube.png" alt="YouTube" style="height: 30px; margin: 0 5px; vertical-align: middle;">
-                YouTube
-              </a>
+            <div class="footer">
+              <p><strong>ATENÇÃO: ESTE É UM E-MAIL AUTOMÁTICO, FAVOR NÃO RESPONDER.</strong></p>
             </div>
           </div>
-          <div class="footer">
-            <p><strong>ATENÇÃO: ESTE É UM E-MAIL AUTOMÁTICO, FAVOR NÃO RESPONDER.</strong></p>
-          </div>
-        </div>
-      </body>
-      </html>
+        </body>
+        </html>
       `;
 
     // Enviar email usando Resend
@@ -4584,11 +4590,11 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
         instancia, exAdverso, objetoAtendimento, valorCausa, proveito
       };
       
-      await moverProcessoParaEnviados(
-        idProcessoPlanilha,
-        dadosProcesso, 
-        new Date().toISOString()
-      );
+      await moverProcessoParaEnviados({
+        numeroProcesso: numeroProcesso,
+        idProcessoPlanilha: idProcessoPlanilha, 
+        dataEnvio: new Date().toISOString()
+      });
       
       console.log(`📋 MOVIMENTAÇÃO: ${numeroProcesso} movido para aba enviados`);
       
@@ -4805,12 +4811,14 @@ app.post('/api/emails/massa', authMiddleware, async (req, res) => {
                 <p><strong>📅 Data de protocolo do processo:</strong> ${formatarData(processo.ultimoAndamento)}</p>
                 ${processo.instancia ? `<p><strong>🏛️ Instância:</strong> ${processo.instancia}</p>` : ''}
                 <p><strong>👨‍💼 Parte Contrária:</strong> ${processo.responsavel || processo.exAdverso || 'Não informado'}</p>
-                <!-- <p><strong>💲 Previsão de Proveito Econômico:</strong> ${processo.valorCausa || 'Não informado'}</p> -->
+                ${processo.valorCausa ? `<p><strong>💲 Previsão de Proveito Econômico:</strong> R$ ${parseFloat(processo.valorCausa).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>` : ''}
               </div>
 
-              <!-- <p class="texto-inicial">
-                O valor inicial que está sendo requerido na ação descrito acima representa uma expectativa de recebimento a depender da sentença,<strong> APÓS A TRAMITAÇÃO COMPLETA DA AÇÃO</strong>, pois nesse momento <strong>NÃO HÁ PREVISÃO DE RECEBIMENTO DE VALORES</strong>.
-              </p> -->
+              ${processo.valorCausa ? `
+                <p class="texto-inicial">
+                  O valor inicial que está sendo requerido na ação descrito acima representa uma expectativa de recebimento a depender da sentença,<strong> APÓS A TRAMITAÇÃO COMPLETA DA AÇÃO</strong>, pois nesse momento <strong>NÃO HÁ PREVISÃO DE RECEBIMENTO DE VALORES</strong>.
+                </p>
+              ` : ''}
 
               <!-- AVISO ANTI-GOLPE -->
               <div class="anti-golpe">
@@ -6373,6 +6381,52 @@ app.get('/api/dashboards', authMiddleware, async (req, res) => {
 });
 
 // CRIAR NOVO DASHBOARD (só para admins)
+const extractPowerBIReportId = (url) => {
+  if (!url || typeof url !== 'string') {
+    return null;
+  }
+
+  try {
+    // Padrões de regex para diferentes formatos de URL do Power BI
+    
+    // Formato 1: reportEmbed?reportId=xxx
+    const embedPattern = /reportId=([a-f0-9-]{36})/i;
+    
+    // Formato 2: /groups/xxx/reports/xxx/
+    const groupsPattern = /\/groups\/[a-f0-9-]{36}\/reports\/([a-f0-9-]{36})/i;
+    
+    // Formato 3: /reports/xxx/
+    const reportPattern = /\/reports\/([a-f0-9-]{36})/i;
+
+    // Tentar diferentes padrões
+    let match = embedPattern.exec(url);
+    if (match) {
+      console.log('🔍 Report ID encontrado via embedPattern:', match[1]);
+      return match[1];
+    }
+    
+    match = groupsPattern.exec(url);
+    if (match) {
+      console.log('🔍 Report ID encontrado via groupsPattern:', match[1]);
+      return match[1];
+    }
+    
+    match = reportPattern.exec(url);
+    if (match) {
+      console.log('🔍 Report ID encontrado via reportPattern:', match[1]);
+      return match[1];
+    }
+
+    console.log('⚠️ Nenhum Report ID encontrado na URL:', url.substring(0, 100));
+    return null;
+
+  } catch (error) {
+    console.error('❌ Erro ao extrair Report ID:', error);
+    return null;
+  }
+};
+
+// ✅ ROTA ATUALIZADA COM EXTRAÇÃO AUTOMÁTICA
 app.post('/api/dashboards', authMiddleware, async (req, res) => {
   try {
     if (req.user.tipo_usuario !== 'admin') {
@@ -6389,11 +6443,32 @@ app.post('/api/dashboards', authMiddleware, async (req, res) => {
       });
     }
 
+    // ✅ EXTRAÇÃO AUTOMÁTICA DO POWER BI REPORT ID
+    const powerbi_report_id = extractPowerBIReportId(url_iframe);
+    
+    // ✅ GROUP ID PADRÃO FIXO
+    const powerbi_group_id = '24735d42-c43d-423c-83d4-f2cd4e8cdb29';
+    
+    // ✅ DETERMINAR TIPO DE EMBED
+    const embed_type = powerbi_report_id ? 'secure' : 'public';
+
+    console.log('📊 Criando dashboard:', {
+      titulo,
+      setor,
+      powerbi_report_id: powerbi_report_id || 'não encontrado',
+      powerbi_group_id,
+      embed_type,
+      tipo_visibilidade
+    });
+
+    // ✅ QUERY ATUALIZADA COM NOVOS CAMPOS
     const result = await pool.query(`
       INSERT INTO dashboards (
-        titulo, descricao, setor, url_iframe, largura, altura, criado_por, ativo, tipo_visibilidade
+        titulo, descricao, setor, url_iframe, largura, altura, 
+        criado_por, ativo, tipo_visibilidade,
+        powerbi_report_id, powerbi_group_id, embed_type
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *
     `, [
       titulo,
@@ -6404,16 +6479,30 @@ app.post('/api/dashboards', authMiddleware, async (req, res) => {
       altura || 600,
       req.user.id,
       true,
-      tipo_visibilidade || 'geral' // fallback se não vier nada
+      tipo_visibilidade || 'geral',
+      powerbi_report_id,      // ✅ NOVO
+      powerbi_group_id,       // ✅ NOVO (sempre o mesmo)
+      embed_type              // ✅ NOVO
     ]);
 
     const newDashboard = result.rows[0];
 
-    console.log(`✅ DASHBOARD: ${titulo} criado por ${req.user.nome} com visibilidade: ${tipo_visibilidade}`);
+    console.log(`✅ DASHBOARD CRIADO: ${titulo} por ${req.user.nome}`);
+    console.log(`   📋 Visibilidade: ${tipo_visibilidade}`);
+    console.log(`   🔐 Embed Type: ${embed_type}`);
+    console.log(`   📊 Report ID: ${powerbi_report_id || 'N/A'}`);
 
     res.status(201).json({
       message: 'Dashboard criado com sucesso',
-      dashboard: newDashboard
+      dashboard: {
+        ...newDashboard,
+        // ✅ INCLUIR INFORMAÇÕES SOBRE A EXTRAÇÃO NA RESPOSTA
+        extraction_info: {
+          powerbi_report_id_extracted: !!powerbi_report_id,
+          embed_type_determined: embed_type,
+          using_default_group_id: true
+        }
+      }
     });
 
   } catch (error) {
@@ -6422,44 +6511,82 @@ app.post('/api/dashboards', authMiddleware, async (req, res) => {
   }
 });
 
-// ATUALIZAR DASHBOARD
+// ✅ TAMBÉM ATUALIZAR A ROTA DE UPDATE (SE EXISTIR)
 app.put('/api/dashboards/:id', authMiddleware, async (req, res) => {
   try {
-    const { id } = req.params;
-    const { titulo, descricao, setor, url_iframe, largura, altura } = req.body;
-
-    // Verificar se o dashboard existe e se o usuário pode editá-lo
-    const checkResult = await pool.query(
-      'SELECT * FROM dashboards WHERE id = $1', 
-      [id]
-    );
-
-    if (checkResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Dashboard não encontrado' });
-    }
-
-    const dashboard = checkResult.rows[0];
-
-    // Verificar permissões
-    if (req.user.tipo_usuario !== 'admin' && dashboard.criado_por !== req.user.id) {
-      return res.status(403).json({
-        error: 'Você não tem permissão para editar este dashboard'
+    if (req.user.tipo_usuario !== 'admin') {
+      return res.status(403).json({ 
+        error: 'Apenas administradores podem editar dashboards' 
       });
     }
+
+    const { id } = req.params;
+    const { titulo, descricao, setor, url_iframe, largura, altura, tipo_visibilidade } = req.body;
+
+    if (!titulo || !setor || !url_iframe) {
+      return res.status(400).json({
+        error: 'Título, setor e URL são obrigatórios'
+      });
+    }
+
+    // ✅ EXTRAÇÃO AUTOMÁTICA DO POWER BI REPORT ID
+    const powerbi_report_id = extractPowerBIReportId(url_iframe);
+    
+    // ✅ GROUP ID PADRÃO FIXO
+    const powerbi_group_id = '24735d42-c43d-423c-83d4-f2cd4e8cdb29';
+    
+    // ✅ DETERMINAR TIPO DE EMBED
+    const embed_type = powerbi_report_id ? 'secure' : 'public';
+
+    console.log('📊 Atualizando dashboard:', {
+      id,
+      titulo,
+      powerbi_report_id: powerbi_report_id || 'não encontrado',
+      embed_type
+    });
 
     const result = await pool.query(`
       UPDATE dashboards 
       SET titulo = $1, descricao = $2, setor = $3, url_iframe = $4, 
-          largura = $5, altura = $6, atualizado_em = NOW()
-      WHERE id = $7
+          largura = $5, altura = $6, tipo_visibilidade = $7,
+          powerbi_report_id = $8, powerbi_group_id = $9, embed_type = $10,
+          atualizado_em = NOW()
+      WHERE id = $11 AND ativo = true
       RETURNING *
-    `, [titulo, descricao, setor, url_iframe, largura, altura, id]);
+    `, [
+      titulo,
+      descricao,
+      setor,
+      url_iframe,
+      largura || 800,
+      altura || 600,
+      tipo_visibilidade || 'geral',
+      powerbi_report_id,      // ✅ NOVO
+      powerbi_group_id,       // ✅ NOVO
+      embed_type,             // ✅ NOVO
+      id
+    ]);
 
-    console.log(`📝 DASHBOARD: ${titulo} atualizado por ${req.user.nome}`);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Dashboard não encontrado' });
+    }
+
+    const updatedDashboard = result.rows[0];
+
+    console.log(`✅ DASHBOARD ATUALIZADO: ${titulo}`);
+    console.log(`   🔐 Embed Type: ${embed_type}`);
+    console.log(`   📊 Report ID: ${powerbi_report_id || 'N/A'}`);
 
     res.json({
       message: 'Dashboard atualizado com sucesso',
-      dashboard: result.rows[0]
+      dashboard: {
+        ...updatedDashboard,
+        extraction_info: {
+          powerbi_report_id_extracted: !!powerbi_report_id,
+          embed_type_determined: embed_type,
+          using_default_group_id: true
+        }
+      }
     });
 
   } catch (error) {

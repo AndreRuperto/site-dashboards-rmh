@@ -448,7 +448,8 @@ const EmailsProcessos = () => {
         cpfAssistido: processo.cpfAssistido,
         instancia: processo.instancia,
         exAdverso: processo.exAdverso,
-        objetoAtendimento: processo.objetoAtendimento
+        objetoAtendimento: processo.objetoAtendimento,
+        valorCausa: processo.valorCausa || '',  // ✅ ADICIONADO
       };
       
       const response = await fetchWithAuth(`${API_BASE_URL}/api/emails/processo/${processo.id}`, {
@@ -532,7 +533,7 @@ const EmailsProcessos = () => {
             instancia: p.instancia,
             exAdverso: p.exAdverso,
             objetoAtendimento: p.objetoAtendimento,
-            valorCausa: p.valorCausa || ''
+            valorCausa: p.valorCausa || '',
           }))
         })
       });
