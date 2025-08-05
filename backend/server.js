@@ -396,37 +396,6 @@ console.log('📁 Caminhos finais configurados:');
 console.log(`  📂 Documents: ${DOCUMENTS_PATH}`);
 console.log(`  📷 Thumbnails: ${THUMBNAILS_PATH}`);
 
-app.get('/documents/:filename', async (req, res) => {
-  const { filename } = req.params;
-  const filePath = path.join(__dirname, 'dist/documents', filename);
-  
-  console.log('📁 Tentando servir arquivo:', filename);
-  console.log('📍 Caminho completo:', filePath);
-  
-  try {
-    // ✅ USAR fs.access (versão async) em vez de existsSync
-    await fs.access(filePath);
-    
-    // ✅ SERVIR O ARQUIVO
-    res.sendFile(filePath, (err) => {
-      if (err) {
-        console.error('❌ Erro ao servir arquivo:', err);
-        res.status(500).json({ error: 'Erro ao servir arquivo' });
-      } else {
-        console.log('✅ Arquivo servido com sucesso:', filename);
-      }
-    });
-    
-  } catch (error) {
-    console.log('❌ Arquivo não encontrado:', filePath);
-    res.status(404).json({ 
-      error: 'Arquivo não encontrado',
-      path: filePath,
-      filename: filename
-    });
-  }
-});
-
 // ✅ MIDDLEWARE DE ARQUIVOS ESTÁTICOS CORRIGIDO
 app.use('/documents', (req, res, next) => {
   console.log(`📂 Requisição de arquivo: ${req.url}`);
@@ -621,6 +590,33 @@ app.use((error, req, res, next) => {
     message: process.env.NODE_ENV === 'development' ? error.message : 'Erro interno',
     stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
   });
+});
+
+// ✅ VERIFICAR SE O ARQUIVO EXISTE FISICAMENTE:
+app.get('/debug/check-file/:filename', async (req, res) => {
+  const { filename } = req.params;
+  const correctPath = path.join(DOCUMENTS_PATH, filename);
+  
+  try {
+    const stats = await fs.stat(correctPath);
+    res.json({
+      filename,
+      path: correctPath,
+      exists: true,
+      size: stats.size,
+      created: stats.birthtime,
+      modified: stats.mtime,
+      DOCUMENTS_PATH
+    });
+  } catch (error) {
+    res.json({
+      filename,
+      path: correctPath,
+      exists: false,
+      error: error.message,
+      DOCUMENTS_PATH
+    });
+  }
 });
 
 // ✅ Serve os arquivos da pasta dist com headers corretos
@@ -2721,10 +2717,47 @@ app.post('/api/documents/upload', authMiddleware, upload.fields([
       file: uploadedFile?.originalname,
       thumbnail: uploadedThumbnail?.originalname,
       title,
-      category
+      category,
+      fileSize: uploadedFile?.size,
+      mimeType: uploadedFile?.mimetype
     });
 
-    // ✅ Processar thumbnail se fornecida
+    // ✅ VERIFICAR SE O ARQUIVO FOI REALMENTE SALVO FISICAMENTE
+    const finalFilePath = path.join(getDocumentsPath(), uploadedFile.filename);
+    
+    try {
+      await fs.access(finalFilePath);
+      const fileStats = await fs.stat(finalFilePath);
+      
+      // Verificar se o arquivo não está vazio
+      if (fileStats.size === 0) {
+        console.error(`❌ Arquivo salvo está vazio: ${uploadedFile.filename}`);
+        return res.status(500).json({ 
+          success: false,
+          error: 'Falha ao salvar arquivo - arquivo vazio' 
+        });
+      }
+      
+      // Verificar se o tamanho bate com o esperado
+      if (fileStats.size !== uploadedFile.size) {
+        console.error(`❌ Tamanho incorreto: esperado ${uploadedFile.size}, obtido ${fileStats.size}`);
+        return res.status(500).json({ 
+          success: false,
+          error: 'Falha na integridade do arquivo - tamanho incorreto' 
+        });
+      }
+      
+      console.log(`✅ Arquivo verificado: ${uploadedFile.filename} (${fileStats.size} bytes)`);
+    } catch (fileError) {
+      console.error(`❌ Arquivo não foi salvo corretamente: ${fileError.message}`);
+      return res.status(500).json({ 
+        success: false,
+        error: 'Falha ao salvar arquivo fisicamente',
+        details: fileError.message 
+      });
+    }
+
+    // ✅ PROCESSAR THUMBNAIL SE FORNECIDA
     let thumbnailUrl = null;
     if (uploadedThumbnail) {
       const thumbnailDir = getThumbnailsPath();
@@ -2732,14 +2765,31 @@ app.post('/api/documents/upload', authMiddleware, upload.fields([
       const thumbnailName = `${timestamp}_${uploadedThumbnail.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
       const thumbnailPath = path.join(thumbnailDir, thumbnailName);
       
-      // Mover arquivo para diretório de thumbnails
-      await fs.rename(uploadedThumbnail.path, thumbnailPath);
-      
-      thumbnailUrl = `/thumbnails/${thumbnailName}`;
-      console.log(`🖼️ Thumbnail salva: ${thumbnailUrl}`);
+      try {
+        // Garantir que o diretório existe
+        await fs.mkdir(thumbnailDir, { recursive: true });
+        
+        // Mover arquivo para diretório de thumbnails
+        await fs.rename(uploadedThumbnail.path, thumbnailPath);
+        
+        // Verificar se a thumbnail foi salva
+        await fs.access(thumbnailPath);
+        const thumbnailStats = await fs.stat(thumbnailPath);
+        
+        if (thumbnailStats.size === 0) {
+          console.error(`❌ Thumbnail salva está vazia: ${thumbnailName}`);
+        } else {
+          thumbnailUrl = `/thumbnails/${thumbnailName}`;
+          console.log(`🖼️ Thumbnail salva: ${thumbnailUrl} (${thumbnailStats.size} bytes)`);
+        }
+      } catch (thumbnailError) {
+        console.error(`❌ Erro ao processar thumbnail: ${thumbnailError.message}`);
+        // Não falhar o upload por causa da thumbnail
+        console.log(`⚠️ Continuando upload sem thumbnail`);
+      }
     }
 
-    // Salvar no banco
+    // ✅ SALVAR NO BANCO DE DADOS
     const result = await pool.query(`
       INSERT INTO documentos (
         titulo, descricao, categoria, nome_arquivo, url_arquivo,
@@ -2759,24 +2809,145 @@ app.post('/api/documents/upload', authMiddleware, upload.fields([
       visibilidade || 'todos'
     ]);
 
-    console.log(`✅ Documento criado com sucesso:`, result.rows[0]);
+    if (result.rows.length === 0) {
+      console.error(`❌ Falha ao inserir no banco de dados`);
+      return res.status(500).json({ 
+        success: false,
+        error: 'Falha ao salvar informações no banco de dados' 
+      });
+    }
 
-    // ✅ RESPOSTA PADRONIZADA
+    const documento = result.rows[0];
+    console.log(`✅ Documento criado com sucesso:`, {
+      id: documento.id,
+      titulo: documento.titulo,
+      nome_arquivo: documento.nome_arquivo,
+      tamanho_arquivo: documento.tamanho_arquivo,
+      thumbnail_url: documento.thumbnail_url
+    });
+
+    // ✅ RESPOSTA PADRONIZADA COM INFORMAÇÕES DETALHADAS
     res.json({
       success: true,
-      documento: result.rows[0],
+      documento: documento,
       message: uploadedThumbnail ? 
         'Documento e thumbnail enviados com sucesso!' : 
-        'Documento enviado com sucesso!'
+        'Documento enviado com sucesso!',
+      arquivo_info: {
+        nome_original: uploadedFile.originalname,
+        nome_salvo: uploadedFile.filename,
+        tamanho: uploadedFile.size,
+        tipo_mime: uploadedFile.mimetype,
+        integridade_verificada: true
+      },
+      thumbnail_info: thumbnailUrl ? {
+        url: thumbnailUrl,
+        salva_com_sucesso: true
+      } : null
     });
 
   } catch (error) {
     console.error('❌ Erro no upload:', error);
+    
+    // ✅ LIMPEZA EM CASO DE ERRO
+    if (uploadedFile) {
+      const filePath = path.join(getDocumentsPath(), uploadedFile.filename);
+      try {
+        await fs.unlink(filePath);
+        console.log(`🗑️ Arquivo removido após erro: ${uploadedFile.filename}`);
+      } catch (cleanupError) {
+        console.error(`⚠️ Erro ao limpar arquivo: ${cleanupError.message}`);
+      }
+    }
+    
+    if (uploadedThumbnail) {
+      try {
+        await fs.unlink(uploadedThumbnail.path);
+        console.log(`🗑️ Thumbnail temporária removida após erro`);
+      } catch (cleanupError) {
+        console.error(`⚠️ Erro ao limpar thumbnail: ${cleanupError.message}`);
+      }
+    }
+    
     res.status(500).json({ 
       success: false,
       error: 'Erro interno do servidor',
-      details: error.message 
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
+  }
+});
+
+// ✅ FUNÇÃO AUXILIAR PARA VERIFICAR INTEGRIDADE DE ARQUIVOS
+async function verifyFileIntegrity(filePath, expectedSize, filename) {
+  try {
+    console.log(`🔍 Verificando integridade: ${filename}`);
+    
+    // Verificar se arquivo existe
+    await fs.access(filePath, fs.constants.F_OK);
+    
+    // Verificar se pode ser lido
+    await fs.access(filePath, fs.constants.R_OK);
+    
+    // Verificar tamanho
+    const stats = await fs.stat(filePath);
+    
+    if (stats.size !== expectedSize) {
+      throw new Error(`Tamanho incorreto: esperado ${expectedSize}, obtido ${stats.size}`);
+    }
+    
+    if (stats.size === 0) {
+      throw new Error('Arquivo está vazio');
+    }
+    
+    console.log(`✅ Integridade verificada: ${filename} (${stats.size} bytes)`);
+    return { 
+      success: true, 
+      size: stats.size,
+      readable: true,
+      exists: true
+    };
+    
+  } catch (error) {
+    console.error(`❌ Falha na verificação de integridade: ${error.message}`);
+    return { 
+      success: false, 
+      error: error.message,
+      readable: false,
+      exists: false
+    };
+  }
+}
+
+// ✅ ROTA ADICIONAL PARA VERIFICAR INTEGRIDADE DE DOCUMENTOS EXISTENTES
+app.get('/api/documents/:id/verify', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const result = await pool.query('SELECT * FROM documentos WHERE id = $1 AND ativo = true', [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Documento não encontrado no banco' });
+    }
+    
+    const documento = result.rows[0];
+    const filePath = path.join(getDocumentsPath(), documento.nome_arquivo);
+    
+    const verification = await verifyFileIntegrity(filePath, documento.tamanho_arquivo, documento.nome_arquivo);
+    
+    res.json({
+      documento_id: id,
+      titulo: documento.titulo,
+      nome_arquivo: documento.nome_arquivo,
+      verificacao: verification,
+      banco_dados: {
+        tamanho_esperado: documento.tamanho_arquivo,
+        tipo_mime: documento.tipo_mime,
+        url_arquivo: documento.url_arquivo
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro na verificação:', error);
+    res.status(500).json({ error: 'Erro ao verificar arquivo' });
   }
 });
 
