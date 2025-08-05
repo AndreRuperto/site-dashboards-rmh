@@ -470,14 +470,26 @@ express.static.mime.define({
 
 // Configuração do multer para upload de arquivos
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
+  destination: async function (req, file, cb) {
     let uploadPath;
+    
     if (file.fieldname === 'thumbnail') {
       uploadPath = getThumbnailsPath();
     } else {
       uploadPath = getDocumentsPath();
     }
-    cb(null, uploadPath);
+    
+    console.log(`📁 Upload destination para ${file.fieldname}: ${uploadPath}`);
+    
+    try {
+      // ✅ GARANTIR QUE O DIRETÓRIO EXISTE
+      await fs.mkdir(uploadPath, { recursive: true });
+      console.log(`✅ Diretório confirmado: ${uploadPath}`);
+      cb(null, uploadPath);
+    } catch (err) {
+      console.error(`❌ Erro ao criar diretório ${uploadPath}:`, err);
+      cb(err);
+    }
   },
   filename: function (req, file, cb) {
     const timestamp = Date.now();
@@ -485,26 +497,31 @@ const storage = multer.diskStorage({
     const nameWithoutExt = path.parse(originalName).name;
     const extension = path.extname(originalName);
     
-    // Remove caracteres especiais e espaços
+    // ✅ SANITIZAÇÃO MAIS ROBUSTA
     const cleanName = nameWithoutExt
-      .replace(/[^a-zA-Z0-9\-_]/g, '_')
-      .substring(0, 50); // Limita tamanho
+      .replace(/[^a-zA-Z0-9\-_\s]/g, '_')  // Manter espaços temporariamente
+      .replace(/\s+/g, '_')  // Converter espaços para underscore
+      .replace(/_+/g, '_')   // Remover underscores múltiplos
+      .substring(0, 50);     // Limitar tamanho
     
     const filename = `${cleanName}_${timestamp}${extension}`;
     
     console.log(`📄 MULTER: "${originalName}" -> "${filename}"`);
+    console.log(`📁 Salvando em: ${file.fieldname === 'thumbnail' ? getThumbnailsPath() : getDocumentsPath()}`);
+    
     cb(null, filename);
   }
 });
 
-// ✅ CONFIGURAÇÃO CORRIGIDA COM LIMITE MAIOR
+// ✅ CONFIGURAÇÃO ÚNICA DE UPLOAD
 const upload = multer({
   storage,
   limits: {
-    fileSize: 50 * 1024 * 1024 // 10MB
+    fileSize: 50 * 1024 * 1024, // 50MB
+    files: 2 // Máximo 2 arquivos (file + thumbnail)
   },
   fileFilter: (req, file, cb) => {
-    console.log(`📋 Processando arquivo: ${file.fieldname} - ${file.originalname}`);
+    console.log(`📋 Validando arquivo: ${file.fieldname} - ${file.originalname} (${file.mimetype})`);
     
     if (file.fieldname === 'thumbnail') {
       // Para thumbnails, apenas imagens
@@ -517,12 +534,14 @@ const upload = multer({
       ];
       
       if (allowedThumbnailMimes.includes(file.mimetype)) {
+        console.log(`✅ Thumbnail aceita: ${file.mimetype}`);
         cb(null, true);
       } else {
-        cb(new Error('Apenas imagens são permitidas para thumbnails'));
+        console.log(`❌ Thumbnail rejeitada: ${file.mimetype}`);
+        cb(new Error(`Tipo de thumbnail não permitido: ${file.mimetype}`));
       }
     } else {
-      // Para documentos, tipos originais
+      // Para documentos
       const allowedMimes = [
         'application/pdf',
         'application/msword',
@@ -539,91 +558,70 @@ const upload = multer({
       ];
 
       if (allowedMimes.includes(file.mimetype)) {
+        console.log(`✅ Documento aceito: ${file.mimetype}`);
         cb(null, true);
       } else {
-        cb(new Error('Tipo de arquivo não permitido'));
+        console.log(`❌ Documento rejeitado: ${file.mimetype}`);
+        cb(new Error(`Tipo de arquivo não permitido: ${file.mimetype}`));
       }
     }
   }
 });
 
-const thumbnailStorage = multer.diskStorage({
-  destination: async (req, file, cb) => {
-    // ✅ Usar o diretório de thumbnails
-    const thumbnailDir = getThumbnailsPath();
-    
-    console.log(`🖼️ Upload thumbnail destination: ${thumbnailDir}`);
-    
-    try {
-      await fs.mkdir(thumbnailDir, { recursive: true });
-      console.log(`✅ Diretório de thumbnails confirmado: ${thumbnailDir}`);
-    } catch (err) {
-      console.error('❌ Erro ao criar diretório de thumbnails:', err);
-      return cb(err);
-    }
-    
-    cb(null, thumbnailDir);
-  },
-  filename: (req, file, cb) => {
-    // ✅ Gerar nome com timestamp para evitar conflitos
-    const timestamp = Date.now();
-    const originalName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
-    const fileName = `${timestamp}_${originalName}`;
-    
-    console.log(`🖼️ Gerando nome da thumbnail: ${fileName}`);
-    cb(null, fileName);
-  }
-});
-
-const uploadThumbnail = multer({
-  storage: thumbnailStorage,
-  limits: {
-    fileSize: 50 * 1024 * 1024 // 5MB para thumbnails
-  },
-  fileFilter: (req, file, cb) => {
-    // Apenas imagens para thumbnails
-    const allowedMimes = [
-      'image/jpeg',
-      'image/jpg', 
-      'image/png',
-      'image/gif',
-      'image/webp'
-    ];
-
-    if (allowedMimes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Apenas imagens são permitidas para thumbnails'));
-    }
-  }
-});
-
+// ✅ MIDDLEWARE DE ERROR MAIS DETALHADO
 app.use((error, req, res, next) => {
+  console.error('🚨 ERRO CAPTURADO:', error);
+  
   if (error instanceof multer.MulterError) {
-    if (error.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({
-        error: 'Arquivo muito grande',
-        message: 'O arquivo deve ter no máximo 50MB',
-        code: 'FILE_TOO_LARGE'
-      });
-    }
-    if (error.code === 'LIMIT_UNEXPECTED_FILE') {
-      return res.status(400).json({
-        error: 'Campo de arquivo inesperado',
-        message: 'Verifique se está enviando o arquivo no campo correto',
-        code: 'UNEXPECTED_FILE'
-      });
+    console.error('❌ MULTER ERROR:', error.code, error.message);
+    
+    switch (error.code) {
+      case 'LIMIT_FILE_SIZE':
+        return res.status(400).json({
+          error: 'Arquivo muito grande',
+          message: 'O arquivo deve ter no máximo 50MB',
+          code: 'FILE_TOO_LARGE',
+          details: error.message
+        });
+      case 'LIMIT_UNEXPECTED_FILE':
+        return res.status(400).json({
+          error: 'Campo de arquivo inesperado',
+          message: 'Verifique se está enviando o arquivo no campo correto',
+          code: 'UNEXPECTED_FILE',
+          details: error.message
+        });
+      case 'LIMIT_FILE_COUNT':
+        return res.status(400).json({
+          error: 'Muitos arquivos',
+          message: 'Máximo 2 arquivos permitidos',
+          code: 'TOO_MANY_FILES'
+        });
+      default:
+        return res.status(400).json({
+          error: 'Erro no upload',
+          message: error.message,
+          code: error.code
+        });
     }
   }
   
-  // Outros tipos de erro
-  console.error('❌ ERRO GLOBAL:', error);
+  // ✅ ERRO DE VALIDAÇÃO DE ARQUIVO
+  if (error.message && error.message.includes('não permitido')) {
+    return res.status(400).json({
+      error: 'Tipo de arquivo inválido',
+      message: error.message,
+      code: 'INVALID_FILE_TYPE'
+    });
+  }
+  
+  // ✅ OUTROS ERROS
+  console.error('❌ ERRO GERAL:', error);
   res.status(500).json({
     error: 'Erro interno do servidor',
-    message: error.message
+    message: process.env.NODE_ENV === 'development' ? error.message : 'Erro interno',
+    stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
   });
 });
-
 
 // ✅ Serve os arquivos da pasta dist com headers corretos
 if (process.env.NODE_ENV === 'production') {
@@ -4537,9 +4535,7 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
               
               <div class="contact-info">
                 <p><strong>💬 Precisa tirar dúvidas?</strong></p>
-                <p>Entre em contato conosco através dos nossos canais oficiais:</p>
-                <p>📧 Email: contato@resendemh.com.br</p>
-                <p>📱 WhatsApp Oficial:</p>
+                <p>Entre em contato conosco através do nosso Whatsapp clicando no botão abaixo:</p>
                 <div style="text-align: center;">
                   <a href="https://wa.me/556130314400" class="whatsapp-btn">
                     <img src="https://sistema.resendemh.com.br/whatsapp.png" alt="WhatsApp" style="height: 30px; margin: 0 5px; vertical-align: middle;">
