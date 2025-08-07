@@ -98,6 +98,7 @@ interface NovoUsuarioData {
   email_pessoal: string;
   setor: string;
   tipo_colaborador: 'estagiario' | 'clt_associado';
+  nova_senha?: string;
 }
 
 interface EditarUsuarioData {
@@ -105,6 +106,7 @@ interface EditarUsuarioData {
   nome: string;
   setor: string;
   email_pessoal: string;
+  nova_senha?: string;
 }
 
 // Funções utilitárias
@@ -298,13 +300,15 @@ const AdminUserControl: React.FC = () => {
     email: '',
     email_pessoal: '',
     setor: '',
-    tipo_colaborador: 'estagiario'
+    tipo_colaborador: 'estagiario',
+    nova_senha: ''
   });
   const [editarUsuarioData, setEditarUsuarioData] = useState<EditarUsuarioData>({
     id: '',
     nome: '',
     setor: '',
-    email_pessoal: ''
+    email_pessoal: '',
+    nova_senha: ''
   });
   
   const { toast } = useToast();
@@ -467,7 +471,8 @@ const AdminUserControl: React.FC = () => {
         email: '',
         email_pessoal: '',
         setor: '',
-        tipo_colaborador: 'estagiario'
+        tipo_colaborador: 'estagiario',
+        nova_senha: ''
       });
 
     } catch (error) {
@@ -488,7 +493,8 @@ const AdminUserControl: React.FC = () => {
         body: JSON.stringify({
           nome: editarUsuarioData.nome,
           setor: editarUsuarioData.setor,
-          email_pessoal: editarUsuarioData.email_pessoal
+          email_pessoal: editarUsuarioData.email_pessoal,
+          nova_senha: editarUsuarioData.nova_senha || undefined
         })
       });
 
@@ -772,7 +778,8 @@ const AdminUserControl: React.FC = () => {
       id: usuario.id,
       nome: usuario.nome,
       setor: usuario.setor,
-      email_pessoal: usuario.email_pessoal || ''
+      email_pessoal: usuario.email_pessoal || '',
+      nova_senha: ''
     });
     setModalEditarUsuario(true);
   };
@@ -1526,6 +1533,16 @@ const AdminUserControl: React.FC = () => {
                 type="email"
                 value={editarUsuarioData.email_pessoal}
                 onChange={(e) => setEditarUsuarioData(prev => ({ ...prev, email_pessoal: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit_nova_senha">Nova Senha</Label>
+              <Input
+                id="edit_nova_senha"
+                type="password"
+                value={editarUsuarioData.nova_senha || ''}
+                onChange={(e) => setEditarUsuarioData(prev => ({ ...prev, nova_senha: e.target.value }))}
+                placeholder="Deixe vazio para manter a atual"
               />
             </div>
           </div>
