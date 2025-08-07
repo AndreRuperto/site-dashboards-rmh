@@ -5999,12 +5999,9 @@ app.post('/api/auth/resend-verification', resendLimiter, async (req, res) => {
 
     console.log(`🔄 REENVIO: Solicitação para email: ${email}`);
 
-    // Buscar usuário (por email corporativo ou pessoal)
+    // Buscar usuário apenas por email (estrutura simplificada)
     const userResult = await client.query(
-      `SELECT id, nome, email, email_pessoal, tipo_colaborador, email_verificado 
-       FROM usuarios 
-       WHERE (tipo_colaborador = 'estagiario' AND email_pessoal = $1) 
-          OR (tipo_colaborador = 'clt_associado' AND email = $1)`,
+      'SELECT id, nome, email, email_verificado FROM usuarios WHERE email = $1',
       [email]
     );
 
@@ -6022,7 +6019,7 @@ app.post('/api/auth/resend-verification', resendLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Email já verificado' });
     }
 
-    // ✅ VERIFICAR SE JÁ FOI REENVIADO RECENTEMENTE
+    // Verificar se já foi reenviado recentemente
     const ultimoReenvio = await client.query(
       `SELECT criado_em FROM verificacoes_email 
        WHERE usuario_id = $1
@@ -6048,7 +6045,7 @@ app.post('/api/auth/resend-verification', resendLimiter, async (req, res) => {
       }
     }
 
-    // ✅ INVALIDAR TODOS OS CÓDIGOS ANTERIORES
+    // Invalidar todos os códigos anteriores
     const tokensInvalidados = await client.query(
       'UPDATE verificacoes_email SET usado_em = NOW() WHERE usuario_id = $1 AND usado_em IS NULL RETURNING id',
       [user.id]
@@ -6070,27 +6067,24 @@ app.post('/api/auth/resend-verification', resendLimiter, async (req, res) => {
 
     await client.query('COMMIT');
 
-    const emailLogin = user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email;
-
-    console.log(`🔄 REENVIO: Novo código para ${user.tipo_colaborador}: ${emailLogin}`);
+    console.log(`🔄 REENVIO: Novo código para: ${email}`);
     console.log(`🔢 Novo código: ${codigoVerificacao}`);
     console.log(`📅 Token ID: ${novoTokenResult.rows[0].id}, Criado: ${novoTokenResult.rows[0].criado_em}`);
 
     // Enviar email
     try {
       const emailResult = await resend.emails.send({
-        from: 'andre.macedo@resendemh.com.br',
-        to: [emailLogin],
+        from: 'admin@resendemh.com.br',
+        to: [email],
         subject: '🔐 Novo código de verificação - Dashboards RMH',
-        html: await gerarTemplateVerificacao(user.nome, codigoVerificacao, emailLogin, user.tipo_colaborador)
+        html: await gerarTemplateVerificacao(user.nome, codigoVerificacao, email)
       });
 
       console.log(`✅ Novo código enviado com sucesso! Email ID:`, emailResult.id);
 
       res.json({
         message: 'Novo código enviado para seu email',
-        email_enviado_para: emailLogin,
-        tipo_colaborador: user.tipo_colaborador,
+        email_enviado_para: email,
         codigo_expira_em: expiraEm.toISOString(),
         timestamp: new Date().toISOString()
       });
@@ -6098,11 +6092,9 @@ app.post('/api/auth/resend-verification', resendLimiter, async (req, res) => {
     } catch (emailError) {
       console.error('❌ Erro ao enviar email:', emailError);
       
-      // Mesmo com erro no email, não falhar a API
       res.json({
         message: 'Novo código gerado, mas houve erro no envio do email. Tente novamente.',
-        email_enviado_para: emailLogin,
-        tipo_colaborador: user.tipo_colaborador,
+        email_enviado_para: email,
         email_error: true
       });
     }
@@ -6113,6 +6105,394 @@ app.post('/api/auth/resend-verification', resendLimiter, async (req, res) => {
     res.status(500).json({ error: 'Erro interno do servidor' });
   } finally {
     client.release();
+  }
+});
+
+app.get('/configurar-conta/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    console.log(`🔐 PÁGINA CONFIGURAR CONTA: Carregando para token: ${token.substring(0, 8)}...`);
+
+    // Usar sua rota existente de validação
+    const tokenResult = await pool.query(
+      `SELECT 
+         v.*,
+         u.nome, 
+         u.email, 
+         u.email_verificado,
+         NOW() as agora_servidor,
+         (v.expira_em > NOW()) as token_ainda_valido
+       FROM verificacoes_email v
+       JOIN usuarios u ON v.usuario_id = u.id
+       WHERE v.token = $1 
+         AND v.tipo_token IN ('configuracao_senha', 'ativacao_admin')`,
+      [token]
+    );
+
+    // Função para gerar template HTML
+    const gerarTemplate = (titulo, icone, conteudo) => {
+      return `
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>${titulo} - ANDIFES</title>
+          <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;600&family=Ruda:wght@900&display=swap" rel="stylesheet">
+          <link rel="icon" type="image/png" href="/andifes.png" sizes="32x32">
+          <style>
+            body { 
+              font-family: 'Raleway', sans-serif; 
+              background-color: #DADADA;
+              color: #0d3638;
+              margin: 0; padding: 20px; min-height: 100vh;
+              display: flex; align-items: center; justify-content: center;
+            }
+            .container { 
+              background: #f9f9f9; padding: 40px; border-radius: 16px; 
+              box-shadow: 0 10px 30px rgba(0,0,0,0.08); 
+              max-width: 500px; margin: 20px;
+              animation: slideIn 0.5s ease-out;
+            }
+            @keyframes slideIn {
+              from { opacity: 0; transform: translateY(-20px); }
+              to { opacity: 1; transform: translateY(0); }
+            }
+            .header {
+              background-color: #165A5D;
+              margin: -40px -40px 30px -40px;
+              padding: 30px 40px;
+              border-radius: 16px 16px 0 0;
+              color: white;
+              text-align: center;
+            }
+            .header h1 {
+              font-family: 'Ruda', sans-serif;
+              font-size: 24px;
+              margin: 10px 0 0 0;
+              letter-spacing: 0.5px;
+            }
+            .icon { 
+              font-size: 48px; 
+              margin-bottom: 10px; 
+              animation: bounce 1s;
+            }
+            @keyframes bounce {
+              0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+              40% { transform: translateY(-10px); }
+              60% { transform: translateY(-5px); }
+            }
+            .form-container {
+              text-align: center;
+            }
+            .form-group {
+              margin-bottom: 20px;
+              text-align: left;
+            }
+            label {
+              display: block;
+              margin-bottom: 5px;
+              font-weight: 600;
+              color: #0d3638;
+            }
+            input[type="password"], input[type="email"] {
+              width: 100%;
+              padding: 12px;
+              border: 2px solid #ddd;
+              border-radius: 8px;
+              font-size: 16px;
+              box-sizing: border-box;
+              transition: border-color 0.3s;
+            }
+            input[type="password"]:focus, input[type="email"]:focus {
+              outline: none;
+              border-color: #165A5D;
+            }
+            .button {
+              background: #165A5D; 
+              color: white; 
+              padding: 15px 30px;
+              border: none;
+              border-radius: 8px; 
+              font-size: 16px;
+              font-weight: 600;
+              cursor: pointer;
+              width: 100%;
+              transition: all 0.3s;
+              margin: 10px 0;
+            }
+            .button:hover { 
+              background: #0d3638; 
+              transform: translateY(-2px);
+            }
+            .button:disabled {
+              background: #ccc;
+              cursor: not-allowed;
+              transform: none;
+            }
+            .error-box {
+              background: #fdf2f2; 
+              padding: 15px; 
+              border-radius: 10px; 
+              border-left: 4px solid #e74c3c; 
+              margin: 20px 0;
+            }
+            .success-box {
+              background: #e8f5e8; 
+              padding: 15px; 
+              border-radius: 10px; 
+              border-left: 4px solid #27ae60; 
+              margin: 20px 0;
+            }
+            .warning-box {
+              background: #fff3cd; 
+              padding: 15px; 
+              border-radius: 10px; 
+              border-left: 4px solid #f39c12; 
+              margin: 20px 0;
+            }
+            .message {
+              margin: 15px 0;
+              padding: 10px;
+              border-radius: 5px;
+              text-align: center;
+            }
+            .message.error {
+              background: #fdf2f2;
+              color: #e74c3c;
+              border: 1px solid #e74c3c;
+            }
+            .message.success {
+              background: #e8f5e8;
+              color: #27ae60;
+              border: 1px solid #27ae60;
+            }
+            .link {
+              color: #165A5D;
+              text-decoration: none;
+              font-weight: 600;
+            }
+            .link:hover {
+              text-decoration: underline;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <img src="/andifes.png" alt="Logo ANDIFES" style="height: 60px; margin-bottom: 10px;" />
+              <h1>${titulo}</h1>
+            </div>
+            ${conteudo}
+          </div>
+          
+          <script>
+            function configurarConta() {
+              const senha = document.getElementById('senha').value;
+              const confirmarSenha = document.getElementById('confirmarSenha').value;
+              const submitBtn = document.getElementById('submitBtn');
+              const messageDiv = document.getElementById('message');
+              
+              // Validações
+              if (senha.length < 6) {
+                showMessage('A senha deve ter pelo menos 6 caracteres', 'error');
+                return;
+              }
+              
+              if (senha !== confirmarSenha) {
+                showMessage('As senhas não coincidem', 'error');
+                return;
+              }
+              
+              // Desabilitar botão e mostrar loading
+              submitBtn.disabled = true;
+              submitBtn.textContent = 'Configurando...';
+              
+              // ✅ USAR SUA ROTA EXISTENTE  
+              fetch('/api/auth/configurar-conta/' + '${token}', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  senha: senha
+                })
+              })
+              .then(response => response.json())
+              .then(data => {
+                if (data.token) {
+                  // ✅ SUCESSO - usar seu sistema de login automático
+                  showMessage('✅ Conta configurada com sucesso! Entrando na plataforma...', 'success');
+                  
+                  // Salvar token (igual seu sistema)
+                  localStorage.setItem('authToken', data.token);
+                  localStorage.setItem('user', JSON.stringify(data.usuario));
+                  
+                  setTimeout(() => {
+                    window.location.href = '/';
+                  }, 2000);
+                } else {
+                  showMessage(data.error || 'Erro ao configurar conta', 'error');
+                  submitBtn.disabled = false;
+                  submitBtn.textContent = 'Configurar Conta';
+                }
+              })
+              .catch(error => {
+                showMessage('Erro de conexão. Tente novamente.', 'error');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Configurar Conta';
+              });
+            }
+            
+            function showMessage(text, type) {
+              const messageDiv = document.getElementById('message');
+              messageDiv.textContent = text;
+              messageDiv.className = 'message ' + type;
+              messageDiv.style.display = 'block';
+            }
+            
+            // Adicionar event listener ao botão
+            document.getElementById('submitBtn').addEventListener('click', configurarConta);
+            
+            // Permitir submit com Enter
+            document.addEventListener('keypress', function(e) {
+              if (e.key === 'Enter') {
+                configurarConta();
+              }
+            });
+          </script>
+        </body>
+        </html>
+      `;
+    };
+
+    // Verificar se token existe
+    if (tokenResult.rows.length === 0) {
+      const conteudo = `
+        <div class="form-container">
+          <h2>Link Inválido</h2>
+          <div class="error-box">
+            <strong>❌ Token não encontrado</strong><br>
+            Este link de configuração não foi encontrado ou é inválido.
+          </div>
+          <p>Entre em contato com o administrador para obter um novo link.</p>
+          <a href="/" class="link">← Voltar ao login</a>
+        </div>
+      `;
+      
+      return res.status(400).send(gerarTemplate('Token Inválido', '🔍', conteudo));
+    }
+
+    const verification = tokenResult.rows[0];
+    
+    // ✅ USAR SUA LÓGICA DE VALIDAÇÃO EXISTENTE
+    if (verification.usado_em) {
+      const conteudo = `
+        <div class="form-container">
+          <h2>Link Já Utilizado</h2>
+          <div class="error-box">
+            <strong>🔒 Token já usado</strong><br>
+            Este link de configuração já foi utilizado anteriormente.
+          </div>
+          <p>Tente fazer login com a senha que você configurou.</p>
+          <a href="/" class="link">← Ir para login</a>
+        </div>
+      `;
+      
+      return res.status(400).send(gerarTemplate('Link Usado', '🔒', conteudo));
+    }
+
+    if (verification.email_verificado) {
+      const conteudo = `
+        <div class="form-container">
+          <h2>Conta Já Configurada</h2>
+          <div class="warning-box">
+            <strong>✅ Conta já ativa</strong><br>
+            Esta conta já foi configurada e está ativa.
+          </div>
+          <p>Você pode fazer login normalmente na plataforma.</p>
+          <a href="/" class="link">← Ir para login</a>
+        </div>
+      `;
+      
+      return res.status(400).send(gerarTemplate('Já Configurada', '✅', conteudo));
+    }
+
+    // ✅ USAR SUA LÓGICA DE FLEXIBILIDADE DE EXPIRAÇÃO
+    const agora = new Date();
+    const expiracao = new Date(verification.expira_em);
+    const horasAtrasado = (agora.getTime() - expiracao.getTime()) / (1000 * 60 * 60);
+    
+    if (horasAtrasado > 24) {
+      const conteudo = `
+        <div class="form-container">
+          <h2>Link Expirado</h2>
+          <div class="error-box">
+            <strong>⏰ Token expirado</strong><br>
+            Este link expirou há ${horasAtrasado.toFixed(1)} horas.
+          </div>
+          <p>Solicite um novo link de configuração ao administrador.</p>
+          <a href="/" class="link">← Voltar ao login</a>
+        </div>
+      `;
+      
+      return res.status(400).send(gerarTemplate('Link Expirado', '⏰', conteudo));
+    }
+
+    // ✅ TOKEN VÁLIDO - MOSTRAR FORMULÁRIO
+    let avisoExpiracao = '';
+    if (horasAtrasado > 0) {
+      avisoExpiracao = `
+        <div class="warning-box">
+          <strong>⚠️ Aviso:</strong> Este link expirou há ${horasAtrasado.toFixed(1)} horas, mas ainda está sendo aceito.
+        </div>
+      `;
+    }
+    
+    const conteudo = `
+      <div class="form-container">
+        <h2>Olá, ${verification.nome}!</h2>
+        <p>Configure uma senha para acessar a plataforma.</p>
+        
+        ${avisoExpiracao}
+        
+        <div id="message" class="message" style="display: none;"></div>
+        
+        <div class="form-group">
+          <label for="senha">Nova Senha:</label>
+          <input type="password" id="senha" placeholder="Mínimo 6 caracteres" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="confirmarSenha">Confirmar Senha:</label>
+          <input type="password" id="confirmarSenha" placeholder="Digite a senha novamente" required>
+        </div>
+        
+        <button type="button" class="button" id="submitBtn">
+          Configurar Senha
+        </button>
+      </div>
+    `;
+
+    res.send(gerarTemplate('Configure sua Conta', '🔐', conteudo));
+
+  } catch (error) {
+    console.error('❌ Erro ao carregar página de configuração:', error);
+    
+    const conteudoErro = `
+      <div class="form-container">
+        <h2>Erro Interno</h2>
+        <div class="error-box">
+          <strong>⚠️ Erro no servidor</strong><br>
+          Não foi possível carregar a página de configuração.
+        </div>
+        <p>Tente novamente em alguns instantes ou entre em contato com o administrador.</p>
+        <a href="/" class="link">← Voltar ao login</a>
+      </div>
+    `;
+    
+    res.status(500).send(gerarTemplate('Erro', '⚠️', conteudoErro));
   }
 });
 
@@ -6133,14 +6513,12 @@ app.post('/api/auth/configurar-conta/:token', async (req, res) => {
 
     console.log(`🔑 CONFIGURAR CONTA: Processando token: ${token.substring(0, 8)}...`);
 
-    // ✅ CORREÇÃO: Busca mais permissiva + debug
+    // ✅ BUSCA SIMPLIFICADA para nova estrutura
     const tokenResult = await client.query(
       `SELECT 
          v.*,
          u.nome, 
          u.email, 
-         u.email_pessoal, 
-         u.tipo_colaborador, 
          u.email_verificado,
          NOW() as agora_servidor,
          (v.expira_em > NOW()) as token_ainda_valido
@@ -6181,7 +6559,7 @@ app.post('/api/auth/configurar-conta/:token', async (req, res) => {
       return res.status(400).json({ error: 'Esta conta já foi configurada' });
     }
 
-    // ✅ PERMITIR TOKENS EXPIRADOS POR ALGUMAS HORAS (mesma lógica da validação)
+    // ✅ PERMITIR TOKENS EXPIRADOS POR ALGUMAS HORAS (flexibilidade)
     const agora = new Date();
     const expiracao = new Date(verification.expira_em);
     const horasAtrasado = (agora.getTime() - expiracao.getTime()) / (1000 * 60 * 60);
@@ -6204,9 +6582,9 @@ app.post('/api/auth/configurar-conta/:token', async (req, res) => {
     // Criptografar senha escolhida pelo usuário
     const senhaHash = await bcrypt.hash(senha, 10);
 
-    // Atualizar usuário: senha + email verificado + conta ativada
+    // ✅ ATUALIZAR USUÁRIO: estrutura simplificada
     await client.query(
-      'UPDATE usuarios SET senha = $1, email_verificado = true, verificado_em = NOW() WHERE id = $2',
+      'UPDATE usuarios SET senha = $1, email_verificado = true, atualizado_em = NOW() WHERE id = $2',
       [senhaHash, verification.usuario_id]
     );
 
@@ -6223,13 +6601,14 @@ app.post('/api/auth/configurar-conta/:token', async (req, res) => {
     const jwtToken = jwt.sign(
       { 
         id: verification.usuario_id, 
-        email: verification.tipo_colaborador === 'estagiario' ? verification.email_pessoal : verification.email,
+        email: verification.email,
         tipo_usuario: 'usuario'
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 
+    // ✅ RESPOSTA SIMPLIFICADA
     res.json({
       message: 'Conta configurada com sucesso! Você foi logado automaticamente.',
       token: jwtToken,
@@ -6237,15 +6616,11 @@ app.post('/api/auth/configurar-conta/:token', async (req, res) => {
         id: verification.usuario_id,
         nome: verification.nome,
         email: verification.email,
-        email_pessoal: verification.email_pessoal,
-        tipo_colaborador: verification.tipo_colaborador,
-        email_verificado: true,
-        email_login: verification.tipo_colaborador === 'estagiario' ? verification.email_pessoal : verification.email
+        email_verificado: true
       }
     });
 
   } catch (error) {
-    // ✅ CORREÇÃO: Rollback seguro
     try {
       await client.query('ROLLBACK');
     } catch (rollbackError) {
@@ -6255,7 +6630,6 @@ app.post('/api/auth/configurar-conta/:token', async (req, res) => {
     console.error('❌ Erro ao configurar conta:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   } finally {
-    // ✅ CORREÇÃO: Release seguro - só fazer release se ainda conectado
     try {
       client.release();
     } catch (releaseError) {
@@ -6264,26 +6638,26 @@ app.post('/api/auth/configurar-conta/:token', async (req, res) => {
   }
 });
 
+// Rota de redirecionamento (manter compatibilidade)
 app.post('/api/auth/configurar-senha/:token', async (req, res) => {
   // Redirecionar para a rota unificada
   req.url = req.url.replace('/configurar-senha/', '/configurar-conta/');
   return app._router.handle(req, res);
 });
 
+// VALIDAR TOKEN DE CONFIGURAÇÃO - SIMPLIFICADO
 app.get('/api/auth/validar-token-configuracao/:token', async (req, res) => {
   try {
     const { token } = req.params;
 
     console.log(`🔍 VALIDAR TOKEN: ${token.substring(0, 8)}...`);
 
-    // ✅ BUSCA MAIS PERMISSIVA - Não verificar expiração ainda
+    // ✅ BUSCA SIMPLIFICADA - estrutura nova
     const tokenResult = await pool.query(
       `SELECT 
          v.*,
          u.nome, 
          u.email, 
-         u.email_pessoal, 
-         u.tipo_colaborador, 
          u.email_verificado,
          NOW() as agora_servidor,
          (v.expira_em > NOW()) as token_ainda_valido
@@ -6343,12 +6717,12 @@ app.get('/api/auth/validar-token-configuracao/:token', async (req, res) => {
     // ✅ TOKEN VÁLIDO
     console.log('✅ Token aceito para uso');
     
+    // ✅ RESPOSTA SIMPLIFICADA
     res.json({
       valido: true,
       usuario: {
         nome: verification.nome,
-        email_login: verification.tipo_colaborador === 'estagiario' ? verification.email_pessoal : verification.email,
-        tipo_colaborador: verification.tipo_colaborador
+        email: verification.email
       },
       aviso: horasAtrasado > 0 ? `Token expirou há ${horasAtrasado.toFixed(1)} horas, mas ainda permitindo uso` : null
     });

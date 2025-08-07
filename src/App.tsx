@@ -174,9 +174,6 @@ const App = () => {
         <BrowserRouter>
           <AuthProvider>
             <Routes>
-              {/* ROTA PÚBLICA - Configurar Conta (não precisa de autenticação) */}
-              <Route path="/configurar-conta/:token" element={<ConfiguracoesPessoais />} />
-              
               {/* TODAS AS OUTRAS ROTAS (autenticadas) */}
               <Route path="/*" element={<AppContent />} />
             </Routes>

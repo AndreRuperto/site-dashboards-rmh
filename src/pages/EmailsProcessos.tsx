@@ -143,9 +143,10 @@ const EmailsProcessos = () => {
         return data; // Se não conseguir converter, retorna original
       }
       
-      const dia = dataObj.getDate().toString().padStart(2, '0');
-      const mes = (dataObj.getMonth() + 1).toString().padStart(2, '0');
-      const ano = dataObj.getFullYear();
+      // ✅ USAR MÉTODOS UTC em vez de locais
+      const dia = dataObj.getUTCDate().toString().padStart(2, '0');
+      const mes = (dataObj.getUTCMonth() + 1).toString().padStart(2, '0');
+      const ano = dataObj.getUTCFullYear();
       
       return `${dia}/${mes}/${ano}`;
     } catch (error) {
@@ -1131,6 +1132,17 @@ const EmailsProcessos = () => {
                     <div>
                       <label className="text-sm font-medium text-gray-600">Ex-adverso</label>
                       <p>{processoDetalhado.exAdverso}</p>
+                    </div>
+                  )}
+                  {processoDetalhado.valorCausa && (
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Valor da Causa</label>
+                      <p className="flex items-center gap-2">
+                        {new Intl.NumberFormat('pt-BR', { 
+                          style: 'currency', 
+                          currency: 'BRL' 
+                        }).format(Number(processoDetalhado.valorCausa))}
+                      </p>
                     </div>
                   )}
                 </CardContent>
