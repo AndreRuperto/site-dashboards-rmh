@@ -1468,6 +1468,16 @@ const AdminUserControl: React.FC = () => {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="nova_senha">Senha Inicial</Label>
+              <Input
+                id="nova_senha"
+                type="password"
+                value={novoUsuarioData.nova_senha || ''}
+                onChange={(e) => setNovoUsuarioData(prev => ({ ...prev, nova_senha: e.target.value }))}
+                placeholder="Deixe vazio para gerar automaticamente"
+              />
+            </div>
           </div>
 
           <DialogFooter className="gap-2">
