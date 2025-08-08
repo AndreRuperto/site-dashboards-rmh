@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Configure sua Senha</title>
+      <style>
+        body {
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          line-height: 1.6;
+          color: #333;
+          max-width: 600px;
+          margin: 0 auto;
+          padding: 20px;
+          background-color: #f4f4f4;
+        }
+        .container {
+          background: white;
+          border-radius: 16px;
+          overflow: hidden;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .header {
+          background: linear-gradient(135deg, #2c6975 0%, #165A5D 100%);
+          padding: 30px;
+          text-align: center;
+          color: white;
+          position: relative;
+        }
+        .header::before {
+          content: "🔐";
+          font-size: 48px;
+          display: block;
+          margin-bottom: 15px;
+        }
+        .header h1 {
+          margin: 0;
+          font-size: 24px;
+          font-weight: 600;
+        }
+        .content {
+          padding: 40px;
+          text-align: center;
+        }
+        .greeting {
+          font-size: 20px;
+          font-weight: 600;
+          color: #2c6975;
+          margin-bottom: 15px;
+        }
+        .description {
+          color: #666;
+          margin-bottom: 30px;
+          font-size: 16px;
+        }
+        .credentials-section {
+          background: #f8f9fa;
+          border: 2px dashed #165A5D;
+          border-radius: 12px;
+          padding: 25px;
+          margin: 30px 0;
+        }
+        .credential-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin: 15px 0;
+          padding: 12px;
+          background: white;
+          border-radius: 8px;
+          border-left: 4px solid #165A5D;
+        }
+        .credential-label {
+          font-weight: 600;
+          color: #666;
+          font-size: 14px;
+        }
+        .credential-value {
+          font-family: 'Courier New', monospace;
+          font-size: 16px;
+          color: #165A5D;
+          font-weight: bold;
+          background: #e8f4f8;
+          padding: 8px 12px;
+          border-radius: 6px;
+        }
+        .btn-container {
+          margin: 35px 0;
+        }
+        .btn {
+          display: inline-block;
+          background: #165A5D;
+          color: white;
+          padding: 16px 32px;
+          text-decoration: none;
+          border-radius: 8px;
+          font-weight: 600;
+          font-size: 16px;
+          margin: 8px;
+          transition: all 0.3s ease;
+        }
+        .btn:hover {
+          background: #0d3638;
+          transform: translateY(-2px);
+        }
+        .footer-note {
+          background: #f8f9fa;
+          padding: 20px;
+          margin-top: 30px;
+          border-radius: 8px;
+          font-size: 14px;
+          color: #666;
+          text-align: center;
+        }
+        .expire-notice {
+          color: #dc3545;
+          font-size: 13px;
+          margin-top: 20px;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Configure sua Senha</h1>
+        </div>
+        
+        <div class="content">
+          <div class="greeting">Olá, ${nome}!</div>
+          
+          <div class="description">
+            Você foi adicionado à plataforma! Agora precisa definir sua senha para acessar a plataforma.
+          </div>
+          
+          <div class="credentials-section">
+            <div class="credential-row">
+              <span class="credential-label">📧 Email/Login:</span>
+              <span class="credential-value">${email}</span>
+            </div>
+            
+            <div class="credential-row">
+              <span class="credential-label">🔒 Senha Temporária:</span>
+              <span class="credential-value">${senhaTemporaria}</span>
+            </div>
+          </div>
+          
+          <div class="btn-container">
+            <a href="${linkAlterarSenha}" class="btn">
+              Definir Minha Senha
+            </a>
+          </div>
+          
+          <div style="text-align: center; margin-top: 20px;">
+            <p style="color: #666; font-size: 14px;">
+              Clique no botão para escolher sua senha
+            </p>
+          </div>
+          
+          <div class="expire-notice">
+            Este link expira em 7 dias. Se precisar de ajuda, entre em contato com o administrador.
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
