@@ -9824,7 +9824,6 @@ app.get('/api/debug/files', async (req, res) => {
   }
 });
 
-// No arquivo do servidor (app.js, server.js, etc.)
 // ROTA: Alterar senha do usuário
 app.post('/api/usuario/alterar-senha', authMiddleware, async (req, res) => {
   try {
@@ -9870,6 +9869,88 @@ app.post('/api/usuario/alterar-senha', authMiddleware, async (req, res) => {
 
   } catch (error) {
     console.error('❌ Erro ao alterar senha:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// ROTA: Atualizar dados pessoais do usuário
+app.put('/api/usuario/atualizar-dados', authMiddleware, async (req, res) => {
+  try {
+    const { nome, email_pessoal, setor, tipo_colaborador } = req.body;
+    const userId = req.user.id;
+    const userTipo = req.user.tipo_usuario;
+
+    // Validação básica
+    if (!nome) {
+      return res.status(400).json({ error: 'Nome é obrigatório' });
+    }
+
+    // Verificar se usuário existe
+    const userResult = await pool.query(
+      'SELECT id, tipo_usuario FROM usuarios WHERE id = $1 AND ativo = true',
+      [userId]
+    );
+    
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    // Preparar campos para atualização
+    let camposParaAtualizar = ['nome = $1'];
+    let valores = [nome];
+    let valorIndex = 2;
+
+    // Email pessoal (todos podem editar)
+    if (email_pessoal !== undefined) {
+      camposParaAtualizar.push(`email_pessoal = $${valorIndex}`);
+      valores.push(email_pessoal);
+      valorIndex++;
+    }
+
+    // Setor e tipo_colaborador (só admin pode editar)
+    if (userTipo === 'admin') {
+      if (setor !== undefined) {
+        camposParaAtualizar.push(`setor = $${valorIndex}`);
+        valores.push(setor);
+        valorIndex++;
+      }
+      
+      if (tipo_colaborador !== undefined) {
+        camposParaAtualizar.push(`tipo_colaborador = $${valorIndex}`);
+        valores.push(tipo_colaborador);
+        valorIndex++;
+      }
+    }
+
+    // Adicionar timestamp e userId
+    camposParaAtualizar.push(`atualizado_em = NOW()`);
+    valores.push(userId);
+
+    // Construir e executar query
+    const query = `
+      UPDATE usuarios 
+      SET ${camposParaAtualizar.join(', ')} 
+      WHERE id = $${valorIndex} AND ativo = true
+      RETURNING id, nome, email_pessoal, setor, tipo_colaborador
+    `;
+
+    const result = await pool.query(query, valores);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Erro ao atualizar usuário' });
+    }
+
+    const usuarioAtualizado = result.rows[0];
+
+    console.log(`✅ Dados atualizados para usuário ${userId}: ${nome}`);
+
+    res.json({
+      message: 'Dados atualizados com sucesso',
+      usuario: usuarioAtualizado
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao atualizar dados do usuário:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
