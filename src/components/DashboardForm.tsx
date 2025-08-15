@@ -113,19 +113,20 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
   };
 
   const setoresPredefinidos = [
-    'Diretores',
-    'Carteira',
-    'Atendimento',
-    'Prazos',
-    'Trabalhista',
-    'Projetos',
-    'Inicial',
-    'Criminal',
-    'Financeiro',
-    'Saúde',
-    'Comercial/Marketing',
     'Administrativo',
-    'Família e Sucessões'
+    'Atendimento',
+    'Carteira',
+    'Comercial/Marketing',
+    'Criminal',
+    'Diretores',
+    'Família e Sucessões',
+    'Financeiro',
+    'Inicial',
+    'Projetos',
+    'Protocolo',
+    'Prazos',
+    'Saúde',
+    'Trabalhista'
   ];
 
   const visibilityOptions = [

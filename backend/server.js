@@ -5391,7 +5391,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
         const emailResult = await resend.emails.send({
           from: 'andre.macedo@resendemh.com.br',
           to: [emailLogin],
-          subject: '🔐 Confirme seu email - Dashboards RMH',
+          subject: 'Confirme seu email - Site RMH',
           html: await gerarTemplateVerificacao(nome, codigoVerificacao, emailLogin, tipo_colaborador)
         });
 
@@ -7317,7 +7317,7 @@ app.post('/api/admin/aprovar-usuario/:userId', adminMiddleware, async (req, res)
         const emailResult = await resend.emails.send({
           from: 'andre.macedo@resendemh.com.br',
           to: [user.email_pessoal],
-          subject: 'Cadastro aprovado - RMH',
+          subject: 'Cadastro aprovado - Site RMH',
           html: await gerarTemplateValidacaoEstagiario(user.nome, linkValidacao, user.email_pessoal)
         });
 
@@ -7721,8 +7721,8 @@ app.post('/api/admin/reenviar-codigo/:userId', adminMiddleware, async (req, res)
         from: 'andre.macedo@resendemh.com.br',
         to: [emailLogin],
         subject: user.tipo_colaborador === 'estagiario' 
-          ? '🔗 Novo link de validação - Dashboards RMH'
-          : '🔐 Novo código de verificação - Dashboards RMH',
+          ? 'Novo link de validação - Site RMH'
+          : 'Novo código de verificação - Site RMH',
         html: templateHtml
       });
 

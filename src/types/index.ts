@@ -245,19 +245,20 @@ export const isAguardandoVerificacao = (usuario: User): boolean => {
 
 // 🆕 SETORES DISPONÍVEIS
 export const SETORES = [
-  'Diretores',
-  'Carteira',
-  'Atendimento',
-  'Prazos',
-  'Trabalhista',
-  'Projetos',
-  'Inicial',
-  'Criminal',
-  'Financeiro',
-  'Saúde',
-  'Comercial/Marketing',
   'Administrativo',
-  'Família e Sucessões'
+  'Atendimento',
+  'Carteira',
+  'Comercial/Marketing',
+  'Criminal',
+  'Diretores',
+  'Família e Sucessões',
+  'Financeiro',
+  'Inicial',
+  'Projetos',
+  'Protocolo',
+  'Prazos',
+  'Saúde',
+  'Trabalhista'
 ] as const;
 
 export type Setor = typeof SETORES[number];
