@@ -126,30 +126,60 @@ const EmailsProcessos = () => {
 
   // Função para formatar data para dd/MM/yyyy
   const formatarData = (data: string): string => {
-    if (!data) return '';
+    console.log('🔍 DEBUG formatarData - Data recebida:', data, typeof data);
+    
+    if (!data) {
+      console.log('🔍 DEBUG formatarData - Data vazia, retornando string vazia');
+      return '';
+    }
     
     // Se já está no formato dd/MM/yyyy, retornar como está
     if (data.includes('/') && data.split('/').length === 3) {
       const parts = data.split('/');
       if (parts[0].length <= 2) {
+        console.log('🔍 DEBUG formatarData - Data já no formato dd/MM/yyyy:', data);
         return data; // Já está no formato correto
       }
     }
     
     // Se está no formato ISO (yyyy-MM-dd) ou outro formato
     try {
-      const dataObj = new Date(data);
+      let dataObj;
+      
+      // ✅ CORREÇÃO PRINCIPAL: Se é data simples (YYYY-MM-DD), força interpretação local
+      if (data.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        console.log('🔍 DEBUG formatarData - Detectado formato YYYY-MM-DD, adicionando T00:00:00');
+        dataObj = new Date(data + 'T00:00:00');
+        console.log('🔍 DEBUG formatarData - Data após new Date(data + T00:00:00):', dataObj.toString());
+        console.log('🔍 DEBUG formatarData - ISO String:', dataObj.toISOString());
+        console.log('🔍 DEBUG formatarData - Local String:', dataObj.toLocaleString('pt-BR'));
+      } else {
+        console.log('🔍 DEBUG formatarData - Formato diferente de YYYY-MM-DD, usando new Date() direto');
+        dataObj = new Date(data);
+        console.log('🔍 DEBUG formatarData - Data após new Date(data):', dataObj.toString());
+      }
+      
       if (isNaN(dataObj.getTime())) {
+        console.log('🔍 DEBUG formatarData - Data inválida, retornando original:', data);
         return data; // Se não conseguir converter, retorna original
       }
       
-      // ✅ USAR MÉTODOS UTC em vez de locais
-      const dia = dataObj.getUTCDate().toString().padStart(2, '0');
-      const mes = (dataObj.getUTCMonth() + 1).toString().padStart(2, '0');
-      const ano = dataObj.getUTCFullYear();
+      // ✅ USAR MÉTODOS LOCAIS em vez de UTC
+      const dia = dataObj.getDate().toString().padStart(2, '0');
+      const mes = (dataObj.getMonth() + 1).toString().padStart(2, '0');
+      const ano = dataObj.getFullYear();
       
-      return `${dia}/${mes}/${ano}`;
+      console.log('🔍 DEBUG formatarData - Componentes extraídos:');
+      console.log('   - Dia (getDate()):', dia);
+      console.log('   - Mês (getMonth() + 1):', mes);
+      console.log('   - Ano (getFullYear()):', ano);
+      
+      const resultado = `${dia}/${mes}/${ano}`;
+      console.log('🔍 DEBUG formatarData - Resultado final:', resultado);
+      
+      return resultado;
     } catch (error) {
+      console.log('🔍 DEBUG formatarData - Erro capturado:', error);
       return data; // Se houver erro, retorna original
     }
   };
