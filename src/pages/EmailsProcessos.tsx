@@ -126,67 +126,21 @@ const EmailsProcessos = () => {
 
   // Função para formatar data para dd/MM/yyyy
   const formatarData = (data: string): string => {
-    console.log('🔍 DEBUG formatarData - Data recebida:', data, typeof data);
+    if (!data) return '';
     
-    if (!data) {
-      console.log('🔍 DEBUG formatarData - Data vazia, retornando string vazia');
-      return '';
+    // Pegar tudo antes do T
+    const dataLimpa = data.split('T')[0];
+    
+    // Se não está no formato YYYY-MM-DD, retornar original
+    if (!dataLimpa.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      return data;
     }
     
-    // Se já está no formato dd/MM/yyyy, retornar como está
-    if (data.includes('/') && data.split('/').length === 3) {
-      const parts = data.split('/');
-      if (parts[0].length <= 2) {
-        console.log('🔍 DEBUG formatarData - Data já no formato dd/MM/yyyy:', data);
-        return data; // Já está no formato correto
-      }
-    }
+    // Separar ano, mês, dia
+    const [ano, mes, dia] = dataLimpa.split('-');
     
-    // Se está no formato ISO ou timestamp com horas
-    try {
-      let dataObj;
-      
-      // ✅ CORREÇÃO PRINCIPAL: Tratar datas ISO com timestamp completo
-      if (data.match(/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$/)) {
-        console.log('🔍 DEBUG formatarData - Detectado formato ISO com/sem horário');
-        
-        // Para datas no formato "2025-08-18" ou "2025-08-18 00:00:00"
-        // Extrair apenas a parte da data (YYYY-MM-DD)
-        const dataLimpa = data.split(' ')[0]; // Remove horário se existir
-        const [ano, mes, dia] = dataLimpa.split('-');
-        
-        // ✅ Criar data usando construtor direto (sem timezone issues)
-        dataObj = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
-        
-        console.log('🔍 DEBUG formatarData - Data criada com construtor direto:', dataObj.toString());
-      } else {
-        console.log('🔍 DEBUG formatarData - Formato diferente, usando new Date() direto');
-        dataObj = new Date(data);
-      }
-      
-      if (isNaN(dataObj.getTime())) {
-        console.log('🔍 DEBUG formatarData - Data inválida, retornando original:', data);
-        return data; // Se não conseguir converter, retorna original
-      }
-      
-      // ✅ USAR MÉTODOS LOCAIS em vez de UTC
-      const dia = dataObj.getDate().toString().padStart(2, '0');
-      const mes = (dataObj.getMonth() + 1).toString().padStart(2, '0');
-      const ano = dataObj.getFullYear();
-      
-      console.log('🔍 DEBUG formatarData - Componentes extraídos:');
-      console.log('   - Dia (getDate()):', dia);
-      console.log('   - Mês (getMonth() + 1):', mes);
-      console.log('   - Ano (getFullYear()):', ano);
-      
-      const resultado = `${dia}/${mes}/${ano}`;
-      console.log('🔍 DEBUG formatarData - Resultado final:', resultado);
-      
-      return resultado;
-    } catch (error) {
-      console.log('🔍 DEBUG formatarData - Erro capturado:', error);
-      return data; // Se houver erro, retorna original
-    }
+    // Retornar no formato dd/MM/yyyy
+    return `${dia}/${mes}/${ano}`;
   };
 
   function extrairEmailValido(emailString) {
