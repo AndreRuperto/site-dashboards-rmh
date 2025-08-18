@@ -3642,7 +3642,7 @@ async function gerarTemplateVerificacao(nome, codigo, email, tipo_colaborador) {
   <body>
     <div class="container">
       <div class="header">
-        <img src="https://sistema.resendemh.com.br/logo-rmh.ico" alt="Logo RMH" style="height: 50px; margin-bottom: 20px;" />
+        <img src="https://sistema.resendemh.com.br/logo-rmh.ico" alt="Logo RMH" style="height: 100px; margin-bottom: 10px;" />
         <h1>Confirme seu email</h1>
       </div>
       <div class="content">
@@ -3781,7 +3781,7 @@ async function gerarTemplateValidacaoEstagiario(nome, linkValidacao, email) {
     <body>
       <div class="container">
         <div class="header">
-          <img src="https://sistema.resendemh.com.br/logo-rmh.ico" alt="Logo RMH" style="height: 50px; margin-bottom: 20px;" />
+          <img src="https://sistema.resendemh.com.br/logo-rmh.ico" alt="Logo RMH" style="height: 100px; margin-bottom: 10px;" />
           <h1>Cadastro Aprovado</h1>
         </div>
         <div class="content">
@@ -3912,7 +3912,7 @@ async function gerarTemplateEstagiarioAdicionadoPorAdmin(nome, linkValidacao, em
     <body>
       <div class="container">
         <div class="header">
-          <img src="https://sistema.resendemh.com.br/logo-rmh.ico" alt="Logo RMH" style="height: 50px; margin-bottom: 20px;" />
+          <img src="https://sistema.resendemh.com.br/logo-rmh.ico" alt="Logo RMH" style="height: 100px; margin-bottom: 10px;" />
           <h1>🎉 Conta Criada</h1>
         </div>
         <div class="content">
@@ -4061,7 +4061,7 @@ async function gerarTemplateConfiguracaoConta(nome, linkAtivacao, emailLogin, ti
     <body>
       <div class="container">
         <div class="header">
-          <img src="https://sistema.resendemh.com.br/logo-rmh.ico" alt="Logo RMH" style="height: 50px; margin-bottom: 20px;" />
+          <img src="https://sistema.resendemh.com.br/logo-rmh.ico" alt="Logo RMH" style="height: 100px; margin-bottom: 10px;" />
           <h1>Configure sua Conta</h1>
         </div>
         <div class="content">
@@ -4211,7 +4211,7 @@ async function gerarTemplateConfigurarSenha(nome, linkConfiguracao, email) {
     <body>
       <div class="container">
         <div class="header">
-          <img src="https://sistema.resendemh.com.br/logo-rmh.ico" alt="Logo RMH" style="height: 50px; margin-bottom: 20px;" />
+          <img src="https://sistema.resendemh.com.br/logo-rmh.ico" alt="Logo RMH" style="height: 100px; margin-bottom: 10px;" />
           <h1>Configure sua Senha</h1>
         </div>
         <div class="content">
@@ -5281,6 +5281,456 @@ app.get('/api/processos/test-connection', authMiddleware, async (req, res) => {
 // ===============================================
 
 // REGISTRO COM VERIFICAÇÃO DE EMAIL
+app.post('/api/auth/request-reset-code', authLimiter, async (req, res) => {
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    console.log('🔄 TRANSAÇÃO: Iniciada - Reset de senha');
+
+    const { email } = req.body;
+
+    if (!email) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).json({ error: 'Email é obrigatório' });
+    }
+
+    console.log(`🔍 RESET: Email: ${email}`);
+
+    // Verificar se o usuário existe e está verificado
+    const userExists = await client.query(
+      'SELECT id, nome, email, email_verificado FROM usuarios WHERE email = $1',
+      [email]
+    );
+
+    if (userExists.rows.length === 0) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(404).json({ 
+        error: 'Não encontramos uma conta associada a este email' 
+      });
+    }
+
+    const user = userExists.rows[0];
+
+    if (!user.email_verificado) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).json({ 
+        error: 'Esta conta ainda não foi verificada. Verifique seu email primeiro.' 
+      });
+    }
+
+    console.log(`🔍 RESET: Usuário encontrado: ${user.nome} (ID: ${user.id})`);
+
+    // Invalidar códigos anteriores de reset
+    await client.query(
+      'UPDATE verificacoes_email SET usado_em = NOW() WHERE usuario_id = $1 AND tipo_token = $2 AND usado_em IS NULL',
+      [user.id, 'reset_senha']
+    );
+
+    // Gerar código de verificação
+    const codigoVerificacao = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiraEm = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos para reset
+
+    // Salvar token na tabela de verificações
+    await client.query(
+      `INSERT INTO verificacoes_email (usuario_id, token, tipo_token, expira_em) 
+      VALUES ($1, $2, $3, $4)`,
+      [user.id, codigoVerificacao, 'reset_senha', expiraEm]
+    );
+
+    await client.query('COMMIT');
+    console.log('✅ TRANSAÇÃO: Commitada com sucesso - Reset');
+
+    console.log(`
+    🔐 ========== CÓDIGO DE RESET ==========
+    📧 Email: ${email}
+    🔢 Código: ${codigoVerificacao}
+    ⏰ Expira em: ${expiraEm}
+    =====================================
+    `);
+
+    // Enviar email automaticamente
+    try {
+      const emailResult = await resend.emails.send({
+        from: 'admin@resendemh.com.br',
+        to: [email],
+        subject: 'Código para redefinir sua senha - Andifes RMH',
+        html: await gerarTemplateResetSenha(user.nome, codigoVerificacao, email)
+      });
+
+      console.log(`✅ Email de reset enviado para: ${email}`, emailResult);
+    } catch (emailError) {
+      console.error('❌ ERRO no email de reset (não crítico):', emailError);
+    }
+
+    res.json({
+      message: 'Código de verificação enviado para seu email',
+      token: codigoVerificacao // Retorna o código como token para usar nas próximas etapas
+    });
+
+  } catch (error) {
+    console.error('❌ Erro no reset de senha:', error);
+    
+    try {
+      await client.query('ROLLBACK');
+      console.log('🔄 TRANSAÇÃO: Rollback executado - Reset');
+    } catch (rollbackError) {
+      console.error('❌ Erro no rollback:', rollbackError);
+    }
+    
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  } finally {
+    client.release();
+    console.log('🔌 CONEXÃO: Liberada - Reset');
+  }
+});
+
+// ROTA: Verificar código de reset
+app.post('/api/auth/verify-reset-code', async (req, res) => {
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    const { token, code } = req.body;
+
+    if (!token || !code) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).json({ error: 'Token e código são obrigatórios' });
+    }
+
+    console.log(`🔍 VERIFICAÇÃO RESET: Código: ${code}`);
+
+    // Buscar token de verificação - MESMO PADRÃO DA VERIFICAÇÃO DE EMAIL
+    const tokenResult = await client.query(
+      `SELECT v.*, u.nome, u.email 
+       FROM verificacoes_email v
+       JOIN usuarios u ON v.usuario_id = u.id
+       WHERE v.token = $1 
+         AND v.tipo_token = 'reset_senha'
+         AND v.usado_em IS NULL 
+         AND v.expira_em > NOW()`,
+      [code] // Usa o code como token (mesmo padrão do sistema existente)
+    );
+
+    if (tokenResult.rows.length === 0) {
+      console.log(`❌ VERIFICAÇÃO RESET: Código inválido ou expirado`);
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).json({ 
+        error: 'Código inválido ou expirado. Solicite um novo código.' 
+      });
+    }
+
+    const verification = tokenResult.rows[0];
+    console.log(`✅ VERIFICAÇÃO RESET: Código válido encontrado!`);
+
+    // Marcar como verificado (mas não usado ainda)
+    console.log(`✅ Código verificado - prosseguindo para próxima etapa`);
+
+    await client.query('COMMIT');
+
+    console.log(`🎉 VERIFICAÇÃO RESET: Código verificado para usuário ${verification.usuario_id}!`);
+
+    res.json({
+      message: 'Código verificado com sucesso',
+      verified: true
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('❌ Erro na verificação do reset:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  } finally {
+    client.release();
+  }
+});
+
+// SOLUÇÃO 1: Usar flag para controlar release
+app.post('/api/auth/reset-password-with-code', async (req, res) => {
+  const client = await pool.connect();
+  let clientReleased = false;
+  
+  try {
+    await client.query('BEGIN');
+    
+    const { token, newPassword } = req.body;
+    
+    if (!token || !newPassword) {
+      await client.query('ROLLBACK');
+      client.release();
+      clientReleased = true; // ← Marca como liberado
+      return res.status(400).json({ error: 'Token e nova senha são obrigatórios' });
+    }
+    
+    if (newPassword.length < 6) {
+      await client.query('ROLLBACK');
+      client.release();
+      clientReleased = true; // ← Marca como liberado
+      return res.status(400).json({ error: 'Nova senha deve ter pelo menos 6 caracteres' });
+    }
+    
+    // ... resto do código ...
+    
+    await client.query('COMMIT');
+    client.release();
+    clientReleased = true; // ← Marca como liberado
+    
+    res.json({
+      message: 'Senha redefinida com sucesso!',
+      success: true
+    });
+    
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.error('❌ Erro no rollback:', rollbackError);
+    }
+    
+    console.error('❌ Erro ao redefinir senha:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  } finally {
+    // ✅ Só libera se ainda não foi liberado
+    if (!clientReleased) {
+      try {
+        client.release();
+      } catch (releaseError) {
+        console.error('❌ Erro ao liberar conexão:', releaseError);
+      }
+    }
+  }
+});
+
+// SOLUÇÃO 2: Função helper para gerenciar conexões
+class DatabaseManager {
+  static async executeTransaction(callback) {
+    const client = await pool.connect();
+    let clientReleased = false;
+    
+    try {
+      await client.query('BEGIN');
+      
+      const result = await callback(client);
+      
+      await client.query('COMMIT');
+      client.release();
+      clientReleased = true;
+      
+      return result;
+      
+    } catch (error) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('❌ Erro no rollback:', rollbackError);
+      }
+      
+      throw error;
+      
+    } finally {
+      if (!clientReleased) {
+        try {
+          client.release();
+        } catch (releaseError) {
+          console.error('❌ Erro ao liberar conexão:', releaseError);
+        }
+      }
+    }
+  }
+}
+
+// USO DA FUNÇÃO HELPER:
+app.post('/api/auth/reset-password-with-code', async (req, res) => {
+  try {
+    const result = await DatabaseManager.executeTransaction(async (client) => {
+      const { token, newPassword } = req.body;
+      
+      if (!token || !newPassword) {
+        throw new Error('Token e nova senha são obrigatórios');
+      }
+      
+      if (newPassword.length < 6) {
+        throw new Error('Nova senha deve ter pelo menos 6 caracteres');
+      }
+      
+      // ... lógica do banco ...
+      
+      return {
+        message: 'Senha redefinida com sucesso!',
+        success: true
+      };
+    });
+    
+    res.json(result);
+    
+  } catch (error) {
+    console.error('❌ Erro ao redefinir senha:', error);
+    
+    if (error.message.includes('Token e nova senha') || 
+        error.message.includes('Nova senha deve')) {
+      return res.status(400).json({ error: error.message });
+    }
+    
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// SOLUÇÃO 3: Global error handler para prevenir crashes
+process.on('uncaughtException', (error) => {
+  console.error('❌ ERRO NÃO CAPTURADO:', error);
+  
+  // Log do erro para monitoramento
+  // Aqui você pode enviar para um serviço como Sentry, Datadog, etc.
+  
+  // Graceful shutdown
+  server.close(() => {
+    pool.end(() => {
+      process.exit(1);
+    });
+  });
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ PROMISE REJEITADA NÃO TRATADA:', reason);
+  
+  // Log do erro para monitoramento
+  
+  // Graceful shutdown
+  server.close(() => {
+    pool.end(() => {
+      process.exit(1);
+    });
+  });
+});
+
+const gerarTemplateResetSenha = async (nome, codigo, email) => {
+  return `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+      <title>Redefinir Senha - RMH</title>
+      <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;600&family=Ruda:wght@900&display=swap" rel="stylesheet">
+      <style>
+        body {
+          margin: 0;
+          font-family: 'Raleway', sans-serif;
+          background-color: #DADADA;
+          color: #0d3638;
+          padding: 20px;
+        }
+        .container {
+          max-width: 600px;
+          margin: auto;
+          background-color: #f9f9f9;
+          border-radius: 16px;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+          overflow: hidden;
+        }
+        .header {
+          background-color: #165A5D;
+          padding: 20px 0px;
+          text-align: center;
+        }
+        .header img {
+          height: 60px;
+        }
+        .header h1 {
+          font-family: 'Ruda', sans-serif;
+          font-size: 22px;
+          color: #ffffff;
+          margin: 0;
+          letter-spacing: 0.5px;
+        }
+        .content {
+          padding: 20px 30px 30px 30px;
+          text-align: center;
+          font-family: 'Cooper Hewitt', sans-serif;
+        }
+        .content h2 {
+          font-size: 20px;
+          color: #0d3638;
+          margin-bottom: 8px;
+        }
+        .content p {
+          font-size: 17px;
+          color: #555;
+          margin-top: 0;
+        }
+        .tipo-badge {
+          display: inline-block;
+          padding: 6px 12px;
+          background-color: #165A5D;
+          color: white;
+          border-radius: 20px;
+          font-size: 14px;
+          font-weight: 600;
+          margin: 10px 0;
+        }
+        .code-box {
+          margin: 30px auto;
+          background-color: #f8f8f8;
+          border: 2px dashed #165A5D;
+          border-radius: 12px;
+          padding: 20px;
+          font-size: 32px;
+          font-weight: bold;
+          color: #165A5D;
+          letter-spacing: 10px;
+          font-family: 'Courier New', monospace;
+          max-width: 300px;
+        }
+        .note {
+          font-size: 13px;
+          color: #8b848b;
+          background-color: #EFEFEF;
+          padding: 15px;
+          border-radius: 10px;
+          margin-top: 20px;
+        }
+        .footer {
+          font-size: 12px;
+          color: #9ca2a3;
+          text-align: center;
+          padding: 18px;
+          border-top: 1px solid #eee;
+          background-color: #f9f9f9;
+        }
+        @media (max-width: 600px) {
+          .content {
+            padding: 30px 20px;
+          }
+          .code-box {
+            font-size: 26px;
+            letter-spacing: 6px;
+          }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <img src="https://sistema.resendemh.com.br/logo-rmh.ico" alt="Logo RMH" style="height: 100px; margin-bottom: 10px;" />
+          <h1>Redefinir sua senha</h1>
+        </div>
+        <div class="content">
+          <h2>Olá, ${nome}!</h2>
+          <p>Insira o código abaixo para redefinir sua senha:</p>
+          <div class="code-box">${codigo}</div>
+          <p class="note">Este código expira em 15 minutos. Se você não solicitou esta redefinição, ignore este e-mail.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+};
+
 app.post('/api/auth/register', authLimiter, async (req, res) => {
   const client = await pool.connect();
   

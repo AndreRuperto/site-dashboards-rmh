@@ -6,6 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Eye, EyeOff, UserPlus, Building, Users, Mail } from 'lucide-react';
 
+// Importar o componente ForgotPasswordView
+import ForgotPasswordView from './ForgotPasswordView';
+
 // API Configuration
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
@@ -24,6 +27,10 @@ const Login: React.FC<LoginProps> = ({
   console.log('   onSwitchToRegister:', typeof onSwitchToRegister, onSwitchToRegister);
   console.log('   onSwitchToForgotPassword:', typeof onSwitchToForgotPassword);
   console.log('   onSwitchToVerification:', typeof onSwitchToVerification);
+  
+  // Estado para controlar se deve mostrar a tela de "esqueci senha"
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  
   const [formData, setFormData] = useState({
     email: '',
     senha: ''
@@ -138,21 +145,22 @@ const Login: React.FC<LoginProps> = ({
     }
   };
 
-  // Funções específicas para cada botão
-  const handleCadastroGeneral = () => {
-    console.log('🔄 Abrindo cadastro geral');
-    handleCadastro();
+  // Função para abrir esqueci senha
+  const handleForgotPassword = () => {
+    console.log('🔐 Abrindo tela "Esqueci minha senha"');
+    setShowForgotPassword(true);
   };
 
-  const handleCadastroCLT = () => {
-    console.log('🏢 Abrindo cadastro CLT/Associado');
-    handleCadastro('clt');
+  // Função para voltar ao login
+  const handleBackToLogin = () => {
+    console.log('🔙 Voltando para o login');
+    setShowForgotPassword(false);
   };
 
-  const handleCadastroEstagiario = () => {
-    console.log('👨‍🎓 Abrindo cadastro Estagiário');
-    handleCadastro('estagiario');
-  };
+  // Se estiver na tela de esqueci senha, mostrar o componente
+  if (showForgotPassword) {
+    return <ForgotPasswordView onBackToLogin={handleBackToLogin} />;
+  }
 
   const emailType = detectEmailType(formData.email);
 
@@ -235,7 +243,7 @@ const Login: React.FC<LoginProps> = ({
               <Button
                 type="button"
                 variant="link"
-                onClick={onSwitchToForgotPassword}
+                onClick={handleForgotPassword}
                 className="text-sm text-corporate-blue hover:text-primary-800 p-0 h-auto"
               >
                 Esqueci minha senha
