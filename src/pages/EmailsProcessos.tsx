@@ -142,21 +142,26 @@ const EmailsProcessos = () => {
       }
     }
     
-    // Se está no formato ISO (yyyy-MM-dd) ou outro formato
+    // Se está no formato ISO ou timestamp com horas
     try {
       let dataObj;
       
-      // ✅ CORREÇÃO PRINCIPAL: Se é data simples (YYYY-MM-DD), força interpretação local
-      if (data.match(/^\d{4}-\d{2}-\d{2}$/)) {
-        console.log('🔍 DEBUG formatarData - Detectado formato YYYY-MM-DD, adicionando T00:00:00');
-        dataObj = new Date(data + 'T00:00:00');
-        console.log('🔍 DEBUG formatarData - Data após new Date(data + T00:00:00):', dataObj.toString());
-        console.log('🔍 DEBUG formatarData - ISO String:', dataObj.toISOString());
-        console.log('🔍 DEBUG formatarData - Local String:', dataObj.toLocaleString('pt-BR'));
+      // ✅ CORREÇÃO PRINCIPAL: Tratar datas ISO com timestamp completo
+      if (data.match(/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$/)) {
+        console.log('🔍 DEBUG formatarData - Detectado formato ISO com/sem horário');
+        
+        // Para datas no formato "2025-08-18" ou "2025-08-18 00:00:00"
+        // Extrair apenas a parte da data (YYYY-MM-DD)
+        const dataLimpa = data.split(' ')[0]; // Remove horário se existir
+        const [ano, mes, dia] = dataLimpa.split('-');
+        
+        // ✅ Criar data usando construtor direto (sem timezone issues)
+        dataObj = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+        
+        console.log('🔍 DEBUG formatarData - Data criada com construtor direto:', dataObj.toString());
       } else {
-        console.log('🔍 DEBUG formatarData - Formato diferente de YYYY-MM-DD, usando new Date() direto');
+        console.log('🔍 DEBUG formatarData - Formato diferente, usando new Date() direto');
         dataObj = new Date(data);
-        console.log('🔍 DEBUG formatarData - Data após new Date(data):', dataObj.toString());
       }
       
       if (isNaN(dataObj.getTime())) {
