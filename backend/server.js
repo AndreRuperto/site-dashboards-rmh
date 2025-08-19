@@ -4471,6 +4471,19 @@ app.post('/api/upload-document', upload.single('file'), (req, res) => {
   });
 });
 
+const atualizarEmailInvalido = async (idProcesso) => {
+  try {
+    // Atualizar no banco que o email é inválido
+    await pool.query(
+      'UPDATE processo_emails_pendentes SET email_valido = FALSE WHERE id_processo = $1',
+      [idProcesso]
+    );
+    console.log(`📝 EMAIL_VALIDO: Marcado como FALSE para processo ID ${idProcesso}`);
+  } catch (error) {
+    console.error('❌ Erro ao atualizar email_valido:', error);
+  }
+};
+
 // Enviar email individual com template adaptado
 app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
   try {
@@ -4496,10 +4509,23 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
 
     // Validar email
     if (!emailCliente || !emailCliente.includes('@')) {
-      throw new Error('Email do cliente inválido');
+      return res.status(400).json({
+        error: 'Email inválido',
+        details: 'O endereço de email fornecido não é válido',
+        errorType: 'INVALID_EMAIL'
+      });
     }
 
-    // ✅ FUNÇÃO PARA FORMATAR DATA
+    // Validar email com regex mais rigoroso
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emailCliente)) {
+      return res.status(400).json({
+        error: 'Formato de email inválido',
+        details: 'O formato do email não atende aos padrões',
+        errorType: 'INVALID_EMAIL_FORMAT'
+      });
+    }
+
     const formatarData = (dataISO) => {
       if (!dataISO) return 'Não informado';
       try {
@@ -4510,11 +4536,11 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
           year: 'numeric'
         });
       } catch (error) {
-        return dataISO; // Retorna original se não conseguir formatar
+        return dataISO;
       }
     };
 
-    // Template do email adaptado para processos jurídicos
+    // Template do email (mantém o mesmo)
     const emailTemplate = `
       <!DOCTYPE html>
         <html lang="pt-BR">
@@ -4739,16 +4765,71 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
         </html>
       `;
 
-    // Enviar email usando Resend
-    const emailResult = await resend.emails.send({
-      from: 'processos@resendemh.com.br', // Configure o domínio no Resend
-      to: [emailCliente],
-      subject: `📋 Atualização - Processo ${numeroProcesso}`,
-      html: emailTemplate
-    });
+    // ✅ MELHOR TRATAMENTO DE ERRO DO RESEND
+    let emailResult;
+    try {
+      emailResult = await resend.emails.send({
+        from: 'processos@resendemh.com.br',
+        to: [emailCliente],
+        subject: `📋 Atualização - Processo ${numeroProcesso}`,
+        html: emailTemplate
+      });
 
-    console.log(`✅ EMAIL: Enviado com sucesso - ID: ${emailResult.id}`);
+      // ✅ VERIFICAR SE O RESEND RETORNOU ERRO
+      if (!emailResult || (!emailResult.id && !emailResult.data?.id)) {
+        console.error('❌ RESEND: Resposta inválida:', emailResult);
+        throw new Error('Serviço de email retornou resposta inválida');
+      }
 
+      // ✅ VERIFICAR SE HÁ ERRO NA RESPOSTA DO RESEND
+      if (emailResult.error) {
+        console.error('❌ RESEND: Erro na resposta:', emailResult.error);
+        throw new Error(`Erro do serviço de email: ${emailResult.error.message || emailResult.error}`);
+      }
+
+      const emailId = emailResult.id || emailResult.data?.id;
+      console.log(`✅ EMAIL: Enviado com sucesso - ID: ${emailId}`);
+    } catch (emailError) {
+      console.error('❌ RESEND: Falha ao enviar email:', emailError);
+      await atualizarEmailInvalido(id);
+      // ✅ DETERMINAR TIPO DE ERRO ESPECÍFICO
+      let errorType = 'EMAIL_SEND_FAILED';
+      let errorMessage = 'Falha ao enviar email';
+      let statusCode = 500;
+
+      if (emailError.message?.includes('invalid email')) {
+        errorType = 'INVALID_EMAIL';
+        errorMessage = 'Email inválido ou não aceito pelo provedor';
+        statusCode = 400;
+      } else if (emailError.message?.includes('bounced')) {
+        errorType = 'EMAIL_BOUNCED';
+        errorMessage = 'Email rejeitado pelo destinatário';
+        statusCode = 422;
+      } else if (emailError.message?.includes('rate limit')) {
+        errorType = 'RATE_LIMIT';
+        errorMessage = 'Limite de envio excedido';
+        statusCode = 429;
+      } else if (emailError.message?.includes('quota')) {
+        errorType = 'QUOTA_EXCEEDED';
+        errorMessage = 'Cota de emails excedida';
+        statusCode = 429;
+      } else if (emailError.code === 'ENOTFOUND' || emailError.code === 'ECONNREFUSED') {
+        errorType = 'SERVICE_UNAVAILABLE';
+        errorMessage = 'Serviço de email temporariamente indisponível';
+        statusCode = 503;
+      }
+
+      return res.status(statusCode).json({
+        error: errorMessage,
+        details: process.env.NODE_ENV === 'development' ? emailError.message : undefined,
+        errorType: errorType,
+        cliente: cliente,
+        numeroProcesso: numeroProcesso,
+        emailCliente: emailCliente
+      });
+    }
+
+    // ✅ SE CHEGOU ATÉ AQUI, EMAIL FOI ENVIADO COM SUCESSO
     try {
       const dadosProcesso = {
         numeroProcesso, cliente, emailCliente, tipoProcesso, status,
@@ -4769,9 +4850,10 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
       // Não falhar a API se o email foi enviado com sucesso
     }
 
+    // ✅ RESPOSTA DE SUCESSO
     res.json({
       success: true,
-      emailId: emailResult.id,
+      emailId: emailId,
       processoId: id,
       cliente,
       numeroProcesso,
@@ -4781,10 +4863,11 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Erro ao enviar email:', error);
+    console.error('❌ Erro geral na API:', error);
     res.status(500).json({
-      error: 'Erro ao enviar email',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: 'Erro interno do servidor',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      errorType: 'INTERNAL_ERROR'
     });
   }
 });

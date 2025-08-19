@@ -161,17 +161,8 @@ const EmailsProcessos = () => {
       const url = `${API_BASE_URL}/api/processos`;
       const response = await fetchWithAuth(url);
 
-      console.log('📋 Response:', {
-        status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries())
-      });
-
-      const contentType = response.headers.get('content-type');
-      if (!response.ok || !contentType?.includes('application/json')) {
-        const text = await response.text();
-        console.error('❌ Erro ou resposta inválida:', text.substring(0, 200));
-        throw new Error('A API não retornou JSON');
+      if (!response.ok) {
+        throw new Error('A API não retornou dados válidos');
       }
 
       const data = await response.json();
@@ -182,13 +173,28 @@ const EmailsProcessos = () => {
         }))
         .filter(processo => !!processo.emailCliente);
 
-      setProcessos(todosProcessos);
+      // ✅ REMOVER DUPLICATAS por idProcessoPlanilha (mantém o mais recente)
+      const processosUnicos = todosProcessos.reduce((acc, processo) => {
+        const existing = acc.find(p => p.idProcessoPlanilha === processo.idProcessoPlanilha);
+        if (!existing) {
+          acc.push(processo);
+        } else {
+          // Se já existe, manter o que tem email enviado (prioridade)
+          if (processo.emailEnviado && !existing.emailEnviado) {
+            const index = acc.findIndex(p => p.idProcessoPlanilha === processo.idProcessoPlanilha);
+            acc[index] = processo;
+          }
+        }
+        return acc;
+      }, []);
 
-      console.log(`✅ ${todosProcessos.length} processos com email válido carregados`);
+      setProcessos(processosUnicos);
+
+      console.log(`✅ ${processosUnicos.length} processos únicos com email válido carregados`);
 
       toast({
         title: "Dados atualizados!",
-        description: `${todosProcessos.length} processos com email válido carregados`,
+        description: `${processosUnicos.length} processos únicos carregados`,
       });
 
     } catch (error) {
@@ -285,8 +291,11 @@ const EmailsProcessos = () => {
     const matchIdAtendimento = buscaIdAtendimento === '' || 
     (processo.idAtendimento && 
      processo.idAtendimento.toLowerCase().includes(buscaIdAtendimento.toLowerCase()));
+    const palavrasBusca = termoBusca.toLowerCase().split(' ');
     const matchBusca = termoBusca === '' || 
-      processo.cliente?.toLowerCase().includes(termoBusca.toLowerCase()) ||
+      palavrasBusca.every(palavra => 
+        processo.cliente?.toLowerCase().includes(palavra)
+      ) ||
       processo.numeroProcesso?.toLowerCase().includes(termoBusca.toLowerCase());
     const matchData = verificarDataNoIntervalo(processo.dataAjuizamento, dataInicioFiltro, dataFimFiltro);
     const matchObjetoAtendimento = filtroObjetoAtendimento === 'todos' || 
