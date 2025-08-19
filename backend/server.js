@@ -4683,7 +4683,6 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
               <div class="info-box">
                 <p><strong>Número do processo:</strong> ${numeroProcesso}</p>
                 <p><strong>🎯 Objeto da Ação:</strong> ${objetoAtendimento}</p>
-                <p><strong>⚖️ Tipo de Ação:</strong> ${tipoProcesso}</p>
                 <p><strong>📅 Data de protocolo do processo:</strong> ${formatarData(ultimoAndamento)}</p>
                 ${instancia ? `<p><strong>🏛️ Instância:</strong> ${instancia}</p>` : ''}
                 <p><strong>👨‍💼 Parte Contrária:</strong> ${responsavel}</p>
@@ -4974,7 +4973,6 @@ app.post('/api/emails/massa', authMiddleware, async (req, res) => {
               <div class="info-box">
                 <p><strong>Número do processo:</strong> ${processo.numeroProcesso}</p>
                 <p><strong>🎯 Objeto da Ação:</strong> ${processo.objetoAtendimento || 'Não informado'}</p>
-                <p><strong>⚖️ Tipo de Ação:</strong> ${processo.tipoProcesso}</p>
                 <p><strong>📅 Data de protocolo do processo:</strong> ${formatarData(processo.ultimoAndamento)}</p>
                 ${processo.instancia ? `<p><strong>🏛️ Instância:</strong> ${processo.instancia}</p>` : ''}
                 <p><strong>👨‍💼 Parte Contrária:</strong> ${processo.responsavel || processo.exAdverso || 'Não informado'}</p>
