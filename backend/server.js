@@ -4286,37 +4286,40 @@ app.get('/ping', (req, res) => {
 // ===============================================
 
 async function moverProcessoParaEnviados({ numeroProcesso, idProcessoPlanilha, dataEnvio }) {
-  //                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  //                                     ADICIONAR as chaves { } para destructuring
   const client = await pool.connect();
   
   try {
     await client.query('BEGIN');
     
     console.log(`📋 INICIANDO transferência do processo ${numeroProcesso} (ID: ${idProcessoPlanilha}) para tabela de enviados`);
-
+    
     // 1. Buscar o processo na tabela de pendentes
     const resultadoBusca = await client.query(
       `SELECT * FROM processo_emails_pendentes WHERE id_processo = $1`,
       [idProcessoPlanilha]
     );
-
+    
     if (resultadoBusca.rows.length === 0) {
       throw new Error(`Processo com ID ${idProcessoPlanilha} não encontrado em pendentes`);
     }
-
+    
     const dados = resultadoBusca.rows[0];
-
+    
+    // 1.5. ✅ VERIFICAR SE EMAIL É VÁLIDO (nova verificação)
+    if (!dados.email_valido) {
+      throw new Error(`Processo ${numeroProcesso} não pode ser movido: email não é válido`);
+    }
+    
     // 2. ✅ VERIFICAR SE JÁ EXISTE NA TABELA DE ENVIADOS (evitar duplicatas)
     const jaEnviado = await client.query(
       `SELECT id_processo FROM processo_emails_enviados WHERE id_processo = $1`,
       [dados.id_processo]
     );
-
+    
     if (jaEnviado.rows.length > 0) {
       throw new Error(`Processo ${numeroProcesso} já existe na tabela de enviados`);
     }
-
+    
     // 3. Inserir na tabela de enviados (com nova coluna de data_envio)
     await client.query(
         `INSERT INTO processo_emails_enviados (
@@ -4333,16 +4336,16 @@ async function moverProcessoParaEnviados({ numeroProcesso, idProcessoPlanilha, d
         dados.objeto_atendimento, dados.valor_causa, dataEnvio
       ]
     );
-
+    
     // 4. Remover da tabela de pendentes
     await client.query(
       `DELETE FROM processo_emails_pendentes WHERE id_processo = $1`,
       [idProcessoPlanilha]
     );
-
+    
     await client.query('COMMIT');
     console.log(`✅ SUCESSO: Processo ${numeroProcesso} (ID: ${idProcessoPlanilha}) movido para "processo_emails_enviados"`);
-
+    
     return {
       success: true,
       numeroProcesso,
