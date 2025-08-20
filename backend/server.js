@@ -4457,6 +4457,171 @@ app.get('/api/processos', authMiddleware, async (req, res) => {
   }
 });
 
+// ROTA: Atualizar dados de um processo específico
+app.put('/api/processos/:id', authMiddleware, async (req, res) => {
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    const { id } = req.params;
+    const {
+      cliente,
+      emailCliente,
+      telefones,
+      idAtendimento,
+      tipoProcesso,
+      exAdverso,
+      instancia,
+      objetoAtendimento,
+      valorCausa,
+      observacoes
+    } = req.body;
+
+    console.log(`📝 PROCESSOS: Atualizando processo ID ${id} por ${req.user.nome}`);
+    console.log(`📋 Dados recebidos:`, {
+      cliente,
+      emailCliente,
+      telefones,
+      idAtendimento,
+      tipoProcesso,
+      exAdverso,
+      instancia,
+      objetoAtendimento,
+      valorCausa,
+      observacoes
+    });
+
+    // Primeiro, identificar qual é a tabela base - assumindo que seja uma tabela chamada 'processos'
+    // ou algo similar baseado nas views que você tem
+    
+    // Verificar em qual tabela o processo está (pendentes ou enviados)
+    let tabelaBase = null;
+    let processoExiste = null;
+    
+    // Primeiro tentar na tabela de pendentes
+    try {
+      processoExiste = await client.query(
+        'SELECT id_processo FROM processo_emails_pendentes WHERE id_processo = $1',
+        [id]
+      );
+      if (processoExiste.rows.length > 0) {
+        tabelaBase = 'processo_emails_pendentes';
+        console.log(`✅ Processo encontrado em: processo_emails_pendentes`);
+      }
+    } catch (err) {
+      console.log(`❌ Erro ao verificar processo_emails_pendentes:`, err.message);
+    }
+
+    // Se não encontrou nos pendentes, tentar nos enviados
+    if (!tabelaBase) {
+      try {
+        processoExiste = await client.query(
+          'SELECT id_processo FROM processo_emails_enviados WHERE id_processo = $1',
+          [id]
+        );
+        if (processoExiste.rows.length > 0) {
+          tabelaBase = 'processo_emails_enviados';
+          console.log(`✅ Processo encontrado em: processo_emails_enviados`);
+        }
+      } catch (err) {
+        console.log(`❌ Erro ao verificar processo_emails_enviados:`, err.message);
+      }
+    }
+
+    if (!tabelaBase || processoExiste.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Processo não encontrado em nenhuma das tabelas (pendentes ou enviados)' });
+    }
+
+    // Atualizar os dados do processo na tabela encontrada
+    const updateQuery = `
+      UPDATE ${tabelaBase} 
+      SET 
+        nome_assistido = $1,
+        emails = $2,
+        telefones = $3,
+        id_atendimento_vinculado = $4,
+        tipo_atendimento = $5,
+        ex_adverso = $6,
+        instancia = $7,
+        objeto_atendimento = $8,
+        valor_causa = $9,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id_processo = $10
+      RETURNING *
+    `;
+
+    const result = await client.query(updateQuery, [
+      cliente,
+      emailCliente,
+      telefones,
+      idAtendimento,
+      tipoProcesso,
+      exAdverso,
+      instancia,
+      objetoAtendimento,
+      valorCausa || null, // Se valorCausa for string vazia, converte para null
+      id
+    ]);
+
+    await client.query('COMMIT');
+
+    console.log(`✅ PROCESSOS: Processo ${id} atualizado com sucesso`);
+
+    // Retornar os dados atualizados no formato esperado pelo frontend
+    const processoAtualizado = {
+      id: result.rows[0].id_processo,
+      idProcessoPlanilha: result.rows[0].id_processo,
+      numeroProcesso: result.rows[0].numero_unico,
+      cpfAssistido: result.rows[0].cpf_assistido,
+      cliente: result.rows[0].nome_assistido,
+      emailCliente: result.rows[0].emails,
+      telefones: result.rows[0].telefones,
+      idAtendimento: result.rows[0].id_atendimento_vinculado,
+      tipoProcesso: result.rows[0].tipo_atendimento,
+      dataAjuizamento: result.rows[0].data_autuacao,
+      exAdverso: result.rows[0].ex_adverso,
+      instancia: result.rows[0].instancia,
+      objetoAtendimento: result.rows[0].objeto_atendimento,
+      valorCausa: result.rows[0].valor_causa,
+      observacoes: observacoes || ''
+    };
+
+    res.json({
+      success: true,
+      message: 'Processo atualizado com sucesso',
+      processo: processoAtualizado
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('❌ Erro ao atualizar processo:', error);
+    
+    // Retornar erro mais específico baseado no tipo de erro
+    if (error.code === '23505') { // Violação de constraint unique
+      return res.status(400).json({ 
+        error: 'Dados duplicados encontrados',
+        details: 'Um processo com estes dados já existe'
+      });
+    }
+    
+    if (error.code === '23503') { // Violação de foreign key
+      return res.status(400).json({ 
+        error: 'Referência inválida',
+        details: 'Um dos campos referencia um valor que não existe'
+      });
+    }
+
+    res.status(500).json({ 
+      error: 'Erro interno do servidor',
+      details: error.message
+    });
+  } finally {
+    client.release();
+  }
+});
+
 // backend/routes/upload.js
 app.post('/api/upload-document', upload.single('file'), (req, res) => {
   const file = req.file;

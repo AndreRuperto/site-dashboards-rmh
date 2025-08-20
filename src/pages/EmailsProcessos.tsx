@@ -91,8 +91,77 @@ const EmailsProcessos = () => {
   const [dataFimFiltro, setDataFimFiltro] = useState('');
   const [itensPorPagina, setItensPorPagina] = useState(10);
   const [paginaAtual, setPaginaAtual] = useState(1);
+  const [modoEdicao, setModoEdicao] = useState(false);
+  const [dadosEdicao, setDadosEdicao] = useState<ProcessoData | null>(null);
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
   
   const { toast } = useToast();
+
+  const iniciarEdicao = () => {
+    setDadosEdicao({ ...processoDetalhado });
+    setModoEdicao(true);
+  };
+
+  // Função para cancelar edição
+  const cancelarEdicao = () => {
+    setModoEdicao(false);
+    setDadosEdicao(null);
+  };
+
+  const salvarEdicao = async () => {
+    if (!dadosEdicao) return;
+
+    setSalvandoEdicao(true);
+    try {
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/processos/${dadosEdicao.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          cliente: dadosEdicao.cliente,
+          emailCliente: dadosEdicao.emailCliente,
+          telefones: dadosEdicao.telefones,
+          idAtendimento: dadosEdicao.idAtendimento,
+          tipoProcesso: dadosEdicao.tipoProcesso,
+          exAdverso: dadosEdicao.exAdverso,
+          instancia: dadosEdicao.instancia,
+          objetoAtendimento: dadosEdicao.objetoAtendimento,
+          valorCausa: dadosEdicao.valorCausa,
+          observacoes: dadosEdicao.observacoes
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Erro ao salvar alterações");
+      }
+
+      // Atualizar processo detalhado e lista
+      setProcessoDetalhado(dadosEdicao);
+      await carregarProcessos();
+      setModoEdicao(false);
+      setDadosEdicao(null);
+
+      toast({
+        title: "Processo atualizado!",
+        description: "As alterações foram salvas com sucesso",
+      });
+
+    } catch (error) {
+      console.error("Erro ao salvar edição:", error);
+      toast({
+        title: "Erro ao salvar",
+        description: error instanceof Error ? error.message : "Não foi possível salvar as alterações",
+        variant: "destructive"
+      });
+    } finally {
+      setSalvandoEdicao(false);
+    }
+  };
+
+  // Função para atualizar dados de edição
+  const atualizarDadosEdicao = (campo: string, valor: string) => {
+    if (!dadosEdicao) return;
+    setDadosEdicao({ ...dadosEdicao, [campo]: valor });
+  };
 
   // ✅ VERIFICAR PERMISSÕES - Só protocolo pode enviar emails
   const podeEnviarEmails = user?.setor?.toLowerCase().includes('protocolo') || user?.tipo_usuario === 'admin';
@@ -1032,63 +1101,119 @@ const EmailsProcessos = () => {
       </main>
 
       {/* Modal de Detalhes */}
-      <Dialog open={!!processoDetalhado} onOpenChange={() => setProcessoDetalhado(null)}>
+      <Dialog open={!!processoDetalhado} onOpenChange={() => {
+        setProcessoDetalhado(null);
+        setModoEdicao(false);
+        setDadosEdicao(null);
+      }}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5" />
-              Detalhes do Processo - {processoDetalhado?.cliente}
+            <DialogTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Detalhes do Processo - {modoEdicao ? dadosEdicao?.cliente : processoDetalhado?.cliente}
+              </div>
+              {!modoEdicao && (
+                <Button
+                  onClick={iniciarEdicao}
+                  variant="outline"
+                  size="sm"
+                >
+                  <Settings className="h-4 w-4 mr-2" />
+                  Editar
+                </Button>
+              )}
             </DialogTitle>
           </DialogHeader>
           
           {processoDetalhado && (
             <div className="space-y-3">
               {/* Objeto do Atendimento - PRIMEIRO */}
-              {processoDetalhado.objetoAtendimento && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                      <FileText className="h-5 w-5" />
-                      Objeto do Atendimento
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <FileText className="h-5 w-5" />
+                    Objeto do Atendimento
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {modoEdicao ? (
+                    <textarea
+                      value={dadosEdicao?.objetoAtendimento || ''}
+                      onChange={(e) => atualizarDadosEdicao('objetoAtendimento', e.target.value)}
+                      className="w-full p-3 border rounded-lg resize-none h-24 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Descreva o objeto do atendimento..."
+                    />
+                  ) : (
                     <p className="text-gray-700 leading-relaxed">
-                      {processoDetalhado.objetoAtendimento}
+                      {processoDetalhado.objetoAtendimento || 'Não informado'}
                     </p>
-                  </CardContent>
-                </Card>
-              )}
+                  )}
+                </CardContent>
+              </Card>
 
               {/* Informações principais */}
-              <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                      <User className="h-5 w-5" />
-                      Dados do Cliente
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-sm font-medium text-gray-600">Email</label>
-                        <p className="flex items-center gap-2">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <User className="h-5 w-5" />
+                    Dados do Cliente
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Nome do Cliente */}
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Nome do Cliente</label>
+                      {modoEdicao ? (
+                        <Input
+                          value={dadosEdicao?.cliente || ''}
+                          onChange={(e) => atualizarDadosEdicao('cliente', e.target.value)}
+                          className="mt-1"
+                        />
+                      ) : (
+                        <p className="mt-1">{processoDetalhado.cliente}</p>
+                      )}
+                    </div>
+
+                    {/* Email */}
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Email</label>
+                      {modoEdicao ? (
+                        <Input
+                          type="email"
+                          value={dadosEdicao?.emailCliente || ''}
+                          onChange={(e) => atualizarDadosEdicao('emailCliente', e.target.value)}
+                          className="mt-1"
+                        />
+                      ) : (
+                        <p className="flex items-center gap-2 mt-1">
                           <Mail className="h-4 w-4" />
                           {processoDetalhado.emailCliente}
                         </p>
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium text-gray-600">Telefones</label>
-                        <p className="flex items-center gap-2">
-                          <Phone className="h-4 w-4" />
-                          {processoDetalhado.telefones}
-                        </p>
-                      </div>
+                      )}
                     </div>
-                  </CardContent>
-                </Card>
-              </div>
+
+                    {/* Telefones */}
+                    <div className="md:col-span-2">
+                      <label className="text-sm font-medium text-gray-600">Telefones</label>
+                      {modoEdicao ? (
+                        <Input
+                          value={dadosEdicao?.telefones || ''}
+                          onChange={(e) => atualizarDadosEdicao('telefones', e.target.value)}
+                          className="mt-1"
+                          placeholder="(11) 99999-9999, (11) 3333-3333"
+                        />
+                      ) : (
+                        <p className="flex items-center gap-2 mt-1">
+                          <Phone className="h-4 w-4" />
+                          {processoDetalhado.telefones || 'Não informado'}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
               {/* Dados do Processo */}
               <Card>
@@ -1099,48 +1224,112 @@ const EmailsProcessos = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* ID do Processo - NÃO EDITÁVEL */}
                   <div>
                     <label className="text-sm font-medium text-gray-600">ID do Processo</label>
-                    <p className="font-mono text-sm">{processoDetalhado.idProcessoPlanilha}</p>
+                    <p className="font-mono text-sm mt-1 text-gray-500">{processoDetalhado.idProcessoPlanilha}</p>
                   </div>
+
+                  {/* Número Único - NÃO EDITÁVEL */}
                   <div>
                     <label className="text-sm font-medium text-gray-600">Número Único</label>
-                    <p className="font-mono text-sm">{processoDetalhado.numeroProcesso}</p>
+                    <p className="font-mono text-sm mt-1 text-gray-500">{processoDetalhado.numeroProcesso}</p>
                   </div>
+
+                  {/* ID Atendimento */}
                   <div>
                     <label className="text-sm font-medium text-gray-600">ID Atendimento</label>
-                    <p className="font-mono text-sm">{processoDetalhado.idAtendimento}</p>
+                    {modoEdicao ? (
+                      <Input
+                        value={dadosEdicao?.idAtendimento || ''}
+                        onChange={(e) => atualizarDadosEdicao('idAtendimento', e.target.value)}
+                        className="mt-1"
+                      />
+                    ) : (
+                      <p className="font-mono text-sm mt-1">{processoDetalhado.idAtendimento}</p>
+                    )}
                   </div>
+
+                  {/* Natureza */}
                   <div>
                     <label className="text-sm font-medium text-gray-600">Natureza</label>
-                    <p>{processoDetalhado.tipoProcesso}</p>
+                    {modoEdicao ? (
+                      <select
+                        value={dadosEdicao?.tipoProcesso || ''}
+                        onChange={(e) => atualizarDadosEdicao('tipoProcesso', e.target.value)}
+                        className="w-full mt-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                      >
+                        <option value="">Selecione...</option>
+                        {setoresUnicos.map(setor => (
+                          <option key={setor} value={setor}>{setor}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <p className="mt-1">{processoDetalhado.tipoProcesso}</p>
+                    )}
                   </div>
+
+                  {/* Data de Autuação - NÃO EDITÁVEL */}
                   <div>
                     <label className="text-sm font-medium text-gray-600">Data de Autuação</label>
-                    <p className="flex items-center gap-2">
+                    <p className="flex items-center gap-2 mt-1 text-gray-500">
                       <Calendar className="h-4 w-4" />
                       {formatarData(processoDetalhado.dataAjuizamento)}
                     </p>
                   </div>
+
+                  {/* Instância */}
                   <div>
                     <label className="text-sm font-medium text-gray-600">Instância</label>
-                    <p>{processoDetalhado.instancia}</p>
+                    {modoEdicao ? (
+                      <Input
+                        value={dadosEdicao?.instancia || ''}
+                        onChange={(e) => atualizarDadosEdicao('instancia', e.target.value)}
+                        className="mt-1"
+                      />
+                    ) : (
+                      <p className="mt-1">{processoDetalhado.instancia}</p>
+                    )}
                   </div>
-                  {processoDetalhado.exAdverso && (
-                    <div>
-                      <label className="text-sm font-medium text-gray-600">Ex-adverso</label>
-                      <p>{processoDetalhado.exAdverso}</p>
-                    </div>
-                  )}
-                  {processoDetalhado.valorCausa && (
+
+                  {/* Ex-adverso */}
+                  <div className="md:col-span-2">
+                    <label className="text-sm font-medium text-gray-600">Ex-adverso</label>
+                    {modoEdicao ? (
+                      <Input
+                        value={dadosEdicao?.exAdverso || ''}
+                        onChange={(e) => atualizarDadosEdicao('exAdverso', e.target.value)}
+                        className="mt-1"
+                      />
+                    ) : (
+                      <p className="mt-1">{processoDetalhado.exAdverso || 'Não informado'}</p>
+                    )}
+                  </div>
+
+                  {/* Valor da Causa - só mostra se já tem valor */}
+                  {(processoDetalhado.valorCausa || dadosEdicao?.valorCausa) && (
                     <div>
                       <label className="text-sm font-medium text-gray-600">Valor da Causa</label>
-                      <p className="flex items-center gap-2">
-                        {new Intl.NumberFormat('pt-BR', { 
-                          style: 'currency', 
-                          currency: 'BRL' 
-                        }).format(Number(processoDetalhado.valorCausa))}
-                      </p>
+                      {modoEdicao ? (
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={dadosEdicao?.valorCausa || ''}
+                          onChange={(e) => atualizarDadosEdicao('valorCausa', e.target.value)}
+                          className="mt-1"
+                          placeholder="0.00"
+                        />
+                      ) : (
+                        <p className="mt-1">
+                          {processoDetalhado.valorCausa ? 
+                            new Intl.NumberFormat('pt-BR', { 
+                              style: 'currency', 
+                              currency: 'BRL' 
+                            }).format(Number(processoDetalhado.valorCausa)) : 
+                            'Não informado'
+                          }
+                        </p>
+                      )}
                     </div>
                   )}
                 </CardContent>
@@ -1148,23 +1337,49 @@ const EmailsProcessos = () => {
 
               {/* Ações */}
               <div className="flex justify-end gap-2">
-                <Button
-                  onClick={() => setProcessoDetalhado(null)}
-                  variant="outline"
-                >
-                  Fechar
-                </Button>
-                {podeEnviarEmails && (
-                  <Button
-                    onClick={() => {
-                      enviarEmailIndividual(processoDetalhado);
-                      setProcessoDetalhado(null);
-                    }}
-                    disabled={carregando}
-                  >
-                    <Send className="h-4 w-4 mr-2" />
-                    {processoDetalhado.emailEnviado ? 'Reenviar Email' : 'Enviar Email'}
-                  </Button>
+                {modoEdicao ? (
+                  <>
+                    <Button
+                      onClick={cancelarEdicao}
+                      variant="outline"
+                      disabled={salvandoEdicao}
+                    >
+                      <X className="h-4 w-4 mr-2" />
+                      Cancelar
+                    </Button>
+                    <Button
+                      onClick={salvarEdicao}
+                      disabled={salvandoEdicao}
+                    >
+                      {salvandoEdicao ? (
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Check className="h-4 w-4 mr-2" />
+                      )}
+                      Salvar Alterações
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      onClick={() => setProcessoDetalhado(null)}
+                      variant="outline"
+                    >
+                      Fechar
+                    </Button>
+                    {podeEnviarEmails && (
+                      <Button
+                        onClick={() => {
+                          enviarEmailIndividual(processoDetalhado);
+                          setProcessoDetalhado(null);
+                        }}
+                        disabled={carregando}
+                      >
+                        <Send className="h-4 w-4 mr-2" />
+                        {processoDetalhado.emailEnviado ? 'Reenviar Email' : 'Enviar Email'}
+                      </Button>
+                    )}
+                  </>
                 )}
               </div>
             </div>
