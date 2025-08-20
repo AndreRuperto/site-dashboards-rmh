@@ -4636,18 +4636,27 @@ app.post('/api/upload-document', upload.single('file'), (req, res) => {
   });
 });
 
-const atualizarEmailInvalido = async (idProcesso) => {
+async function atualizarEmailInvalido(id) {
   try {
-    // Atualizar no banco que o email é inválido
-    await pool.query(
-      'UPDATE processo_emails_pendentes SET email_valido = FALSE WHERE id_processo = $1',
-      [idProcesso]
+    console.log(`🔄 Marcando email como inválido para processo ID: ${id}`);
+    
+    const result = await pool.query(
+      'UPDATE processos SET email_valido = false, atualizado_em = NOW() WHERE id = $1 RETURNING *',
+      [id]
     );
-    console.log(`📝 EMAIL_VALIDO: Marcado como FALSE para processo ID ${idProcesso}`);
+    
+    if (result.rowCount > 0) {
+      console.log(`✅ Email marcado como inválido para processo ${id}`);
+      return true;
+    } else {
+      console.log(`⚠️ Processo ${id} não encontrado para atualizar email_valido`);
+      return false;
+    }
   } catch (error) {
-    console.error('❌ Erro ao atualizar email_valido:', error);
+    console.error(`❌ Erro ao marcar email como inválido para processo ${id}:`, error);
+    return false;
   }
-};
+}
 
 // Enviar email individual com template adaptado
 app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {

@@ -242,17 +242,19 @@ const EmailsProcessos = () => {
         }))
         .filter(processo => !!processo.emailCliente);
 
-      // ✅ REMOVER DUPLICATAS por idProcessoPlanilha (mantém o mais recente)
+      // ✅ PRIORIZAR ENVIADOS: Se mesmo id existe em pendentes E enviados, manter apenas o enviado
       const processosUnicos = todosProcessos.reduce((acc, processo) => {
         const existing = acc.find(p => p.idProcessoPlanilha === processo.idProcessoPlanilha);
+        
         if (!existing) {
           acc.push(processo);
         } else {
-          // Se já existe, manter o que tem email enviado (prioridade)
+          // Se já existe, manter o que tem emailEnviado = true (prioridade para enviados)
           if (processo.emailEnviado && !existing.emailEnviado) {
             const index = acc.findIndex(p => p.idProcessoPlanilha === processo.idProcessoPlanilha);
             acc[index] = processo;
           }
+          // Se ambos são enviados ou ambos são pendentes, manter o primeiro (ou o mais recente)
         }
         return acc;
       }, []);
