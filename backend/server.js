@@ -4387,6 +4387,7 @@ app.get('/api/processos', authMiddleware, async (req, res) => {
           ex_adverso AS exAdverso,
           instancia,
           objeto_atendimento AS objetoAtendimento,
+          email_valido,
           valor_causa AS valorCausa,
           false AS emailEnviado,
           null AS dataUltimoEmail,

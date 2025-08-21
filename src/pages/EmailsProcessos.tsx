@@ -60,6 +60,7 @@ interface ProcessoData {
   valorCausa: string;
   observacoes: string;
   emailEnviado: boolean;
+  emailValido?: boolean;
   dataUltimoEmail: string | null;
   status: string;
   ultimoAndamento: string;
@@ -739,6 +740,7 @@ const EmailsProcessos = () => {
                       <option value="todos">Todos</option>
                       <option value="Enviado">Email Enviado</option>
                       <option value="Pendente">Email Pendente</option>
+                      <option value="Invalido">Email Inválido</option>
                     </select>
                   </div>
                 </div>
@@ -982,6 +984,11 @@ const EmailsProcessos = () => {
                                 <Badge className="bg-green-100 hover:bg-green-100 text-green-800">
                                   <Mail className="h-3 w-3 mr-1" />
                                   Email Enviado
+                                </Badge>
+                              ) : processo.emailValido === false ? (
+                                <Badge className="bg-red-100 hover:bg-red-100 text-red-800">
+                                  <X className="h-3 w-3 mr-1" />
+                                  Email Inválido
                                 </Badge>
                               ) : (
                                 <Badge className="bg-yellow-100 hover:bg-yellow-100 text-yellow-800">
