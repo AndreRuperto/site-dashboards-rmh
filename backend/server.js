@@ -4661,6 +4661,74 @@ async function atualizarEmailInvalido(id) {
   }
 }
 
+app.post('/api/webhooks/resend', async (req, res) => {
+  try {
+    const { type, data } = req.body;
+    const emailId = data?.email_id;
+    
+    console.log(`📬 WEBHOOK: Recebido evento ${type} para email ID: ${emailId}`);
+    console.log(`📋 WEBHOOK: Dados completos:`, JSON.stringify(req.body, null, 2));
+    
+    if (!emailId) {
+      console.log('⚠️ WEBHOOK: Email ID não encontrado');
+      return res.status(400).json({ error: 'Email ID obrigatório' });
+    }
+
+    // Processar apenas os eventos que nos interessam
+    if (type === 'email.bounced') {
+      await handleEmailBounced(emailId);
+    } else if (type === 'email.delivered') {
+      await handleEmailDelivered(emailId);
+    } else {
+      console.log(`⏭️ WEBHOOK: Evento ${type} ignorado`);
+    }
+
+    res.status(200).json({ success: true });
+    
+  } catch (error) {
+    console.error('❌ WEBHOOK: Erro ao processar:', error);
+    res.status(500).json({ error: 'Erro interno' });
+  }
+});
+
+// Função para lidar com email bounced
+async function handleEmailBounced(emailId) {
+  try {
+    console.log(`🚫 WEBHOOK: Processando bounce para email ID: ${emailId}`);
+    
+    // Atualizar email_valido para false onde encontrar o email_id
+    const result = await pool.query(`
+      UPDATE processo_emails_pendentes 
+      SET email_valido = false 
+      WHERE email_id = $1
+    `, [emailId]);
+    
+    if (result.rowCount > 0) {
+      console.log(`✅ WEBHOOK: ${result.rowCount} processo(s) marcado(s) com email inválido`);
+    } else {
+      console.log(`⚠️ WEBHOOK: Nenhum processo encontrado para email ID: ${emailId}`);
+    }
+    
+  } catch (error) {
+    console.error('❌ WEBHOOK: Erro ao processar bounce:', error);
+  }
+}
+
+// Função para lidar com email delivered
+async function handleEmailDelivered(emailId) {
+  try {
+    console.log(`✅ WEBHOOK: Email entregue para email ID: ${emailId}`);
+    
+    // Para delivered, não fazemos nada além de logar
+    // O email_valido permanece true (padrão)
+    
+    console.log(`📝 WEBHOOK: Email confirmado como entregue`);
+    
+  } catch (error) {
+    console.error('❌ WEBHOOK: Erro ao processar delivered:', error);
+  }
+}
+
 // Enviar email individual com template adaptado
 app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
   try {
@@ -4944,6 +5012,8 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
 
     // ✅ MELHOR TRATAMENTO DE ERRO DO RESEND
     let emailResult;
+    let emailId; // ADICIONAR ESTA LINHA - DECLARAR A VARIÁVEL
+    
     try {
       emailResult = await resend.emails.send({
         from: 'processos@resendemh.com.br',
@@ -4951,9 +5021,23 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
         subject: `📋 Atualização - Processo ${numeroProcesso}`,
         html: emailTemplate
       });
+      console.log('RESEND:', emailResult);
+      
+      // EXTRAIR O EMAIL ID LOGO APÓS O ENVIO
+      emailId = emailResult.id || emailResult.data?.id;
+      
+      // SALVAR NO BANCO USANDO O ID CORRETO
+      if (emailId) {
+        await pool.query(`
+          UPDATE processo_emails_pendentes 
+          SET email_id = $1 
+          WHERE id_processo = $2
+        `, [emailId, idProcessoPlanilha]);
+        console.log(`✅ Email ID ${emailId} salvo no processo ${idProcessoPlanilha}`);
+      }
 
       // ✅ VERIFICAR SE O RESEND RETORNOU ERRO
-      if (!emailResult || (!emailResult.id && !emailResult.data?.id)) {
+      if (!emailResult || !emailId) {
         console.error('❌ RESEND: Resposta inválida:', emailResult);
         throw new Error('Serviço de email retornou resposta inválida');
       }
@@ -4964,11 +5048,14 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
         throw new Error(`Erro do serviço de email: ${emailResult.error.message || emailResult.error}`);
       }
 
-      const emailId = emailResult.id || emailResult.data?.id;
       console.log(`✅ EMAIL: Enviado com sucesso - ID: ${emailId}`);
+      
     } catch (emailError) {
       console.error('❌ RESEND: Falha ao enviar email:', emailError);
-      await atualizarEmailInvalido(id);
+      
+      // SE DEU ERRO, NÃO TENTA USAR O idProcessoPlanilha HARDCODED
+      // await atualizarEmailInvalido(id); // REMOVER ESTA LINHA
+      
       // ✅ DETERMINAR TIPO DE ERRO ESPECÍFICO
       let errorType = 'EMAIL_SEND_FAILED';
       let errorMessage = 'Falha ao enviar email';
@@ -5030,7 +5117,7 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
     // ✅ RESPOSTA DE SUCESSO
     res.json({
       success: true,
-      emailId: emailId,
+      emailId: emailId,    // AGORA A VARIÁVEL EXISTE
       processoId: id,
       cliente,
       numeroProcesso,
