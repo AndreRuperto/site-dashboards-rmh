@@ -5094,38 +5094,40 @@ app.post('/api/emails/processo/:id', authMiddleware, async (req, res) => {
     }
 
     // ✅ SE CHEGOU ATÉ AQUI, EMAIL FOI ENVIADO COM SUCESSO
-    try {
-      const dadosProcesso = {
-        numeroProcesso, cliente, emailCliente, tipoProcesso, status,
-        ultimoAndamento, responsavel, cpfAssistido,
-        instancia, exAdverso, objetoAtendimento, valorCausa, proveito
-      };
-      
-      await moverProcessoParaEnviados({
-        numeroProcesso: numeroProcesso,
-        idProcessoPlanilha: idProcessoPlanilha, 
-        dataEnvio: new Date().toISOString()
-      });
-      
-      console.log(`📋 MOVIMENTAÇÃO: ${numeroProcesso} movido para aba enviados`);
-      
-    } catch (movimentacaoError) {
-      console.error('⚠️ Erro na movimentação (email foi enviado):', movimentacaoError);
-      // Não falhar a API se o email foi enviado com sucesso
-    }
-
-    // ✅ RESPOSTA DE SUCESSO
     res.json({
       success: true,
-      emailId: emailId,    // AGORA A VARIÁVEL EXISTE
+      emailId: emailId,
       processoId: id,
       cliente,
       numeroProcesso,
       emailEnviado: true,
       dataEnvio: new Date().toISOString(),
-      movidoParaEnviados: true
+      movidoParaEnviados: false, // Ainda não movido
+      aguardandoVerificacao: true,
+      message: "Email enviado! Aguardando verificação de bounce antes de mover processo."
     });
-
+    setTimeout(async () => {
+      try {
+        console.log(`⏳ BACKGROUND: Verificando bounces e movendo processo ${numeroProcesso}`);
+        
+        const resultado = await moverProcessoParaEnviados({
+          numeroProcesso: numeroProcesso,
+          idProcessoPlanilha: idProcessoPlanilha, 
+          dataEnvio: new Date().toISOString()
+        });
+        
+        if (resultado.success) {
+          console.log(`✅ BACKGROUND: Processo ${numeroProcesso} movido para enviados`);
+        } else if (resultado.status === 'email_invalido') {
+          console.log(`⚠️ BACKGROUND: Processo ${numeroProcesso} NÃO movido - email inválido (bounce detectado)`);
+        } else {
+          console.log(`⚠️ BACKGROUND: Processo ${numeroProcesso} não movido - ${resultado.motivo || resultado.erro}`);
+        }
+        
+      } catch (movimentacaoError) {
+        console.error(`❌ BACKGROUND: Erro ao mover processo ${numeroProcesso}:`, movimentacaoError);
+      }
+    }, 10000); // 10 segundos de delay
   } catch (error) {
     console.error('❌ Erro geral na API:', error);
     res.status(500).json({
