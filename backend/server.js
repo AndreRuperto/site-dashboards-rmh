@@ -4410,6 +4410,7 @@ app.get('/api/processos', authMiddleware, async (req, res) => {
           ex_adverso AS exAdverso,
           instancia,
           objeto_atendimento AS objetoAtendimento,
+          true AS email_valido
           valor_causa AS valorCausa,
           true AS emailEnviado,
           data_envio AS dataUltimoEmail,
