@@ -287,7 +287,8 @@ const EmailsProcessos = () => {
   }, []);
 
   // Obter setores únicos dos processos
-  const setoresUnicos = [...new Set(processos.map(p => p.tipoProcesso).filter(Boolean))];
+  const setoresUnicos = [...new Set(processos.map(p => p.tipoProcesso).filter(Boolean))]
+  .filter(setor => setor !== 'Processo administrativo');
   const objetosAtendimentoUnicos = [...new Set(processos.map(p => p.objetoAtendimento).filter(Boolean))]
   .sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
   // Obter responsáveis únicos
@@ -308,61 +309,71 @@ const EmailsProcessos = () => {
     return objeto.length > 50 ? `${objeto.substring(0, 50)}...` : objeto;
   };
   const verificarDataNoIntervalo = (dataProcesso: string, dataInicio: string, dataFim: string): boolean => {
-  if (!dataInicio && !dataFim) return true;
-  
-  try {
-    // Converter data do processo para Date
-    let dataProc: Date;
-    if (dataProcesso.includes('/')) {
-      // Formato dd/MM/yyyy
-      const [dia, mes, ano] = dataProcesso.split('/');
-      dataProc = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
-    } else {
-      // Formato ISO ou outro
-      dataProc = new Date(dataProcesso);
-    }
+    if (!dataInicio && !dataFim) return true;
     
-    // Se não conseguiu converter, ignorar filtro de data
-    if (isNaN(dataProc.getTime())) {
-      console.log('Data inválida:', dataProcesso);
+    try {
+      // Converter data do processo para Date
+      let dataProc: Date;
+      if (dataProcesso.includes('/')) {
+        // Formato dd/MM/yyyy
+        const [dia, mes, ano] = dataProcesso.split('/');
+        dataProc = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+      } else {
+        // Formato ISO ou outro
+        dataProc = new Date(dataProcesso);
+      }
+      
+      // Se não conseguiu converter, ignorar filtro de data
+      if (isNaN(dataProc.getTime())) {
+        console.log('Data inválida:', dataProcesso);
+        return true;
+      }
+      
+      // Normalizar data do processo para início do dia para comparação consistente
+      dataProc.setHours(0, 0, 0, 0);
+      
+      // Verificar intervalo
+      if (dataInicio) {
+        const inicio = new Date(dataInicio);
+        inicio.setHours(0, 0, 0, 0); // Início do dia
+        if (dataProc < inicio) return false; // Agora a comparação é correta
+      }
+      
+      if (dataFim) {
+        const fim = new Date(dataFim);
+        fim.setHours(23, 59, 59, 999); // Final do dia
+        if (dataProc > fim) return false;
+      }
+      
+      return true;
+    } catch (error) {
+      console.log('Erro ao verificar data:', error, 'Data processo:', dataProcesso);
       return true;
     }
-    
-    // Verificar intervalo
-    if (dataInicio) {
-      const inicio = new Date(dataInicio + 'T00:00:00'); // Força início do dia
-      if (dataProc < inicio) return false;
-    }
-    
-    if (dataFim) {
-      const fim = new Date(dataFim + 'T23:59:59'); // Força final do dia
-      if (dataProc > fim) return false;
-    }
-    
-    console.log('Verificando:', {
-      dataProcesso,
-      dataProc: dataProc.toISOString().split('T')[0],
-      dataInicio,
-      dataFim,
-      resultado: true
-    });
-    
-    return true;
-  } catch (error) {
-    console.log('Erro ao verificar data:', error, 'Data processo:', dataProcesso);
-    return true;
-  }
   };
 
   // Filtrar processos
   const processosFiltrados = processos.filter(processo => {
     const matchSetor = filtroSetor === 'todos' || processo.tipoProcesso === filtroSetor;
     const matchStatus = filtroStatus === 'todos' || processo.status === filtroStatus;
-    const matchEmail = filtroEmail === 'todos' || processo.statusEmail === filtroEmail;
+    
+    // ✅ DETERMINAR o status do email baseado no emailValido
+    let statusEmailProcesso;
+    if (processo.emailValido === false) {
+      statusEmailProcesso = 'Invalido';
+    } else if (processo.emailEnviado) {
+      statusEmailProcesso = 'Enviado';
+    } else {
+      statusEmailProcesso = 'Pendente';
+    }
+    
+    // ✅ CORRIGIR: Usar statusEmailProcesso em vez de processo.statusEmail
+    const matchEmail = filtroEmail === 'todos' || statusEmailProcesso === filtroEmail;
+    
     const matchPessoa = filtroPessoa === 'todos' || processo.responsavel === filtroPessoa;
     const matchIdAtendimento = buscaIdAtendimento === '' || 
     (processo.idAtendimento && 
-     processo.idAtendimento.toLowerCase().includes(buscaIdAtendimento.toLowerCase()));
+    processo.idAtendimento.toLowerCase().includes(buscaIdAtendimento.toLowerCase()));
     const palavrasBusca = termoBusca.toLowerCase().split(' ');
     const matchBusca = termoBusca === '' || 
       palavrasBusca.every(palavra => 
@@ -371,15 +382,18 @@ const EmailsProcessos = () => {
       processo.numeroProcesso?.toLowerCase().includes(termoBusca.toLowerCase());
     const matchData = verificarDataNoIntervalo(processo.dataAjuizamento, dataInicioFiltro, dataFimFiltro);
     const matchObjetoAtendimento = filtroObjetoAtendimento === 'todos' || 
-      processo.objetoAtendimento === filtroObjetoAtendimento ||  // Seleção exata
+      processo.objetoAtendimento === filtroObjetoAtendimento ||
       (objetoBusca !== '' && processo.objetoAtendimento?.toLowerCase().includes(objetoBusca.toLowerCase()));
-    return matchSetor && matchStatus && matchEmail && matchPessoa && matchBusca && matchData && matchIdAtendimento && matchObjetoAtendimento;
+    const naoEhProcessoAdministrativo = processo.tipoProcesso !== 'Processo administrativo';
+    
+    return matchSetor && matchStatus && matchEmail && matchPessoa && matchBusca && matchData && matchIdAtendimento && matchObjetoAtendimento && naoEhProcessoAdministrativo;
   });
 
   const stats = {
     total: processosFiltrados.length,
     comEmail: processosFiltrados.filter(p => p.emailEnviado).length,
-    semEmail: processosFiltrados.filter(p => !p.emailEnviado).length,
+    semEmail: processosFiltrados.filter(p => !p.emailEnviado && p.emailValido !== false).length,
+    emailsInvalidos: processosFiltrados.filter(p => p.emailValido === false).length,
     emailsHoje: processosFiltrados.filter(p => 
       p.dataUltimoEmail && 
       new Date(p.dataUltimoEmail).toDateString() === new Date().toDateString()
@@ -505,6 +519,14 @@ const EmailsProcessos = () => {
     }
 
     setCarregando(true);
+    
+    // Mostrar toast de processamento
+    const toastProcessando = toast({
+      title: "Enviando email...",
+      description: "Verificando validade do email e enviando mensagem",
+      duration: 5000, // 5 segundos
+    });
+
     try {
       const dadosEmail = {
         idProcessoPlanilha: processo.idProcessoPlanilha,
@@ -520,26 +542,56 @@ const EmailsProcessos = () => {
         instancia: processo.instancia,
         exAdverso: processo.exAdverso,
         objetoAtendimento: processo.objetoAtendimento,
-        valorCausa: processo.valorCausa || '',  // ✅ ADICIONADO
+        valorCausa: processo.valorCausa || '',
       };
       
-      const response = await fetchWithAuth(`${API_BASE_URL}/api/emails/processo/${processo.id}`, {
+      // 1. ENVIAR O EMAIL
+      const emailResponse = await fetchWithAuth(`${API_BASE_URL}/api/emails/processo/${processo.id}`, {
         method: 'POST',
         body: JSON.stringify(dadosEmail)
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
+      if (!emailResponse.ok) {
+        const errorData = await emailResponse.json();
         throw new Error(errorData.error || "Erro ao enviar email");
       }
 
-      // Recarregar dados após enviar
-      await carregarProcessos();
+      console.log(`📧 Email enviado para ${processo.emailCliente}, aguardando verificação do webhook...`);
+      
+      // 2. AGUARDAR 3 SEGUNDOS PARA O WEBHOOK PROCESSAR
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // 3. VERIFICAR SE O EMAIL FOI MARCADO COMO INVÁLIDO
+      const verificacaoResponse = await fetchWithAuth(`${API_BASE_URL}/api/processos`);
+      
+      if (verificacaoResponse.ok) {
+        const data = await verificacaoResponse.json();
+        const processoAtualizado = data.processos?.find(p => p.idProcessoPlanilha === processo.idProcessoPlanilha);
+        
+        if (processoAtualizado && processoAtualizado.emailValido === false) {
+          console.log(`❌ Email ${processo.emailCliente} foi marcado como inválido pelo webhook`);
+          
+          // Recarregar dados para mostrar status atualizado
+          await carregarProcessos();
+          
+          // Toast vermelho de email inválido
+          toast({
+            title: "Email não enviado!",
+            description: `O email ${processo.emailCliente} é inválido e foi rejeitado pelo provedor.`,
+            variant: "destructive"
+          });
+          return;
+        }
+      }
 
+      // 4. SE CHEGOU ATÉ AQUI, EMAIL FOI ENVIADO COM SUCESSO
+      await carregarProcessos();
+      
       toast({
         title: "Email enviado com sucesso!",
         description: `Email sobre o processo ${processo.numeroProcesso} foi enviado para ${processo.cliente}`,
       });
+
     } catch (error) {
       console.error("❌ Erro ao enviar email:", error);
       toast({
@@ -997,7 +1049,6 @@ const EmailsProcessos = () => {
                                 </Badge>
                               )}
                             </div>
-                            
                             <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-600">
                               <div>
                                 <strong>Número:</strong> {processo.numeroProcesso}

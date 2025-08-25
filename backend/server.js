@@ -4410,7 +4410,7 @@ app.get('/api/processos', authMiddleware, async (req, res) => {
           ex_adverso AS exAdverso,
           instancia,
           objeto_atendimento AS objetoAtendimento,
-          true AS email_valido
+          true AS email_valido,
           valor_causa AS valorCausa,
           true AS emailEnviado,
           data_envio AS dataUltimoEmail,
@@ -4438,6 +4438,7 @@ app.get('/api/processos', authMiddleware, async (req, res) => {
       instancia: row.instancia,
       objetoAtendimento: row.objetoatendimento,
       emailEnviado: row.emailenviado,
+      emailValido: row.email_valido,
       dataUltimoEmail: row.dataultimoemail,
       statusEmail: row.statusemail,
       origem: 'banco',
