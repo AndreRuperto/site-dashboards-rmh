@@ -4481,7 +4481,8 @@ app.put('/api/processos/:id', authMiddleware, async (req, res) => {
       instancia,
       objetoAtendimento,
       valorCausa,
-      observacoes
+      observacoes,
+      emailValido
     } = req.body;
 
     console.log(`📝 PROCESSOS: Atualizando processo ID ${id} por ${req.user.nome}`);
@@ -4495,7 +4496,8 @@ app.put('/api/processos/:id', authMiddleware, async (req, res) => {
       instancia,
       objetoAtendimento,
       valorCausa,
-      observacoes
+      observacoes,
+      emailValido
     });
 
     // Primeiro, identificar qual é a tabela base - assumindo que seja uma tabela chamada 'processos'
@@ -4553,8 +4555,9 @@ app.put('/api/processos/:id', authMiddleware, async (req, res) => {
         instancia = $7,
         objeto_atendimento = $8,
         valor_causa = $9,
+        email_valido = $10,
         updated_at = CURRENT_TIMESTAMP
-      WHERE id_processo = $10
+      WHERE id_processo = $11
       RETURNING *
     `;
 
@@ -4568,6 +4571,7 @@ app.put('/api/processos/:id', authMiddleware, async (req, res) => {
       instancia,
       objetoAtendimento,
       valorCausa || null, // Se valorCausa for string vazia, converte para null
+      emailValido,
       id
     ]);
 
@@ -4591,7 +4595,8 @@ app.put('/api/processos/:id', authMiddleware, async (req, res) => {
       instancia: result.rows[0].instancia,
       objetoAtendimento: result.rows[0].objeto_atendimento,
       valorCausa: result.rows[0].valor_causa,
-      observacoes: observacoes || ''
+      observacoes: observacoes || '',
+      emailValido: result.rows[0].email_valido
     };
 
     res.json({

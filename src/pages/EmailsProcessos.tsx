@@ -114,20 +114,32 @@ const EmailsProcessos = () => {
 
     setSalvandoEdicao(true);
     try {
+      // Verificar se o email foi alterado
+      const emailFoiAlterado = dadosEdicao.emailCliente !== processoDetalhado.emailCliente;
+      
+      // Preparar dados para envio com tipo explícito
+      const dadosParaEnvio: any = {
+        cliente: dadosEdicao.cliente,
+        emailCliente: dadosEdicao.emailCliente,
+        telefones: dadosEdicao.telefones,
+        idAtendimento: dadosEdicao.idAtendimento,
+        tipoProcesso: dadosEdicao.tipoProcesso,
+        exAdverso: dadosEdicao.exAdverso,
+        instancia: dadosEdicao.instancia,
+        objetoAtendimento: dadosEdicao.objetoAtendimento,
+        valorCausa: dadosEdicao.valorCausa,
+        observacoes: dadosEdicao.observacoes
+      };
+
+      // Se o email foi alterado e o processo tinha email inválido, marcar como válido novamente
+      if (emailFoiAlterado && processoDetalhado.emailValido === false) {
+        dadosParaEnvio.emailValido = true; // Marcar como válido novamente
+        console.log('📧 Email alterado - mudando status de inválido para pendente');
+      }
+
       const response = await fetchWithAuth(`${API_BASE_URL}/api/processos/${dadosEdicao.id}`, {
         method: 'PUT',
-        body: JSON.stringify({
-          cliente: dadosEdicao.cliente,
-          emailCliente: dadosEdicao.emailCliente,
-          telefones: dadosEdicao.telefones,
-          idAtendimento: dadosEdicao.idAtendimento,
-          tipoProcesso: dadosEdicao.tipoProcesso,
-          exAdverso: dadosEdicao.exAdverso,
-          instancia: dadosEdicao.instancia,
-          objetoAtendimento: dadosEdicao.objetoAtendimento,
-          valorCausa: dadosEdicao.valorCausa,
-          observacoes: dadosEdicao.observacoes
-        })
+        body: JSON.stringify(dadosParaEnvio)
       });
 
       if (!response.ok) {
@@ -135,15 +147,25 @@ const EmailsProcessos = () => {
         throw new Error(errorData.error || "Erro ao salvar alterações");
       }
 
-      // Atualizar processo detalhado e lista
-      setProcessoDetalhado(dadosEdicao);
-      await carregarProcessos();
+      // Atualizar processo detalhado localmente
+      const processoAtualizado = {
+        ...dadosEdicao,
+        // Se o email foi alterado e era inválido, agora é válido/pendente
+        emailValido: emailFoiAlterado && processoDetalhado.emailValido === false 
+          ? true 
+          : processoDetalhado.emailValido
+      };
+      
+      setProcessoDetalhado(processoAtualizado);
+      await carregarProcessos(); // Recarregar dados da API
       setModoEdicao(false);
       setDadosEdicao(null);
 
       toast({
         title: "Processo atualizado!",
-        description: "As alterações foram salvas com sucesso",
+        description: emailFoiAlterado && processoDetalhado.emailValido === false 
+          ? "As alterações foram salvas e o email agora está marcado como pendente"
+          : "As alterações foram salvas com sucesso",
       });
 
     } catch (error) {
