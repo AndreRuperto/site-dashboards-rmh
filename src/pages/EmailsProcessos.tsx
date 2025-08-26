@@ -78,7 +78,7 @@ const EmailsProcessos = () => {
   const [carregandoInicial, setCarregandoInicial] = useState(true);
   const [filtroSetor, setFiltroSetor] = useState('todos');
   const [filtroStatus, setFiltroStatus] = useState('todos');
-  const [filtroEmail, setFiltroEmail] = useState('todos');
+  const [filtroEmail, setFiltroEmail] = useState('Pendente');
   const [filtroPessoa, setFiltroPessoa] = useState('todos');
   const [filtroObjetoAtendimento, setFiltroObjetoAtendimento] = useState('todos');
   const [termoBusca, setTermoBusca] = useState('');
@@ -263,7 +263,7 @@ const EmailsProcessos = () => {
           ...processo,
           emailCliente: extrairEmailValido(processo.emailCliente)
         }))
-        .filter(processo => !!processo.emailCliente);
+        .filter(processo => !!processo.emailCliente && processo.tipoProcesso !== 'Processo administrativo');
 
       // ✅ PRIORIZAR ENVIADOS: Se mesmo id existe em pendentes E enviados, manter apenas o enviado
       const processosUnicos = todosProcessos.reduce((acc, processo) => {
@@ -340,8 +340,11 @@ const EmailsProcessos = () => {
         // Formato dd/MM/yyyy
         const [dia, mes, ano] = dataProcesso.split('/');
         dataProc = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+      } else if (dataProcesso.includes('-')) {
+        // Formato YYYY-MM-DD ou similar
+        dataProc = new Date(dataProcesso);
       } else {
-        // Formato ISO ou outro
+        // Tentar converter diretamente
         dataProc = new Date(dataProcesso);
       }
       
@@ -351,23 +354,30 @@ const EmailsProcessos = () => {
         return true;
       }
       
-      // Normalizar data do processo para início do dia para comparação consistente
+      // Normalizar data do processo para início do dia
       dataProc.setHours(0, 0, 0, 0);
       
       // Verificar intervalo
       if (dataInicio) {
-        const inicio = new Date(dataInicio);
-        inicio.setHours(0, 0, 0, 0); // Início do dia
-        if (dataProc < inicio) return false; // Agora a comparação é correta
+        // CORRIGIR: Criar data sem problemas de timezone
+        const [ano, mes, dia] = dataInicio.split('-');
+        const inicio = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+        inicio.setHours(0, 0, 0, 0);
+        
+        if (dataProc < inicio) return false;
       }
       
       if (dataFim) {
-        const fim = new Date(dataFim);
-        fim.setHours(23, 59, 59, 999); // Final do dia
+        // CORRIGIR: Criar data sem problemas de timezone
+        const [ano, mes, dia] = dataFim.split('-');
+        const fim = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+        fim.setHours(23, 59, 59, 999);
+        
         if (dataProc > fim) return false;
       }
       
       return true;
+      
     } catch (error) {
       console.log('Erro ao verificar data:', error, 'Data processo:', dataProcesso);
       return true;
@@ -375,11 +385,43 @@ const EmailsProcessos = () => {
   };
 
   // Filtrar processos
-  const processosFiltrados = processos.filter(processo => {
+  // Verificar se algum filtro específico está ativo
+  const temFiltroAtivo = 
+    filtroSetor !== 'todos' ||
+    filtroEmail !== 'todos' ||
+    filtroPessoa !== 'todos' ||
+    filtroObjetoAtendimento !== 'todos' ||
+    termoBusca !== '' ||
+    buscaIdAtendimento !== '' ||
+    dataInicioFiltro !== '' ||
+    dataFimFiltro !== '';
+
+  // Aplicar filtros que afetam as estatísticas (setor, objeto, data, busca)
+  const processosFiltradosParaStats = processos.filter(processo => {
     const matchSetor = filtroSetor === 'todos' || processo.tipoProcesso === filtroSetor;
+    const matchObjetoAtendimento = filtroObjetoAtendimento === 'todos' || 
+      processo.objetoAtendimento === filtroObjetoAtendimento ||
+      (objetoBusca !== '' && processo.objetoAtendimento?.toLowerCase().includes(objetoBusca.toLowerCase()));
+    const matchData = verificarDataNoIntervalo(processo.dataAjuizamento, dataInicioFiltro, dataFimFiltro);
+    const matchIdAtendimento = buscaIdAtendimento === '' || 
+      (processo.idAtendimento && 
+      processo.idAtendimento.toLowerCase().includes(buscaIdAtendimento.toLowerCase()));
+    const palavrasBusca = termoBusca.toLowerCase().split(' ');
+    const matchBusca = termoBusca === '' || 
+      palavrasBusca.every(palavra => 
+        processo.cliente?.toLowerCase().includes(palavra)
+      ) ||
+      processo.numeroProcesso?.toLowerCase().includes(termoBusca.toLowerCase());
+    const naoEhProcessoAdministrativo = processo.tipoProcesso !== 'Processo administrativo';
+    
+    return matchSetor && matchObjetoAtendimento && matchData && matchIdAtendimento && matchBusca && naoEhProcessoAdministrativo;
+  });
+
+  // Filtrar processos para exibição na lista
+  const processosFiltrados = processosFiltradosParaStats.filter(processo => {
     const matchStatus = filtroStatus === 'todos' || processo.status === filtroStatus;
     
-    // ✅ DETERMINAR o status do email baseado no emailValido
+    // DETERMINAR o status do email baseado no emailValido
     let statusEmailProcesso;
     if (processo.emailValido === false) {
       statusEmailProcesso = 'Invalido';
@@ -389,34 +431,32 @@ const EmailsProcessos = () => {
       statusEmailProcesso = 'Pendente';
     }
     
-    // ✅ CORRIGIR: Usar statusEmailProcesso em vez de processo.statusEmail
-    const matchEmail = filtroEmail === 'todos' || statusEmailProcesso === filtroEmail;
+    // LÓGICA DE EMAIL para exibição na lista
+    let matchEmail: boolean;
+    if (filtroEmail === 'todos') {
+      // Sem filtro específico de status de email:
+      // - se não há outros filtros: ocultar inválidos
+      // - se há outros filtros: libera todos (inclusive inválidos, se for seu desejo)
+      matchEmail = temFiltroAtivo ? true : (statusEmailProcesso !== 'Invalido');
+    } else if (filtroEmail === 'Invalido') {
+      matchEmail = statusEmailProcesso === 'Invalido';
+    } else {
+      // 'Enviado' ou 'Pendente' → match estrito
+      matchEmail = statusEmailProcesso === filtroEmail;
+    }
     
     const matchPessoa = filtroPessoa === 'todos' || processo.responsavel === filtroPessoa;
-    const matchIdAtendimento = buscaIdAtendimento === '' || 
-    (processo.idAtendimento && 
-    processo.idAtendimento.toLowerCase().includes(buscaIdAtendimento.toLowerCase()));
-    const palavrasBusca = termoBusca.toLowerCase().split(' ');
-    const matchBusca = termoBusca === '' || 
-      palavrasBusca.every(palavra => 
-        processo.cliente?.toLowerCase().includes(palavra)
-      ) ||
-      processo.numeroProcesso?.toLowerCase().includes(termoBusca.toLowerCase());
-    const matchData = verificarDataNoIntervalo(processo.dataAjuizamento, dataInicioFiltro, dataFimFiltro);
-    const matchObjetoAtendimento = filtroObjetoAtendimento === 'todos' || 
-      processo.objetoAtendimento === filtroObjetoAtendimento ||
-      (objetoBusca !== '' && processo.objetoAtendimento?.toLowerCase().includes(objetoBusca.toLowerCase()));
-    const naoEhProcessoAdministrativo = processo.tipoProcesso !== 'Processo administrativo';
-    
-    return matchSetor && matchStatus && matchEmail && matchPessoa && matchBusca && matchData && matchIdAtendimento && matchObjetoAtendimento && naoEhProcessoAdministrativo;
+    // Se houver filtros ativos, aplica a lógica normal
+    return matchStatus && matchEmail && matchPessoa;
   });
 
+  // Estatísticas baseadas nos processos filtrados (que afetam as estatísticas)
   const stats = {
-    total: processosFiltrados.length,
-    comEmail: processosFiltrados.filter(p => p.emailEnviado).length,
-    semEmail: processosFiltrados.filter(p => !p.emailEnviado && p.emailValido !== false).length,
-    emailsInvalidos: processosFiltrados.filter(p => p.emailValido === false).length,
-    emailsHoje: processosFiltrados.filter(p => 
+    total: processosFiltradosParaStats.length, // Total dos processos que passaram pelos filtros principais
+    comEmail: processosFiltradosParaStats.filter(p => p.emailEnviado).length,
+    semEmail: processosFiltradosParaStats.filter(p => !p.emailEnviado && p.emailValido !== false).length,
+    emailsInvalidos: processosFiltradosParaStats.filter(p => p.emailValido === false).length,
+    emailsHoje: processosFiltradosParaStats.filter(p => 
       p.dataUltimoEmail && 
       new Date(p.dataUltimoEmail).toDateString() === new Date().toDateString()
     ).length
@@ -581,7 +621,7 @@ const EmailsProcessos = () => {
       console.log(`📧 Email enviado para ${processo.emailCliente}, aguardando verificação do webhook...`);
       
       // 2. AGUARDAR 3 SEGUNDOS PARA O WEBHOOK PROCESSAR
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 5000));
       
       // 3. VERIFICAR SE O EMAIL FOI MARCADO COMO INVÁLIDO
       const verificacaoResponse = await fetchWithAuth(`${API_BASE_URL}/api/processos`);
@@ -659,6 +699,14 @@ const EmailsProcessos = () => {
     }
 
     setCarregando(true);
+    
+    // Mostrar toast de processamento
+    const toastProcessando = toast({
+      title: "Enviando emails em massa...",
+      description: `Enviando ${processosComEmailValido.length} emails e verificando validade`,
+      duration: 7000, // 10 segundos
+    });
+
     try {
       const response = await fetchWithAuth(`${API_BASE_URL}/api/emails/massa`, {
         method: 'POST',
@@ -690,7 +738,40 @@ const EmailsProcessos = () => {
 
       const result = await response.json();
       
-      // Recarregar dados após enviar
+      console.log(`📧 Emails enviados em massa, aguardando verificação do webhook...`);
+
+      // Aguardar tempo maior para o webhook processar múltiplos emails
+      await new Promise(resolve => setTimeout(resolve, 8000));
+
+      // Verificar se algum email foi marcado como inválido
+      const verificacaoResponse = await fetchWithAuth(`${API_BASE_URL}/api/processos`);
+      
+      if (verificacaoResponse.ok) {
+        const data = await verificacaoResponse.json();
+        const emailsInvalidos = processosComEmailValido.filter(processo => {
+          const processoAtualizado = data.processos?.find(p => p.idProcessoPlanilha === processo.idProcessoPlanilha);
+          return processoAtualizado && processoAtualizado.emailValido === false;
+        });
+
+        if (emailsInvalidos.length > 0) {
+          console.log(`❌ ${emailsInvalidos.length} emails foram marcados como inválidos pelo webhook`);
+          
+          // Recarregar dados para mostrar status atualizado
+          await carregarProcessos();
+          setProcessosSelecionados([]);
+          
+          const emailsEnviados = processosComEmailValido.length - emailsInvalidos.length;
+          
+          toast({
+            title: "Envio parcialmente concluído!",
+            description: `${emailsEnviados} email(s) enviados com sucesso. ${emailsInvalidos.length} email(s) foram rejeitados por serem inválidos.`,
+            variant: emailsEnviados > 0 ? "default" : "destructive"
+          });
+          return;
+        }
+      }
+
+      // Se chegou até aqui, todos os emails foram enviados com sucesso
       await carregarProcessos();
       setProcessosSelecionados([]);
 
@@ -698,6 +779,7 @@ const EmailsProcessos = () => {
         title: "Emails enviados com sucesso!",
         description: `${result.enviados || processosComEmailValido.length} email(s) enviados. ${result.movimentacoes || 0} processo(s) movidos para aba enviados.`,
       });
+
     } catch (error) {
       console.error("❌ Erro ao enviar emails em massa:", error);
       toast({
@@ -811,9 +893,8 @@ const EmailsProcessos = () => {
                       onChange={(e) => setFiltroEmail(e.target.value)} 
                       className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
                     >
-                      <option value="todos">Todos</option>
-                      <option value="Enviado">Email Enviado</option>
                       <option value="Pendente">Email Pendente</option>
+                      <option value="Enviado">Email Enviado</option>
                       <option value="Invalido">Email Inválido</option>
                     </select>
                   </div>
@@ -922,7 +1003,7 @@ const EmailsProcessos = () => {
             </Card>
 
             {/* Estatísticas */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <Card>
                 <CardContent className="p-4">
                   <div className="flex items-center space-x-2">
@@ -954,6 +1035,17 @@ const EmailsProcessos = () => {
                     <div>
                       <p className="text-sm text-gray-600">Emails Pendentes</p>
                       <p className="text-xl font-bold text-gray-600">{stats.semEmail}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center space-x-2">
+                    <Clock className="h-5 w-5 text-gray-600" />
+                    <div>
+                      <p className="text-sm text-gray-600">Emails Inválidos</p>
+                      <p className="text-xl font-bold text-gray-600">{stats.emailsInvalidos}</p>
                     </div>
                   </div>
                 </CardContent>

@@ -5152,12 +5152,12 @@ app.post('/api/emails/massa', authMiddleware, async (req, res) => {
     const { processos } = req.body;
 
     console.log(`📧 EMAIL MASSA: Enviando para ${processos.length} processos`);
-    console.log('📋 DEBUG: Dados recebidos:', JSON.stringify(processos, null, 2));
 
     let enviados = 0;
     let erros = 0;
     let movimentacoes = 0;
     const resultados = [];
+    const processosParaProcessarBackground = []; // Lista para processamento em background
 
     const processosValidos = processos.filter(p => p.emailCliente && p.emailCliente.includes('@'));
     
@@ -5169,9 +5169,7 @@ app.post('/api/emails/massa', authMiddleware, async (req, res) => {
       });
     }
 
-    console.log(`📊 DEBUG: ${processosValidos.length} processos com email válido de ${processos.length} total`);
-
-    // ✅ FUNÇÃO PARA FORMATAR DATA
+    // ✅ FUNÇÃO PARA FORMATAR DATA (mesma do individual)
     const formatarData = (dataISO) => {
       if (!dataISO) return 'Não informado';
       try {
@@ -5182,327 +5180,318 @@ app.post('/api/emails/massa', authMiddleware, async (req, res) => {
           year: 'numeric'
         });
       } catch (error) {
-        return dataISO; // Retorna original se não conseguir formatar
+        return dataISO;
       }
     };
 
-    // ✅ FUNÇÃO PARA GERAR TEMPLATE DO EMAIL
+    // ✅ FUNÇÃO PARA GERAR TEMPLATE DO EMAIL (mesma do individual)
     const gerarTemplateEmail = (processo) => {
       return `
-        <!DOCTYPE html>
-        <html lang="pt-BR">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Atualização do Processo Jurídico</title>
-          <style>
-            body { 
-              font-family: 'Arial', sans-serif; 
-              line-height: 1.6; 
-              color: #333; 
-              margin: 0; 
-              padding: 0; 
-              background-color: #f5f5f5;
-            }
-            .container { 
-              max-width: 600px; 
-              margin: 0 auto; 
-              padding: 20px; 
-              background-color: #ffffff; 
-              box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-              border-radius: 8px;
-            }
-            .header { 
-              background: linear-gradient(135deg, #165A5D 0%, #1a6b6f 100%);
-              color: white; 
-              padding: 25px; 
-              text-align: center; 
-              border-radius: 8px 8px 0 0; 
-            }
-            .header h1 { 
-              margin: 0; 
-              font-size: 24px; 
-              font-weight: bold; 
-            }
-            .content { 
-              padding: 30px; 
-              background-color: #f9f9f9; 
-              border-radius: 0 0 8px 8px; 
-            }
-            .texto-inicial{
-              color: #000000;
-              text-align: justify;
-            }
-            .info-box { 
-              background-color: #e3f2fd; 
-              padding: 20px; 
-              margin: 20px 0; 
-              border-left: 4px solid #165A5D; 
-              border-radius: 4px; 
-            }
-            .info-box p { 
-              margin: 8px 0; 
-            }
-            .info-box p{
-              color: #000000;
-            }
-            .info-box strong {
-              color: #000000;
-            }
-            .highlight { 
-              color: #165A5D; 
-              font-weight: bold; 
-            }
-            .anti-golpe {
-              background-color: #dc2626;
-              color: white;
-              padding: 20px;
-              border-radius: 8px;
-              margin: 25px 0;
-              border: 3px solid #b91c1c;
-            }
-            .anti-golpe h3 {
-              margin: 0 0 10px 0;
-              font-size: 18px;
-              text-align: center;
-            }
-            .anti-golpe p {
-              text-align: justify;
-            }
-            .contact-info { 
-              background-color: #fff3cd; 
-              padding: 20px; 
-              border: 1px solid #ffeaa7; 
-              border-radius: 8px; 
-              margin: 20px 0; 
-            }
-            .whatsapp-btn {
-              display: inline-block;
-              background-color: #25d366;
-              color: white;
-              padding: 12px 20px;
-              text-decoration: none;
-              border-radius: 25px;
-              font-weight: bold;
-              margin: 10px 5px;
-              text-align: center;
-            }
-            .social-links {
-              text-align: center;
-              padding: 20px;
-              background-color: #f8f9fa;
-              border-radius: 8px;
-              margin: 20px 0;
-            }
-            .social-links p {
-              margin-bottom: 25px;
-            }
-            .social-links a {
-              display: inline-block;
-              margin: 0 10px;
-              color: #165A5D;
-              text-decoration: none;
-              font-weight: bold;
-            }
-            .footer { 
-              text-align: center; 
-              padding: 20px; 
-              font-size: 14px;
-              color: #222222; 
-              background-color: #f5f5f5; 
-              margin-top: 20px; 
-              border-radius: 4px; 
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <img src="https://sistema.resendemh.com.br/logo-rmh.png" alt="Logo RMH" style="height: 55px; margin-bottom: 20px;" />
-              <h1>ATUALIZAÇÃO DO PROCESSO</h1>
-            </div>
-            
-            <div class="content">
-              <p class="texto-inicial">Prezado(a) <strong>${processo.cliente}</strong>,</p>
-              
-              <p class="texto-inicial">Entramos em contato para informar sobre a situação atual do seu processo jurídico:</p>
-              
-              <div class="info-box">
-                <p><strong>Número do processo:</strong> ${processo.numeroProcesso}</p>
-                <p><strong>🎯 Objeto da Ação:</strong> ${processo.objetoAtendimento || 'Não informado'}</p>
-                <p><strong>📅 Data de protocolo do processo:</strong> ${formatarData(processo.ultimoAndamento)}</p>
-                ${processo.instancia ? `<p><strong>🏛️ Instância:</strong> ${processo.instancia}</p>` : ''}
-                <p><strong>👨‍💼 Parte Contrária:</strong> ${processo.responsavel || processo.exAdverso || 'Não informado'}</p>
-                ${processo.valorCausa ? `<p><strong>💲 Previsão de Proveito Econômico:</strong> R$ ${parseFloat(processo.valorCausa).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>` : ''}
-              </div>
+          <!DOCTYPE html>
+            <html lang="pt-BR">
+            <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Atualização do Processo Jurídico</title>
+              <style>
+                body { 
+                  font-family: 'Arial', sans-serif; 
+                  line-height: 1.6; 
+                  color: #333; 
+                  margin: 0; 
+                  padding: 0; 
+                  background-color: #f5f5f5;
+                }
+                .container { 
+                  max-width: 600px; 
+                  margin: 0 auto; 
+                  padding: 20px; 
+                  background-color: #ffffff; 
+                  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                  border-radius: 8px;
+                }
+                .header { 
+                  background: linear-gradient(135deg, #165A5D 0%, #1a6b6f 100%);
+                  color: white; 
+                  padding: 25px; 
+                  text-align: center; 
+                  border-radius: 8px 8px 0 0; 
+                }
+                .header h1 { 
+                  margin: 0; 
+                  font-size: 24px; 
+                  font-weight: bold; 
+                }
+                .content { 
+                  padding: 30px; 
+                  background-color: #f9f9f9; 
+                  border-radius: 0 0 8px 8px; 
+                }
+                .texto-inicial{
+                  color: #000000;
+                  text-align: justify;
+                }
+                .info-box { 
+                  background-color: #e3f2fd; 
+                  padding: 20px; 
+                  margin: 20px 0; 
+                  border-left: 4px solid #165A5D; 
+                  border-radius: 4px; 
+                }
+                .info-box p { 
+                  margin: 8px 0; 
+                }
 
-              ${processo.valorCausa ? `
-                <p class="texto-inicial">
-                  O valor inicial que está sendo requerido na ação descrito acima representa uma expectativa de recebimento a depender da sentença,<strong> APÓS A TRAMITAÇÃO COMPLETA DA AÇÃO</strong>, pois nesse momento <strong>NÃO HÁ PREVISÃO DE RECEBIMENTO DE VALORES</strong>.
-                </p>
-              ` : ''}
+                .info-box p{
+                  color: #000000;
+                }
 
-              <!-- AVISO ANTI-GOLPE -->
-              <div class="anti-golpe">
-                <h3>⚠️ CUIDADO COM OS GOLPES</h3>
-                <p>A Resende Mori Hutchison <strong>NUNCA SOLICITA</strong> informações ou pagamentos para liberação de créditos de processos e não entra em contato por outros números além do oficial.</p>
-                <p>Caso receba qualquer mensagem ou ligação de outro número além do nosso canal oficial, entre em contato conosco para confirmar a veracidade.</p>
-                <p>Estamos disponíveis exclusivamente no whatsapp pelo (61) 3031-4400.</p>
-              </div>
-              
-              <div class="contact-info">
-                <p><strong>💬 Precisa tirar dúvidas?</strong></p>
-                <p>Entre em contato conosco através do nosso Whatsapp, clicando no botão abaixo:</p>
-                <div style="text-align: center;">
-                  <a href="https://wa.me/556130314400" class="whatsapp-btn">
-                    <img src="https://sistema.resendemh.com.br/whatsapp.png" alt="WhatsApp" style="height: 30px; margin: 0 5px; vertical-align: middle;">
-                    WhatsApp
-                  </a>
+                .info-box strong {
+                  color: #000000;
+                }
+
+                .highlight { 
+                  color: #165A5D; 
+                  font-weight: bold; 
+                }
+                .valor-box {
+                  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                  color: white;
+                  padding: 20px;
+                  border-radius: 8px;
+                  text-align: center;
+                  margin: 20px 0;
+                  font-size: 18px;
+                  font-weight: bold;
+                }
+                .valor-box .valor-label {
+                  font-size: 14px;
+                  opacity: 0.9;
+                  margin-bottom: 5px;
+                }
+                .anti-golpe {
+                  background-color: #dc2626;
+                  color: white;
+                  padding: 20px;
+                  border-radius: 8px;
+                  margin: 25px 0;
+                  border: 3px solid #b91c1c;
+                }
+                .anti-golpe h3 {
+                  margin: 0 0 10px 0;
+                  font-size: 18px;
+                  text-align: center;
+                }
+                .anti-golpe ul {
+                  margin: 10px 0;
+                  padding-left: 20px;
+                }
+                .anti-golpe li {
+                  margin: 5px 0;
+                }
+
+                .anti-golpe p {
+                  text-align: justify;
+                }
+                .contact-info { 
+                  background-color: #fff3cd; 
+                  padding: 20px; 
+                  border: 1px solid #ffeaa7; 
+                  border-radius: 8px; 
+                  margin: 20px 0; 
+                }
+                .whatsapp-btn {
+                  display: inline-block;
+                  background-color: #25d366;
+                  color: white;
+                  padding: 12px 20px;
+                  text-decoration: none;
+                  border-radius: 25px;
+                  font-weight: bold;
+                  margin: 10px 5px;
+                  text-align: center;
+                }
+                .social-links {
+                  text-align: center;
+                  padding: 20px;
+                  background-color: #f8f9fa;
+                  border-radius: 8px;
+                  margin: 20px 0;
+                }
+                .social-links p {
+                  margin-bottom: 25px;
+                }
+                .social-links a {
+                  display: inline-block;
+                  margin: 0 10px;
+                  color: #165A5D;
+                  text-decoration: none;
+                  font-weight: bold;
+                }
+                .footer { 
+                  text-align: center; 
+                  padding: 20px; 
+                  font-size: 14px;
+                  color: #222222; 
+                  background-color: #f5f5f5; 
+                  margin-top: 20px; 
+                  border-radius: 4px; 
+                }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="header">
+                  <img src="https://sistema.resendemh.com.br/logo-rmh.png" alt="Logo RMH" style="height: 55px; margin-bottom: 20px;" />
+                  <h1>ATUALIZAÇÃO DO PROCESSO</h1>
+                </div>
+                
+                <div class="content">
+                  <p class="texto-inicial">Prezado(a) <strong>${processo.cliente}</strong>,</p>
+                  
+                  <p class="texto-inicial">Entramos em contato para informar sobre a situação atual do seu processo jurídico:</p>
+                  
+                  <div class="info-box">
+                    <p><strong>Número do processo:</strong> ${processo.numeroProcesso}</p>
+                    <p><strong>🎯 Objeto da Ação:</strong> ${processo.objetoAtendimento}</p>
+                    <p><strong>📅 Data de protocolo do processo:</strong> ${formatarData(processo.ultimoAndamento)}</p>
+                    ${processo.instancia ? `<p><strong>🏛️ Instância:</strong> ${processo.instancia}</p>` : ''}
+                    <p><strong>👨‍💼 Parte Contrária:</strong> ${processo.responsavel}</p>
+                    ${processo.valorCausa ? `<p><strong>💲 Previsão de Proveito Econômico:</strong> R$ ${parseFloat(processo.valorCausa).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>` : ''}
+                  </div>
+
+                  ${processo.valorCausa ? `
+                    <p class="texto-inicial">
+                      O valor inicial que está sendo requerido na ação descrito acima representa uma expectativa de recebimento a depender da sentença,<strong> APÓS A TRAMITAÇÃO COMPLETA DA AÇÃO</strong>, pois nesse momento <strong>NÃO HÁ PREVISÃO DE RECEBIMENTO DE VALORES</strong>.
+                    </p>
+                  ` : ''}
+
+                  <!-- AVISO ANTI-GOLPE -->
+                  <div class="anti-golpe">
+                    <h3>⚠️ CUIDADO COM OS GOLPES</h3>
+                    <p>A Resende Mori Hutchison <strong>NUNCA SOLICITA</strong> informações ou pagamentos para liberação de créditos de processos e não entra em contato por outros números além do oficial.</p>
+                    <p>Caso receba qualquer mensagem ou ligação de outro número além do nosso canal oficial, entre em contato conosco para confirmar a veracidade.</p>
+                    <p>Estamos disponíveis exclusivamente no whatsapp pelo (61) 3031-4400.</p>
+                  </div>
+                  
+                  <div class="contact-info">
+                    <p><strong>💬 Precisa tirar dúvidas?</strong></p>
+                    <p>Entre em contato conosco através do nosso Whatsapp clicando no botão abaixo:</p>
+                    <div style="text-align: center;">
+                      <a href="https://wa.me/556130314400" class="whatsapp-btn">
+                        <img src="https://sistema.resendemh.com.br/whatsapp.png" alt="WhatsApp" style="height: 30px; margin: 0 5px; vertical-align: middle;">
+                        WhatsApp
+                      </a>
+                    </div>
+                  </div>
+
+                  <!-- Redes Sociais -->
+                  <div class="social-links">
+                    <p><strong>🌐 Nos acompanhe nas redes sociais:</strong></p>
+                    <a href="https://www.resendemh.com.br">
+                      <img src="https://sistema.resendemh.com.br/resendemh-logo.png" alt="Site RMH" style="height: 30px; margin: 0 5px; vertical-align: middle;">
+                      Site Oficial
+                    </a>
+                    <a href="https://www.instagram.com/advocaciarmh">
+                      <img src="https://sistema.resendemh.com.br/instagram.png" alt="Instagram" style="height: 30px; margin: 0 5px; vertical-align: middle;">
+                      Instagram
+                    </a>
+                    <a href="https://www.youtube.com/@ResendeMoriHutchison">
+                      <img src="https://sistema.resendemh.com.br/youtube.png" alt="YouTube" style="height: 30px; margin: 0 5px; vertical-align: middle;">
+                      YouTube
+                    </a>
+                  </div>
+                </div>
+                <div class="footer">
+                  <p><strong>ATENÇÃO: ESTE É UM E-MAIL AUTOMÁTICO, FAVOR NÃO RESPONDER.</strong></p>
                 </div>
               </div>
-
-              <!-- Redes Sociais -->
-              <div class="social-links">
-                <p><strong>🌐 Nos acompanhe nas redes sociais:</strong></p>
-                <a href="https://www.resendemh.com.br">
-                  <img src="https://sistema.resendemh.com.br/resendemh-logo.png" alt="Site RMH" style="height: 30px; margin: 0 5px; vertical-align: middle;">
-                  Site Oficial
-                </a>
-                <a href="https://www.instagram.com/advocaciarmh">
-                  <img src="https://sistema.resendemh.com.br/instagram.png" alt="Instagram" style="height: 30px; margin: 0 5px; vertical-align: middle;">
-                  Instagram
-                </a>
-                <a href="https://www.youtube.com/@ResendeMoriHutchison">
-                  <img src="https://sistema.resendemh.com.br/youtube.png" alt="YouTube" style="height: 30px; margin: 0 5px; vertical-align: middle;">
-                  YouTube
-                </a>
-              </div>
-            </div>
-            <div class="footer">
-              <p><strong>ATENÇÃO: ESTE É UM E-MAIL AUTOMÁTICO, FAVOR NÃO RESPONDER.</strong></p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `;
+            </body>
+            </html>
+          `;
     };
 
-    // ✅ PROCESSAMENTO 100% SEQUENCIAL - UM POR VEZ
+    // ✅ PROCESSAMENTO SEQUENCIAL - APLICANDO A MESMA LÓGICA DO INDIVIDUAL
     for (let i = 0; i < processosValidos.length; i++) {
       const processo = processosValidos[i];
       
       try {
-        console.log(`\n=== PROCESSANDO ${i + 1}/${processosValidos.length} ===`);
-        console.log(`📧 MASSA: Processando ${processo.cliente} (${processo.emailCliente})`);
-        console.log(`🆔 MASSA: idProcessoPlanilha = "${processo.idProcessoPlanilha}"`);
+        console.log(`📧 MASSA: Processando ${i + 1}/${processosValidos.length} - ${processo.cliente}`);
 
-        // Validar campos obrigatórios
-        if (!processo.cliente) {
-          throw new Error('Campo cliente é obrigatório');
-        }
-        if (!processo.emailCliente) {
-          throw new Error('Campo emailCliente é obrigatório');
-        }
-        if (!processo.numeroProcesso) {
-          throw new Error('Campo numeroProcesso é obrigatório');
+        // Validações básicas
+        if (!processo.cliente || !processo.emailCliente || !processo.numeroProcesso) {
+          throw new Error('Campos obrigatórios faltando');
         }
 
-        // Verificar se tem idProcessoPlanilha
-        if (!processo.idProcessoPlanilha || processo.idProcessoPlanilha.trim() === '') {
-          console.log(`⚠️ MASSA: Processo ${processo.numeroProcesso} sem idProcessoPlanilha - apenas enviando email`);
-          
-          // Enviar email sem mover
-          const emailTemplate = gerarTemplateEmail(processo);
-          const emailResult = await resend.emails.send({
+        // ✅ 1. ENVIAR EMAIL (igual ao individual)
+        const emailTemplate = gerarTemplateEmail(processo);
+        let emailResult;
+        let emailId;
+        
+        try {
+          emailResult = await resend.emails.send({
             from: 'processos@resendemh.com.br',
             to: [processo.emailCliente],
-            subject: `📋 Atualização - Processo ${processo.numeroProcesso} | RMH Advogados`,
+            subject: `📋 Atualização - Processo ${processo.numeroProcesso}`,
             html: emailTemplate
           });
-
-          console.log(`✅ MASSA: Email enviado - ID: ${emailResult.id}`);
-          enviados++;
           
-          resultados.push({
-            id: processo.id,
-            cliente: processo.cliente,
-            numeroProcesso: processo.numeroProcesso,
-            success: true,
-            emailId: emailResult.id,
-            movido: false,
-            motivo: 'Sem idProcessoPlanilha'
-          });
+          emailId = emailResult.id || emailResult.data?.id;
           
-          // Pausa antes do próximo
-          if (i < processosValidos.length - 1) {
-            console.log(`⏳ MASSA: Aguardando 2 segundos antes do próximo processo...`);
-            await new Promise(resolve => setTimeout(resolve, 2000));
+          // ✅ 2. SALVAR EMAIL ID NO BANCO (igual ao individual)
+          if (emailId && processo.idProcessoPlanilha) {
+            await pool.query(`
+              UPDATE processo_emails_pendentes 
+              SET email_id = $1 
+              WHERE id_processo = $2
+            `, [emailId, processo.idProcessoPlanilha]);
+            console.log(`✅ Email ID ${emailId} salvo no processo ${processo.idProcessoPlanilha}`);
           }
-          continue;
-        }
 
-        // 1. ENVIAR EMAIL PRIMEIRO
-        console.log(`📧 MASSA: Enviando email para ${processo.emailCliente}`);
-        const emailTemplate = gerarTemplateEmail(processo);
-        
-        const emailResult = await resend.emails.send({
-          from: 'processos@resendemh.com.br',
-          to: [processo.emailCliente],
-          subject: `📋 Atualização - Processo ${processo.numeroProcesso} | RMH Advogados`,
-          html: emailTemplate
-        });
+          // ✅ VERIFICAR SE O RESEND RETORNOU ERRO
+          if (!emailResult || !emailId) {
+            throw new Error('Serviço de email retornou resposta inválida');
+          }
 
-        console.log(`✅ MASSA: Email enviado - ID: ${emailResult.id}`);
+          if (emailResult.error) {
+            throw new Error(`Erro do serviço de email: ${emailResult.error.message || emailResult.error}`);
+          }
 
-        // 2. DEPOIS MOVER PARA ABA ENVIADOS
-        try {
-          console.log(`📋 MASSA: Tentando mover processo ID ${processo.idProcessoPlanilha} para enviados`);
-          
-          const resultadoMovimentacao = await moverProcessoParaEnviados(
-            processo.numeroProcesso,
-            processo.idProcessoPlanilha,
-            new Date().toISOString()
-          );
-          
-          console.log(`✅ MASSA: Processo ID ${processo.idProcessoPlanilha} movido para enviados`);
-          movimentacoes++;
-          
+          console.log(`✅ Email enviado com sucesso - ID: ${emailId}`);
+          enviados++;
+
+          // ✅ 3. ADICIONAR À LISTA DE PROCESSAMENTO EM BACKGROUND (igual ao individual)
+          if (processo.idProcessoPlanilha) {
+            processosParaProcessarBackground.push({
+              numeroProcesso: processo.numeroProcesso,
+              idProcessoPlanilha: processo.idProcessoPlanilha,
+              dataEnvio: new Date().toISOString(),
+              emailId: emailId
+            });
+          }
+
           resultados.push({
             id: processo.id,
             cliente: processo.cliente,
             numeroProcesso: processo.numeroProcesso,
             success: true,
-            emailId: emailResult.id,
-            movido: true,
-            linhaOriginal: resultadoMovimentacao.linhaOriginal,
-            linhaFinal: resultadoMovimentacao.linhaFinal,
-            status: resultadoMovimentacao.status
+            emailId: emailId,
+            enviado: true,
+            aguardandoProcessamento: true
           });
 
-        } catch (movError) {
-          console.error(`⚠️ MASSA: Erro ao mover processo ${processo.numeroProcesso}:`, movError.message);
-          
-          resultados.push({
-            id: processo.id,
-            cliente: processo.cliente,
-            numeroProcesso: processo.numeroProcesso,
-            success: true,
-            emailId: emailResult.id,
-            movido: false,
-            erro: movError.message
-          });
+        } catch (emailError) {
+          console.error(`❌ Erro ao enviar email para ${processo.emailCliente}:`, emailError);
+          throw emailError;
         }
 
-        enviados++;
-
-        // ✅ PAUSA OBRIGATÓRIA entre cada processo (evita conflitos)
+        // ✅ PAUSA ENTRE EMAILS
         if (i < processosValidos.length - 1) {
-          console.log(`⏳ MASSA: Aguardando 3 segundos antes do próximo processo...`);
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          await new Promise(resolve => setTimeout(resolve, 2000));
         }
 
       } catch (error) {
-        console.error(`❌ MASSA: Erro ao processar ${processo.cliente}:`, error);
+        console.error(`❌ Erro ao processar ${processo.cliente}:`, error);
         erros++;
         
         resultados.push({
@@ -5511,37 +5500,56 @@ app.post('/api/emails/massa', authMiddleware, async (req, res) => {
           numeroProcesso: processo.numeroProcesso || 'N/A',
           success: false,
           error: error.message,
-          movido: false
+          enviado: false
         });
-
-        // Pausa mesmo em caso de erro
-        if (i < processosValidos.length - 1) {
-          console.log(`⏳ MASSA: Aguardando 2 segundos após erro...`);
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        }
       }
     }
 
-    console.log(`\n✅ EMAIL MASSA FINALIZADO: ${enviados} enviados, ${movimentacoes} movidos, ${erros} erros`);
+    console.log(`✅ EMAIL MASSA FINALIZADO: ${enviados} enviados, ${erros} erros`);
 
-    // Log detalhado dos erros
-    const errosDetalhados = resultados.filter(r => !r.success);
-    if (errosDetalhados.length > 0) {
-      console.log(`❌ ERROS DETALHADOS:`, errosDetalhados);
-    }
+    // ✅ 4. PROCESSAMENTO EM BACKGROUND (igual ao individual, mas para todos os processos)
+    setTimeout(async () => {
+      console.log(`⏳ BACKGROUND MASSA: Iniciando processamento de ${processosParaProcessarBackground.length} processos`);
+      
+      for (const processoInfo of processosParaProcessarBackground) {
+        try {
+          console.log(`⏳ BACKGROUND: Verificando bounces e movendo processo ${processoInfo.numeroProcesso}`);
+          
+          const resultado = await moverProcessoParaEnviados({
+            numeroProcesso: processoInfo.numeroProcesso,
+            idProcessoPlanilha: processoInfo.idProcessoPlanilha,
+            dataEnvio: processoInfo.dataEnvio
+          });
 
+          if (resultado.success) {
+            console.log(`✅ BACKGROUND: Processo ${processoInfo.numeroProcesso} movido para enviados`);
+            movimentacoes++;
+          } else if (resultado.status === 'email_invalido') {
+            console.log(`⚠️ BACKGROUND: Processo ${processoInfo.numeroProcesso} NÃO movido - email inválido (bounce detectado)`);
+          } else {
+            console.log(`⚠️ BACKGROUND: Processo ${processoInfo.numeroProcesso} não movido - ${resultado.motivo || resultado.erro}`);
+          }
+
+        } catch (movimentacaoError) {
+          console.error(`❌ BACKGROUND: Erro ao mover processo ${processoInfo.numeroProcesso}:`, movimentacaoError);
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      console.log(`✅ BACKGROUND MASSA FINALIZADO: ${movimentacoes} processos movidos para enviados`);
+    }, 5000);
+
+    // ✅ RESPOSTA IMEDIATA (como no individual)
     res.json({
       success: true,
       enviados,
       erros,
-      movimentacoes,
       total: processos.length,
       processosValidos: processosValidos.length,
-      resultados,
-      errosDetalhados: errosDetalhados.map(e => ({
-        cliente: e.cliente,
-        erro: e.error
-      }))
+      aguardandoVerificacao: processosParaProcessarBackground.length,
+      message: `${enviados} emails enviados! Aguardando verificação de bounces antes de mover processos.`,
+      resultados
     });
 
   } catch (error) {
