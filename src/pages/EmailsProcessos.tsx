@@ -330,54 +330,82 @@ const EmailsProcessos = () => {
     const objeto = filtroObjetoAtendimento;
     return objeto.length > 50 ? `${objeto.substring(0, 50)}...` : objeto;
   };
+
   const verificarDataNoIntervalo = (dataProcesso: string, dataInicio: string, dataFim: string): boolean => {
     if (!dataInicio && !dataFim) return true;
     
     try {
-      // Converter data do processo para Date
+      // ✅ CONVERTER DATA DO PROCESSO
       let dataProc: Date;
+      
       if (dataProcesso.includes('/')) {
         // Formato dd/MM/yyyy
         const [dia, mes, ano] = dataProcesso.split('/');
         dataProc = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+      } else if (dataProcesso.includes('T')) {
+        // ✅ FORMATO ISO COMPLETO (2025-08-28T03:00:00.000Z)
+        dataProc = new Date(dataProcesso);
       } else if (dataProcesso.includes('-')) {
-        // Formato YYYY-MM-DD ou similar
+        // Formato YYYY-MM-DD simples
         dataProc = new Date(dataProcesso);
       } else {
         // Tentar converter diretamente
         dataProc = new Date(dataProcesso);
       }
       
-      // Se não conseguiu converter, ignorar filtro de data
+      // ✅ Se não conseguir converter, incluir na busca
       if (isNaN(dataProc.getTime())) {
-        console.log('Data inválida:', dataProcesso);
+        console.log('Data realmente inválida:', dataProcesso);
         return true;
       }
       
-      // ✅ CORREÇÃO: Normalizar data do processo para início do dia (SEM timezone)
-      const dataProcessoNormalizada = new Date(dataProc.getFullYear(), dataProc.getMonth(), dataProc.getDate());
+      // ✅ NORMALIZAR PARA APENAS DATA (sem horário) usando UTC
+      const dataProcessoNormalizada = new Date(Date.UTC(
+        dataProc.getUTCFullYear(), 
+        dataProc.getUTCMonth(), 
+        dataProc.getUTCDate()
+      ));
       
-      // Verificar intervalo
+      // ✅ CORREÇÃO: Verificar se está FORA do intervalo e retornar false
       if (dataInicio) {
-        const [ano, mes, dia] = dataInicio.split('-');
-        const inicio = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+        const [ano, mes, dia] = dataInicio.split('-').map(Number);
+        const inicio = new Date(Date.UTC(ano, mes - 1, dia));
         
-        // ✅ CORREÇÃO: Usar <= ao invés de < para incluir a data de início
-        if (dataProcessoNormalizada < inicio) return false;
+        if (dataProcessoNormalizada < inicio) {
+          console.log('Data antes do início:', {
+            processo: dataProcessoNormalizada.toISOString().split('T')[0],
+            inicio: inicio.toISOString().split('T')[0]
+          });
+          return false; // ✅ FORA do intervalo
+        }
       }
       
       if (dataFim) {
-        const [ano, mes, dia] = dataFim.split('-');
-        const fim = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+        const [ano, mes, dia] = dataFim.split('-').map(Number);
+        const fim = new Date(Date.UTC(ano, mes - 1, dia));
         
-        if (dataProcessoNormalizada > fim) return false;
+        if (dataProcessoNormalizada > fim) {
+          console.log('Data depois do fim:', {
+            processo: dataProcessoNormalizada.toISOString().split('T')[0],
+            fim: fim.toISOString().split('T')[0]
+          });
+          return false; // ✅ FORA do intervalo
+        }
       }
       
-      return true;
+      // ✅ SE CHEGOU ATÉ AQUI, ESTÁ DENTRO DO INTERVALO
+      console.log('Data dentro do intervalo:', {
+        original: dataProcesso,
+        normalizada: dataProcessoNormalizada.toISOString().split('T')[0],
+        dataInicio,
+        dataFim
+      });
+      
+      return true; // ✅ DENTRO do intervalo
       
     } catch (error) {
       console.log('Erro ao verificar data:', error, 'Data processo:', dataProcesso);
-      return true;
+      return true; // Em caso de erro, incluir na busca
     }
   };
 
