@@ -354,26 +354,23 @@ const EmailsProcessos = () => {
         return true;
       }
       
-      // Normalizar data do processo para início do dia
-      dataProc.setHours(0, 0, 0, 0);
+      // ✅ CORREÇÃO: Normalizar data do processo para início do dia (SEM timezone)
+      const dataProcessoNormalizada = new Date(dataProc.getFullYear(), dataProc.getMonth(), dataProc.getDate());
       
       // Verificar intervalo
       if (dataInicio) {
-        // CORRIGIR: Criar data sem problemas de timezone
         const [ano, mes, dia] = dataInicio.split('-');
         const inicio = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
-        inicio.setHours(0, 0, 0, 0);
         
-        if (dataProc < inicio) return false;
+        // ✅ CORREÇÃO: Usar <= ao invés de < para incluir a data de início
+        if (dataProcessoNormalizada < inicio) return false;
       }
       
       if (dataFim) {
-        // CORRIGIR: Criar data sem problemas de timezone
         const [ano, mes, dia] = dataFim.split('-');
         const fim = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
-        fim.setHours(23, 59, 59, 999);
         
-        if (dataProc > fim) return false;
+        if (dataProcessoNormalizada > fim) return false;
       }
       
       return true;
