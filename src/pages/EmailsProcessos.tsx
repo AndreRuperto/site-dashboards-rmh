@@ -1458,7 +1458,8 @@ const EmailsProcessos = () => {
                         onChange={(e) => atualizarDadosEdicao('tipoProcesso', e.target.value)}
                         className="w-full mt-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
                       >
-                        <option value="">Selecione...</option>
+                        {/* ✅ ADICIONAR PROCESSO ADMINISTRATIVO PRIMEIRO */}
+                        <option value="Processo administrativo">Processo administrativo</option>
                         {setoresUnicos.map(setor => (
                           <option key={setor} value={setor}>{setor}</option>
                         ))}

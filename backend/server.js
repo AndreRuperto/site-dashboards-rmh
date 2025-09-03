@@ -3025,10 +3025,14 @@ app.put('/api/documents/:id', authMiddleware, upload.single('thumbnail'), async 
 });
 
 // ======================= ATUALIZAR ARQUIVO EXISTENTE =======================
-app.put('/api/documents/:id/upload', authMiddleware, upload.single('file'), async (req, res) => {
+app.put('/api/documents/:id/upload', authMiddleware, upload.fields([
+  { name: 'file', maxCount: 1 },
+  { name: 'thumbnail', maxCount: 1 }
+]), async (req, res) => {
   const docId = req.params.id;
-  const { title, description, category, visibilidade } = req.body; // ✅ ADICIONADO
-  const file = req.file;
+  const { title, description, category, visibilidade } = req.body;
+  const file = req.files?.file?.[0];  // ✅ MUDANÇA AQUI
+  const thumbnailFile = req.files?.thumbnail?.[0];  // ✅ NOVO
 
   try {
     if (!file) {
@@ -3042,6 +3046,13 @@ app.put('/api/documents/:id/upload', authMiddleware, upload.single('file'), asyn
 
     const fileUrl = `/documents/${file.filename}`;
     
+    // ✅ PROCESSAR THUMBNAIL SE FORNECIDA
+    let thumbnailUrl = null;
+    if (thumbnailFile) {
+      thumbnailUrl = `/thumbnails/${thumbnailFile.filename}`;
+      console.log(`🖼️ Nova thumbnail enviada junto com arquivo: ${thumbnailUrl}`);
+    }
+    
     const result = await pool.query(`
       UPDATE documentos
       SET 
@@ -3052,26 +3063,39 @@ app.put('/api/documents/:id/upload', authMiddleware, upload.single('file'), asyn
         url_arquivo = $5,
         tamanho_arquivo = $6,
         tipo_mime = $7,
-        thumbnail_url = NULL,
-        visibilidade = COALESCE($8, visibilidade),  -- ✅ ADICIONADO
+        thumbnail_url = COALESCE($8, thumbnail_url),  -- ✅ Só atualiza se nova thumbnail
+        visibilidade = COALESCE($9, visibilidade),
         atualizado_em = CURRENT_TIMESTAMP
-      WHERE id = $9
+      WHERE id = $10
       RETURNING *
     `, [
       title, description, category, file.filename,
-      fileUrl, file.size, file.mimetype, visibilidade, docId  // ✅ ADICIONADO
+      fileUrl, file.size, file.mimetype, thumbnailUrl, visibilidade, docId
     ]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Documento não encontrado' });
     }
 
+    console.log(`✅ Arquivo e thumbnail atualizados:`, {
+      id: result.rows[0].id,
+      titulo: result.rows[0].titulo,
+      nome_arquivo: result.rows[0].nome_arquivo,
+      thumbnail_url: result.rows[0].thumbnail_url,
+      nova_thumbnail: !!thumbnailFile
+    });
+
     res.status(200).json({
+      success: true,
       documento: result.rows[0],
+      message: thumbnailFile ? 
+        'Arquivo e thumbnail atualizados com sucesso!' : 
+        'Arquivo atualizado com sucesso!',
       fileName: file.filename,
       fileUrl,
       tamanhoArquivo: file.size,
-      tipoMime: file.mimetype
+      tipoMime: file.mimetype,
+      nova_thumbnail: !!thumbnailFile
     });
   } catch (error) {
     console.error('❌ Erro ao atualizar arquivo:', error);
