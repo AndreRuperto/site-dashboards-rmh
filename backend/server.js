@@ -4413,6 +4413,7 @@ app.get('/api/processos', authMiddleware, async (req, res) => {
           objeto_atendimento AS objetoAtendimento,
           email_valido,
           valor_causa AS valorCausa,
+          erro,  -- ✅ ADICIONAR ESTE CAMPO QUE ESTAVA FALTANDO
           false AS emailEnviado,
           null AS dataUltimoEmail,
           'Pendente' AS statusEmail
@@ -4435,7 +4436,8 @@ app.get('/api/processos', authMiddleware, async (req, res) => {
           instancia,
           objeto_atendimento AS objetoAtendimento,
           true AS email_valido,
-          valor_causa AS valorCausa,
+          null AS valorCausa,  -- Processos enviados não têm valor_causa
+          false AS erro,  -- ✅ Processos enviados não têm erro
           true AS emailEnviado,
           data_envio AS dataUltimoEmail,
           'Enviado' AS statusEmail
@@ -4461,6 +4463,7 @@ app.get('/api/processos', authMiddleware, async (req, res) => {
       exAdverso: row.exadverso,
       instancia: row.instancia,
       objetoAtendimento: row.objetoatendimento,
+      erro: row.erro || false,  // ✅ MAPEAR O CAMPO ERRO
       emailEnviado: row.emailenviado,
       emailValido: row.email_valido,
       dataUltimoEmail: row.dataultimoemail,
@@ -4649,6 +4652,141 @@ app.put('/api/processos/:id', authMiddleware, async (req, res) => {
     }
 
     res.status(500).json({ 
+      error: 'Erro interno do servidor',
+      details: error.message
+    });
+  } finally {
+    client.release();
+  }
+});
+
+// Rota para marcar processo como erro
+app.put('/api/processos/:id/erro', authMiddleware, async (req, res) => {
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    const { id } = req.params;
+    const { marcarComoErro } = req.body;
+    
+    console.log(`🚨 ERRO: Marcando processo ID ${id} como erro`);
+    
+    // 1. Buscar o processo na tabela de pendentes usando o idProcessoPlanilha
+    const processoBusca = await client.query(
+      `SELECT id_processo, numero_unico, nome_assistido 
+       FROM processo_emails_pendentes 
+       WHERE id_processo = $1`,
+      [id]
+    );
+    
+    if (processoBusca.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ 
+        error: 'Processo não encontrado na tabela de pendentes' 
+      });
+    }
+    
+    const processo = processoBusca.rows[0];
+    
+    // 2. Atualizar apenas a coluna erro
+    const updateResult = await client.query(
+      `UPDATE processo_emails_pendentes 
+       SET erro = $1
+       WHERE id_processo = $2
+       RETURNING id_processo, numero_unico, nome_assistido, erro`,
+      [
+        marcarComoErro || true,  // Padrão true se não especificado
+        id
+      ]
+    );
+    
+    if (updateResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(500).json({ 
+        error: 'Erro ao atualizar o status do processo' 
+      });
+    }
+    
+    await client.query('COMMIT');
+    
+    const processoAtualizado = updateResult.rows[0];
+    
+    console.log(`✅ ERRO: Processo ${processoAtualizado.numero_unico} marcado como erro: ${processoAtualizado.erro}`);
+    
+    res.json({
+      success: true,
+      message: `Processo ${processoAtualizado.erro ? 'marcado como erro' : 'desmarcado como erro'} com sucesso`,
+      processo: {
+        id: processoAtualizado.id_processo,
+        numeroProcesso: processoAtualizado.numero_unico,
+        cliente: processoAtualizado.nome_assistido,
+        erro: processoAtualizado.erro
+      }
+    });
+    
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('❌ ERRO ao marcar processo como erro:', error);
+    res.status(500).json({
+      error: 'Erro interno do servidor',
+      details: error.message
+    });
+  } finally {
+    client.release();
+  }
+});
+
+// Rota para desmarcar processo como erro (opcional)
+app.put('/api/processos/:id/desmarcar-erro', authMiddleware, async (req, res) => {
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    const { id } = req.params;
+    
+    console.log(`✅ ERRO: Desmarcando processo ID ${id} como erro`);
+    
+    // Atualizar a coluna erro para false
+    const updateResult = await client.query(
+      `UPDATE processo_emails_pendentes 
+       SET erro = false, 
+           motivo_erro = null,
+           data_erro = null
+       WHERE id_processo = $1
+       RETURNING id_processo, numero_unico, nome_assistido, erro`,
+      [id]
+    );
+    
+    if (updateResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ 
+        error: 'Processo não encontrado' 
+      });
+    }
+    
+    await client.query('COMMIT');
+    
+    const processoAtualizado = updateResult.rows[0];
+    
+    console.log(`✅ ERRO: Processo ${processoAtualizado.numero_unico} desmarcado como erro`);
+    
+    res.json({
+      success: true,
+      message: 'Processo desmarcado como erro com sucesso',
+      processo: {
+        id: processoAtualizado.id_processo,
+        numeroProcesso: processoAtualizado.numero_unico,
+        cliente: processoAtualizado.nome_assistido,
+        erro: processoAtualizado.erro
+      }
+    });
+    
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('❌ ERRO ao desmarcar processo como erro:', error);
+    res.status(500).json({
       error: 'Erro interno do servidor',
       details: error.message
     });

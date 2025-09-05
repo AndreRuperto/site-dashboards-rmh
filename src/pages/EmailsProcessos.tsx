@@ -66,7 +66,8 @@ interface ProcessoData {
   ultimoAndamento: string;
   responsavel: string;
   origem: string;
-  statusEmail?: 'Pendente' | 'Enviado';
+  statusEmail?: 'Pendente' | 'Enviado' | 'Erro';
+  erro?: boolean;
 }
 
 const EmailsProcessos = () => {
@@ -86,6 +87,8 @@ const EmailsProcessos = () => {
   const [buscaIdAtendimento, setBuscaIdAtendimento] = useState('');
   const [objetoBusca, setObjetoBusca] = useState('');
   const [objetoSelectorAberto, setObjetoSelectorAberto] = useState(false);
+  const [modalErroAberto, setModalErroAberto] = useState(false);
+  const [processoParaErro, setProcessoParaErro] = useState<ProcessoData | null>(null);
   
   // Estados para paginação
   const [dataInicioFiltro, setDataInicioFiltro] = useState('');
@@ -448,7 +451,9 @@ const EmailsProcessos = () => {
     
     // DETERMINAR o status do email baseado no emailValido
     let statusEmailProcesso;
-    if (processo.emailValido === false) {
+    if (processo.erro) {
+      statusEmailProcesso = 'Erro'; // ✅ PRIORIDADE PARA ERRO
+    } else if (processo.emailValido === false) {
       statusEmailProcesso = 'Invalido';
     } else if (processo.emailEnviado) {
       statusEmailProcesso = 'Enviado';
@@ -459,21 +464,18 @@ const EmailsProcessos = () => {
     // LÓGICA DE EMAIL para exibição na lista
     let matchEmail: boolean;
     if (filtroEmail === 'todos') {
-      // Sem filtro específico de status de email:
-      // - se não há outros filtros: ocultar inválidos
-      // - se há outros filtros: libera todos (inclusive inválidos, se for seu desejo)
-      matchEmail = temFiltroAtivo ? true : (statusEmailProcesso !== 'Invalido');
+      matchEmail = temFiltroAtivo ? true : (statusEmailProcesso !== 'Invalido' && statusEmailProcesso !== 'Erro');
+    } else if (filtroEmail === 'Erro') {
+      matchEmail = statusEmailProcesso === 'Erro'; // ✅ FILTRO PARA ERROS
     } else if (filtroEmail === 'Invalido') {
       matchEmail = statusEmailProcesso === 'Invalido';
     } else {
-      // 'Enviado' ou 'Pendente' → match estrito
       matchEmail = statusEmailProcesso === filtroEmail;
     }
     
     const matchPessoa = filtroPessoa === 'todos' || processo.responsavel === filtroPessoa;
-    // Se houver filtros ativos, aplica a lógica normal
     return matchStatus && matchEmail && matchPessoa;
-  });
+});
 
   // Estatísticas baseadas nos processos filtrados (que afetam as estatísticas)
   const stats = {
@@ -481,6 +483,7 @@ const EmailsProcessos = () => {
     comEmail: processosFiltradosParaStats.filter(p => p.emailEnviado).length,
     semEmail: processosFiltradosParaStats.filter(p => !p.emailEnviado && p.emailValido !== false).length,
     emailsInvalidos: processosFiltradosParaStats.filter(p => p.emailValido === false).length,
+    processosComErro: processosFiltradosParaStats.filter(p => p.erro).length,
     emailsHoje: processosFiltradosParaStats.filter(p => 
       p.dataUltimoEmail && 
       new Date(p.dataUltimoEmail).toDateString() === new Date().toDateString()
@@ -712,8 +715,18 @@ const EmailsProcessos = () => {
     }
 
     const processosParaEnviar = processos.filter(p => processosSelecionados.includes(p.id));
-    const processosComEmailValido = processosParaEnviar.filter(p => validarEmail(p.emailCliente));
+    const processosComEmailValido = processosParaEnviar.filter(p => 
+      validarEmail(p.emailCliente) && !p.erro
+    );
+    const processosComErro = processosParaEnviar.filter(p => p.erro);
 
+    if (processosComErro.length > 0) {
+      toast({
+        title: "Processos com erro detectados",
+        description: `${processosComErro.length} processo(s) selecionado(s) estão marcados como erro e foram ignorados`,
+        variant: "destructive"
+      });
+    }
     if (processosComEmailValido.length === 0) {
       toast({
         title: "Nenhum email válido encontrado",
@@ -817,6 +830,60 @@ const EmailsProcessos = () => {
     }
   };
   //teste
+  const marcarProcessoComoErro = async (processo: ProcessoData) => {
+    try {
+      setCarregando(true);
+      
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/processos/${processo.idProcessoPlanilha}/erro`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          marcarComoErro: true  // Apenas este campo
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Erro ao marcar processo como erro");
+      }
+
+      await carregarProcessos();
+      
+      toast({
+        title: "Processo marcado como erro",
+        description: `O processo ${processo.numeroProcesso} foi marcado como erro`,
+      });
+
+    } catch (error) {
+      console.error("Erro ao marcar processo como erro:", error);
+      toast({
+        title: "Erro ao marcar processo",
+        description: error instanceof Error ? error.message : "Não foi possível marcar o processo como erro",
+        variant: "destructive"
+      });
+    } finally {
+      setCarregando(false);
+    }
+  };
+
+  const abrirModalConfirmacaoErro = (processo: ProcessoData) => {
+    setProcessoParaErro(processo);
+    setModalErroAberto(true);
+  };
+
+  // 3. Função para confirmar e marcar como erro
+  const confirmarMarcarComoErro = async () => {
+    if (!processoParaErro) return;
+    
+    setModalErroAberto(false);
+    await marcarProcessoComoErro(processoParaErro);
+    setProcessoParaErro(null);
+  };
+
+  // 4. Função para cancelar
+  const cancelarMarcarComoErro = () => {
+    setModalErroAberto(false);
+    setProcessoParaErro(null);
+  };
 
   // Renderizar loading inicial
   if (carregandoInicial) {
@@ -921,6 +988,7 @@ const EmailsProcessos = () => {
                       <option value="Pendente">Email Pendente</option>
                       <option value="Enviado">Email Enviado</option>
                       <option value="Invalido">Email Inválido</option>
+                      <option value="Erro">Processo com Erro</option>
                     </select>
                   </div>
                 </div>
@@ -1028,7 +1096,7 @@ const EmailsProcessos = () => {
             </Card>
 
             {/* Estatísticas */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <Card>
                 <CardContent className="p-4">
                   <div className="flex items-center space-x-2">
@@ -1071,6 +1139,17 @@ const EmailsProcessos = () => {
                     <div>
                       <p className="text-sm text-gray-600">Emails Inválidos</p>
                       <p className="text-xl font-bold text-gray-600">{stats.emailsInvalidos}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center space-x-2">
+                    <AlertCircle className="h-5 w-5 text-gray-600" />
+                    <div>
+                      <p className="text-sm text-gray-600">Processos com Erro</p>
+                      <p className="text-xl font-bold text-gray-600">{stats.processosComErro}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -1171,7 +1250,12 @@ const EmailsProcessos = () => {
                           <div className="flex-1">
                             <div className="flex items-center space-x-2 mb-2">
                               <h3 className="font-semibold text-gray-900">{processo.cliente}</h3>
-                              {processo.emailEnviado ? (
+                              {processo.erro ? (
+                                <Badge className="bg-red-100 hover:bg-red-100 text-red-800">
+                                  <AlertCircle className="h-3 w-3 mr-1" />
+                                  Erro
+                                </Badge>
+                              ) : processo.emailEnviado ? (
                                 <Badge className="bg-green-100 hover:bg-green-100 text-green-800">
                                   <Mail className="h-3 w-3 mr-1" />
                                   Email Enviado
@@ -1223,7 +1307,17 @@ const EmailsProcessos = () => {
                             <Eye className="h-4 w-4 mr-2" />
                             Ver Detalhes
                           </Button>
-                          {podeEnviarEmails && (
+                          <Button
+                            onClick={() => abrirModalConfirmacaoErro(processo)}
+                            disabled={carregando}
+                            size="sm"
+                            variant="destructive"
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                          >
+                            <AlertCircle className="h-4 w-4 mr-2" />
+                            Erro
+                          </Button>
+                          {podeEnviarEmails && !processo.erro && (
                             <Button
                               onClick={() => enviarEmailIndividual(processo)}
                               disabled={carregando}
@@ -1472,10 +1566,21 @@ const EmailsProcessos = () => {
                   {/* Data de Autuação - NÃO EDITÁVEL */}
                   <div>
                     <label className="text-sm font-medium text-gray-600">Data de Autuação</label>
-                    <p className="flex items-center gap-2 mt-1 text-gray-500">
-                      <Calendar className="h-4 w-4" />
-                      {formatarData(processoDetalhado.dataAjuizamento)}
-                    </p>
+                    {modoEdicao ? (
+                      <Input
+                        type="date"
+                        value={dadosEdicao?.dataAjuizamento ? 
+                          new Date(dadosEdicao.dataAjuizamento).toISOString().split('T')[0] : 
+                          ''}
+                        onChange={(e) => atualizarDadosEdicao('dataAjuizamento', e.target.value)}
+                        className="mt-1"
+                      />
+                    ) : (
+                      <p className="flex items-center gap-2 mt-1">
+                        <Calendar className="h-4 w-4" />
+                        {formatarData(processoDetalhado.dataAjuizamento)}
+                      </p>
+                    )}
                   </div>
 
                   {/* Instância */}
@@ -1567,7 +1672,16 @@ const EmailsProcessos = () => {
                     >
                       Fechar
                     </Button>
-                    {podeEnviarEmails && (
+                    <Button
+                      onClick={() => abrirModalConfirmacaoErro(processoDetalhado)}
+                      disabled={carregando}
+                      variant="destructive"
+                      className="bg-red-600 hover:bg-red-700 text-white"
+                    >
+                      <AlertCircle className="h-4 w-4 mr-2" />
+                      Erro
+                    </Button>
+                    {podeEnviarEmails && !processoDetalhado.erro && (
                       <Button
                         onClick={() => {
                           enviarEmailIndividual(processoDetalhado);
@@ -1584,6 +1698,61 @@ const EmailsProcessos = () => {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={modalErroAberto} onOpenChange={setModalErroAberto}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertCircle className="h-5 w-5" />
+              Confirmar Marcação como Erro
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <p className="text-gray-700 mb-4">
+              Você tem certeza que deseja marcar o processo como erro?
+            </p>
+            
+            {processoParaErro && (
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <p className="text-sm text-gray-600 mb-1">
+                  <strong>Cliente:</strong> {processoParaErro.cliente}
+                </p>
+                <p className="text-sm text-gray-600">
+                  <strong>Número:</strong> {processoParaErro.numeroProcesso}
+                </p>
+              </div>
+            )}
+            
+            <p className="text-sm text-gray-500 mt-4">
+              Esta ação impedirá o envio de emails para este processo.
+            </p>
+          </div>
+          
+          <div className="flex justify-end gap-2">
+            <Button
+              onClick={cancelarMarcarComoErro}
+              variant="outline"
+              disabled={carregando}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={confirmarMarcarComoErro}
+              variant="destructive"
+              disabled={carregando}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {carregando ? (
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <AlertCircle className="h-4 w-4 mr-2" />
+              )}
+              Marcar como Erro
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
