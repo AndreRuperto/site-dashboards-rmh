@@ -4443,6 +4443,7 @@ app.get('/api/processos', authMiddleware, async (req, res) => {
           'Enviado' AS statusEmail
         FROM processo_emails_enviados
       ) AS todos
+      WHERE instancia != 'ORDEM DOS ADVOGADOS DO BRASIL - DISTRITO FEDERAL'
       ORDER BY dataAjuizamento DESC;
     `;
 
