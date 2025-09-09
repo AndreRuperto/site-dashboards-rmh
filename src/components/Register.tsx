@@ -60,21 +60,24 @@ const Register: React.FC<RegisterProps> = ({
 
   // Setores específicos da RMH - mantidos conforme o contexto
   const setores = [
-  'Administrativo',
-  'Atendimento',
-  'Carteira',
-  'Comercial/Marketing',
-  'Criminal',
-  'Diretores',
-  'Família e Sucessões',
-  'Financeiro',
-  'Inicial',
-  'Projetos',
-  'Protocolo',
-  'Prazos',
-  'Saúde',
-  'Trabalhista'
-];
+    "Administrativo",
+    "Atendimento",
+    "Carteira de clientes",
+    "Comercial/marketing",
+    "Cálculo e Protocolo",
+    "Desenvolvimento",
+    "Dir. Administrativo",
+    "Dir. Cível",
+    "Dir. Empresarial",
+    "Dir. Previdenciário",
+    "Dir. Saúde",
+    "Dir. Trabalhista",
+    "Diretores",
+    "Financeiro",
+    "Instituto Propositivo",
+    "Mutirão",
+    "Projetos e Processos"
+  ];
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
