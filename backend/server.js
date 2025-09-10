@@ -4413,7 +4413,8 @@ app.get('/api/processos', authMiddleware, async (req, res) => {
           objeto_atendimento AS objetoAtendimento,
           email_valido,
           valor_causa AS valorCausa,
-          erro,  -- ✅ ADICIONAR ESTE CAMPO QUE ESTAVA FALTANDO
+          erro,
+          justificativa_erro AS justificativaErro,
           false AS emailEnviado,
           null AS dataUltimoEmail,
           'Pendente' AS statusEmail
@@ -4436,8 +4437,9 @@ app.get('/api/processos', authMiddleware, async (req, res) => {
           instancia,
           objeto_atendimento AS objetoAtendimento,
           true AS email_valido,
-          null AS valorCausa,  -- Processos enviados não têm valor_causa
-          false AS erro,  -- ✅ Processos enviados não têm erro
+          null AS valorCausa,
+          false AS erro,
+          null AS justificativaErro,
           true AS emailEnviado,
           data_envio AS dataUltimoEmail,
           'Enviado' AS statusEmail
@@ -4465,6 +4467,7 @@ app.get('/api/processos', authMiddleware, async (req, res) => {
       instancia: row.instancia,
       objetoAtendimento: row.objetoatendimento,
       erro: row.erro || false,  // ✅ MAPEAR O CAMPO ERRO
+      justificativaErro: row.justificativaerro,
       emailEnviado: row.emailenviado,
       emailValido: row.email_valido,
       dataUltimoEmail: row.dataultimoemail,
@@ -4669,7 +4672,7 @@ app.put('/api/processos/:id/erro', authMiddleware, async (req, res) => {
     await client.query('BEGIN');
     
     const { id } = req.params;
-    const { marcarComoErro } = req.body;
+    const { marcarComoErro, justificativa } = req.body;
     
     console.log(`🚨 ERRO: Marcando processo ID ${id} como erro`);
     
@@ -4692,15 +4695,16 @@ app.put('/api/processos/:id/erro', authMiddleware, async (req, res) => {
     
     // 2. Atualizar apenas a coluna erro
     const updateResult = await client.query(
-      `UPDATE processo_emails_pendentes 
-       SET erro = $1
-       WHERE id_processo = $2
-       RETURNING id_processo, numero_unico, nome_assistido, erro`,
-      [
-        marcarComoErro || true,  // Padrão true se não especificado
-        id
-      ]
-    );
+    `UPDATE processo_emails_pendentes 
+    SET erro = $1, justificativa_erro = $2
+    WHERE id_processo = $3
+    RETURNING id_processo, numero_unico, nome_assistido, erro`,
+    [
+      marcarComoErro || true,
+      justificativa || null,  // Salvar a justificativa
+      id
+    ]
+  );
     
     if (updateResult.rows.length === 0) {
       await client.query('ROLLBACK');

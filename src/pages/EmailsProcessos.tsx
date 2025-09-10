@@ -68,6 +68,7 @@ interface ProcessoData {
   origem: string;
   statusEmail?: 'Pendente' | 'Enviado' | 'Erro';
   erro?: boolean;
+  justificativaErro?: string;
 }
 
 const EmailsProcessos = () => {
@@ -89,6 +90,7 @@ const EmailsProcessos = () => {
   const [objetoSelectorAberto, setObjetoSelectorAberto] = useState(false);
   const [modalErroAberto, setModalErroAberto] = useState(false);
   const [processoParaErro, setProcessoParaErro] = useState<ProcessoData | null>(null);
+  const [justificativaErro, setJustificativaErro] = useState('');
   
   // Estados para paginação
   const [dataInicioFiltro, setDataInicioFiltro] = useState('');
@@ -481,7 +483,7 @@ const EmailsProcessos = () => {
   const stats = {
     total: processosFiltradosParaStats.length, // Total dos processos que passaram pelos filtros principais
     comEmail: processosFiltradosParaStats.filter(p => p.emailEnviado).length,
-    semEmail: processosFiltradosParaStats.filter(p => !p.emailEnviado && p.emailValido !== false).length,
+    semEmail: processosFiltradosParaStats.filter(p => !p.emailEnviado && p.emailValido !== false && !p.erro).length,
     emailsInvalidos: processosFiltradosParaStats.filter(p => p.emailValido === false).length,
     processosComErro: processosFiltradosParaStats.filter(p => p.erro).length,
     emailsHoje: processosFiltradosParaStats.filter(p => 
@@ -837,7 +839,8 @@ const EmailsProcessos = () => {
       const response = await fetchWithAuth(`${API_BASE_URL}/api/processos/${processo.idProcessoPlanilha}/erro`, {
         method: 'PUT',
         body: JSON.stringify({
-          marcarComoErro: true  // Apenas este campo
+          marcarComoErro: true,  // Apenas este campo
+          justificativa: justificativaErro
         })
       });
 
@@ -1288,7 +1291,15 @@ const EmailsProcessos = () => {
                               <div>
                                 <strong>Ajuizamento:</strong> {formatarData(processo.dataAjuizamento)}
                               </div>
+                              {/* Mostrar justificativa apenas se houver erro */}
+                                {processo.erro && (
+                                  <div className="w-full">
+                                    <strong>Justificativa do erro:</strong> 
+                                    <span className="text-gray-600 ml-1">{processo.justificativaErro || processo.erro}</span>
+                                  </div>
+                                )}
                             </div>
+                            
                             
                             {processo.dataUltimoEmail && (
                               <div className="mt-2 text-xs text-green-600">
@@ -1307,16 +1318,18 @@ const EmailsProcessos = () => {
                             <Eye className="h-4 w-4 mr-2" />
                             Ver Detalhes
                           </Button>
-                          <Button
-                            onClick={() => abrirModalConfirmacaoErro(processo)}
-                            disabled={carregando}
-                            size="sm"
-                            variant="destructive"
-                            className="bg-red-600 hover:bg-red-700 text-white"
-                          >
-                            <AlertCircle className="h-4 w-4 mr-2" />
-                            Erro
-                          </Button>
+                          {podeEnviarEmails && (
+                            <Button
+                              onClick={() => abrirModalConfirmacaoErro(processo)}
+                              disabled={carregando}
+                              size="sm"
+                              variant="destructive"
+                              className="bg-red-600 hover:bg-red-700 text-white"
+                            >
+                              <AlertCircle className="h-4 w-4 mr-2" />
+                              Erro
+                            </Button>
+                          )}
                           {podeEnviarEmails && !processo.erro && (
                             <Button
                               onClick={() => enviarEmailIndividual(processo)}
@@ -1716,7 +1729,7 @@ const EmailsProcessos = () => {
             </p>
             
             {processoParaErro && (
-              <div className="bg-gray-50 p-3 rounded-lg">
+              <div className="bg-gray-50 p-3 rounded-lg mb-4">
                 <p className="text-sm text-gray-600 mb-1">
                   <strong>Cliente:</strong> {processoParaErro.cliente}
                 </p>
@@ -1726,7 +1739,22 @@ const EmailsProcessos = () => {
               </div>
             )}
             
-            <p className="text-sm text-gray-500 mt-4">
+            <div className="mb-4">
+              <label htmlFor="justificativa" className="block text-sm font-medium text-gray-700 mb-2">
+                Justificativa (opcional)
+              </label>
+              <textarea
+                id="justificativa"
+                value={justificativaErro}
+                onChange={(e) => setJustificativaErro(e.target.value)}
+                placeholder="Informe o motivo para marcar este processo como erro..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 resize-none"
+                rows={3}
+                disabled={carregando}
+              />
+            </div>
+            
+            <p className="text-sm text-gray-500">
               Esta ação impedirá o envio de emails para este processo.
             </p>
           </div>
