@@ -2537,16 +2537,11 @@ app.get('/api/documents', authMiddleware, async (req, res) => {
 
     // ✅ QUERY PARA BUSCAR TODOS OS DOCUMENTOS ATIVOS
     const result = await pool.query(`
-      SELECT 
-        d.id, d.titulo, d.descricao, d.categoria, d.nome_arquivo, 
-        d.url_arquivo, d.tamanho_arquivo, d.tipo_mime, d.qtd_downloads,
-        d.enviado_por, d.enviado_em, d.ativo, d.criado_em, d.atualizado_em,
-        d.visibilidade, d.thumbnail_url,
-        u.nome as enviado_por_nome
+      SELECT d.*, u.nome as enviado_por_nome 
       FROM documentos d
       LEFT JOIN usuarios u ON d.enviado_por = u.id
       WHERE d.ativo = true 
-      ORDER BY d.criado_em ASC
+      ORDER BY COALESCE(d.ordem, 999999), d.criado_em DESC
     `);
 
     console.log(`📄 Query executada - encontrados ${result.rows.length} documentos`);
@@ -2603,6 +2598,50 @@ app.get('/api/documents', authMiddleware, async (req, res) => {
       categorias: [],
       message: error.message 
     });
+  }
+});
+
+// Rota para atualizar ordem dos documentos
+app.put('/api/documents/reorder', authMiddleware, async (req, res) => {
+  try {
+    const { documentsOrder } = req.body; // Array com [{ id, ordem }, ...]
+    
+    // Verificar se é admin ou administrativo
+    const canReorder = req.user.tipo_usuario === 'admin' || 
+                      req.user.setor?.toLowerCase().includes('administrativo');
+    
+    if (!canReorder) {
+      return res.status(403).json({ error: 'Sem permissão para reordenar' });
+    }
+
+    console.log(`🔄 REORDENAÇÃO: ${req.user.nome} reordenando ${documentsOrder.length} documentos`);
+
+    // Atualizar ordem em batch
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      
+      for (const doc of documentsOrder) {
+        await client.query(
+          'UPDATE documentos SET ordem = $1 WHERE id = $2',
+          [doc.ordem, doc.id]
+        );
+      }
+      
+      await client.query('COMMIT');
+      console.log('✅ REORDENAÇÃO: Ordem salva com sucesso');
+      res.json({ success: true });
+      
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+    
+  } catch (error) {
+    console.error('❌ Erro ao reordenar:', error);
+    res.status(500).json({ error: 'Erro ao reordenar documentos' });
   }
 });
 

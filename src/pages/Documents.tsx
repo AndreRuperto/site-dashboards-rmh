@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Plus, FileText, Shield, ArrowLeft } from 'lucide-react';
+import { Plus, FileText, Shield, ArrowLeft, GripVertical, RotateCcw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePDFs, PDFDocument } from '@/contexts/PDFContext';
@@ -13,14 +13,92 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { isAdmin } from '@/types';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
 
+// ✅ IMPORTAÇÕES PARA DRAG & DROP
+import { DndContext, DragEndEvent, closestCorners, DragOverlay } from '@dnd-kit/core';
+import { SortableContext, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+// ✅ COMPONENTE PARA CARD ARRASTÁVEL
+const SortablePDFCard = ({ 
+  document, 
+  canEdit, 
+  onEdit, 
+  onDelete, 
+  isDragging = false 
+}: {
+  document: PDFDocument;
+  canEdit: boolean;
+  onEdit?: (doc: PDFDocument) => void;
+  onDelete?: (id: string) => void;
+  isDragging?: boolean;
+}) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging: isSortableDragging
+  } = useSortable({ id: document.id });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition: isSortableDragging ? 'none' : transition,
+    opacity: isSortableDragging ? 0.3 : 1,
+    zIndex: isSortableDragging ? 1000 : 'auto',
+    ...(isSortableDragging && {
+      pointerEvents: 'none' as const
+    })
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="relative group">
+      {/* ✅ HANDLE DE ARRASTAR - Posicionado à direita com melhor espaçamento */}
+      {canEdit && (
+        <div
+          {...attributes}
+          {...listeners}
+          className="absolute right-3 top-3 z-20 cursor-grab active:cursor-grabbing p-2 bg-white rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-300 border border-gray-200 hover:border-rmh-primary hover:bg-rmh-primary hover:text-white hover:shadow-xl transform hover:scale-110"
+          title="Arrastar para reordenar"
+          style={{
+            // ✅ ESPAÇAMENTO MELHORADO - não cola na borda
+            right: '12px',
+            top: '12px',
+            // ✅ MELHOR ÁREA DE TOQUE
+            minWidth: '36px',
+            minHeight: '36px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: isSortableDragging ? 1001 : 20
+          }}
+        >
+          <GripVertical className="h-5 w-5" />
+        </div>
+      )}
+      
+      {/* ✅ CARD DO DOCUMENTO - Sem margem lateral */}
+      <PDFCard
+        document={document}
+        onEdit={canEdit ? onEdit : undefined}
+        onDelete={canEdit ? onDelete : undefined}
+      />
+    </div>
+  );
+};
+
 const DocumentsPage = () => {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingDocument, setEditingDocument] = useState<PDFDocument | null>(null);
+  const [localDocuments, setLocalDocuments] = useState<PDFDocument[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [isReordering, setIsReordering] = useState(false);
   
   const categories = [
     "Institucional",
-    "Colaboradores",
+    "Pessoas", 
     "TI / Acessos",
     "Escalas e Rotinas",
     "Documentos Operacionais",
@@ -44,7 +122,8 @@ const DocumentsPage = () => {
     updateDocument, 
     uploadFile,
     isLoading,
-    error 
+    error,
+    refreshDocuments
   } = usePDFs();
   const { toast } = useToast();
 
@@ -52,6 +131,14 @@ const DocumentsPage = () => {
   const userIsAdmin = user ? isAdmin(user) : false;
   const isAdministrativo = user?.setor?.toLowerCase().includes('administrativo') || false;
   const canEdit = userIsAdmin || isAdministrativo;
+
+  // ✅ SINCRONIZAR DOCUMENTOS LOCAIS COM CONTEXTO
+  useEffect(() => {
+    const documents = getFilteredDocuments(
+      selectedCategory === 'all' ? undefined : selectedCategory
+    );
+    setLocalDocuments(documents);
+  }, [getFilteredDocuments, selectedCategory]);
 
   // ✅ Mostrar loading enquanto carrega usuário
   if (!user) {
@@ -65,67 +152,76 @@ const DocumentsPage = () => {
     );
   }
 
-  const filteredDocuments = getFilteredDocuments(
-    selectedCategory === 'all' ? undefined : selectedCategory
-  );
+  // ✅ FUNÇÃO PARA REORDENAR DOCUMENTOS (DRAG & DROP)
+  const handleDragStart = (event: any) => {
+    setActiveId(event.active.id);
+  };
 
-  // ✅ NOVA FUNÇÃO SEM window.confirm
-  const handleDeleteDocument = async (id: string) => {
-    if (!canEdit) {
-      toast({
-        title: "Acesso Negado",
-        description: "Apenas administradores e setor Administrativo podem excluir documentos.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    // Encontrar o documento para mostrar o título na confirmação
-    const document = filteredDocuments.find(doc => doc.id === id);
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveId(null);
     
-    setConfirmDialog({
-      isOpen: true,
-      documentId: id,
-      documentTitle: document?.title || 'documento'
-    });
-  };
+    if (!over || active.id === over.id || !canEdit) return;
 
-  // ✅ FUNÇÃO PARA CONFIRMAR A EXCLUSÃO
-  const handleConfirmDelete = async () => {
+    const oldIndex = localDocuments.findIndex(doc => doc.id === active.id);
+    const newIndex = localDocuments.findIndex(doc => doc.id === over.id);
+    
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    // ✅ ATUALIZAR ESTADO LOCAL IMEDIATAMENTE
+    const reorderedDocs = arrayMove(localDocuments, oldIndex, newIndex);
+    setLocalDocuments(reorderedDocs);
+    setIsReordering(true);
+    
     try {
-      await deleteDocument(confirmDialog.documentId);
-      toast({
-        title: "Sucesso",
-        description: "Documento excluído com sucesso"
+      // ✅ ENVIAR NOVA ORDEM PARA O BACKEND
+      const documentsOrder = reorderedDocs.map((doc, index) => ({
+        id: doc.id,
+        ordem: index + 1
+      }));
+      
+      const response = await fetch('/api/documents/reorder', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify({ documentsOrder })
       });
-    } catch (error) {
+
+      if (!response.ok) {
+        throw new Error('Erro ao salvar ordem');
+      }
+      
       toast({
-        title: "Erro",
-        description: "Erro ao excluir documento",
+        title: "Ordem atualizada",
+        description: "A ordem dos documentos foi salva com sucesso",
+        duration: 3000
+      });
+      
+      // ✅ ATUALIZAR CONTEXTO
+      await refreshDocuments();
+      
+    } catch (error) {
+      console.error('❌ Erro ao reordenar:', error);
+      
+      // ✅ REVERTER EM CASO DE ERRO
+      const originalDocs = getFilteredDocuments(
+        selectedCategory === 'all' ? undefined : selectedCategory
+      );
+      setLocalDocuments(originalDocs);
+      
+      toast({
+        title: "Erro ao reordenar",
+        description: "Não foi possível salvar a nova ordem dos documentos",
         variant: "destructive"
       });
+    } finally {
+      setIsReordering(false);
     }
-  };
-
-  // ✅ FUNÇÃO PARA FECHAR O MODAL
-  const handleCloseConfirmDialog = () => {
-    setConfirmDialog({
-      isOpen: false,
-      documentId: '',
-      documentTitle: ''
-    });
   };
 
   const handleNewDocument = () => {
-    if (!canEdit) {
-      toast({
-        title: "Acesso Negado",
-        description: "Apenas administradores e setor Administrativo podem criar documentos.",
-        variant: "destructive"
-      });
-      return;
-    }
-
     setEditingDocument(null);
     setIsFormOpen(true);
   };
@@ -139,36 +235,76 @@ const DocumentsPage = () => {
       });
       return;
     }
-
     setEditingDocument(document);
     setIsFormOpen(true);
   };
 
-  const handleFormSubmit = async (documentData: Partial<PDFDocument>) => {
+  // ✅ ABRIR MODAL DE CONFIRMAÇÃO PARA EXCLUSÃO
+  const handleDeleteDocument = (id: string) => {
+    if (!canEdit) {
+      toast({
+        title: "Acesso Negado",
+        description: "Apenas administradores e setor Administrativo podem excluir documentos.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const document = localDocuments.find(doc => doc.id === id);
+    if (!document) return;
+
+    setConfirmDialog({
+      isOpen: true,
+      documentId: id,
+      documentTitle: document.title || document.fileName || 'Documento'
+    });
+  };
+
+  // ✅ CONFIRMAR EXCLUSÃO
+  const handleConfirmDelete = async () => {
+    try {
+      await deleteDocument(confirmDialog.documentId);
+      toast({
+        title: "Documento excluído",
+        description: "O documento foi removido com sucesso.",
+        duration: 3000
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao excluir",
+        description: error instanceof Error ? error.message : "Erro ao excluir documento",
+        variant: "destructive"
+      });
+    } finally {
+      setConfirmDialog({ isOpen: false, documentId: '', documentTitle: '' });
+    }
+  };
+
+  // ✅ FECHAR MODAL DE CONFIRMAÇÃO
+  const handleCloseConfirmDialog = () => {
+    setConfirmDialog({ isOpen: false, documentId: '', documentTitle: '' });
+  };
+
+  const handleFormSubmit = async (documentData: any) => {
     try {
       if (editingDocument) {
-        // ✅ EDITANDO DOCUMENTO EXISTENTE
         await updateDocument(editingDocument.id, documentData);
         toast({
-          title: "Sucesso",
-          description: "Documento atualizado com sucesso"
+          title: "Documento atualizado",
+          description: "As informações do documento foram atualizadas com sucesso.",
+          duration: 3000
         });
       } else {
-        // ✅ CRIANDO NOVO DOCUMENTO VIA URL
-        // O upload de arquivos é tratado diretamente no PDFForm via uploadFile
-        await addDocument(documentData as Omit<PDFDocument, 'id' | 'uploadedAt' | 'createdAt' | 'updatedAt'>);
+        await addDocument(documentData);
         toast({
-          title: "Sucesso",
-          description: "Documento adicionado com sucesso"
+          title: "Documento adicionado",
+          description: "O novo documento foi criado com sucesso.",
+          duration: 3000
         });
       }
-      
-      setIsFormOpen(false);
-      setEditingDocument(null);
     } catch (error) {
-      console.error('Erro ao salvar documento:', error);
       toast({
-        title: "Erro",
+        title: "Erro ao salvar",
         description: error instanceof Error ? error.message : "Erro ao salvar documento",
         variant: "destructive"
       });
@@ -179,6 +315,9 @@ const DocumentsPage = () => {
     setIsFormOpen(false);
     setEditingDocument(null);
   };
+
+  // ✅ ENCONTRAR DOCUMENTO SENDO ARRASTADO
+  const draggedDocument = activeId ? localDocuments.find(doc => doc.id === activeId) : null;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -200,16 +339,19 @@ const DocumentsPage = () => {
               </p>
             </div>
             
-            {/* ✅ Botão de adicionar apenas para quem pode editar */}
-            {canEdit && (
-              <Button 
-                onClick={handleNewDocument}
-                className="bg-rmh-lightGreen hover:bg-rmh-primary"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Novo Documento
-              </Button>
-            )}
+            {/* ✅ Botões de ação */}
+            <div className="flex items-center gap-2">
+              {/* Botão de adicionar documento */}
+              {canEdit && (
+                <Button 
+                  onClick={handleNewDocument}
+                  className="bg-rmh-lightGreen hover:bg-rmh-primary"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Novo Documento
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* Filters */}
@@ -240,9 +382,17 @@ const DocumentsPage = () => {
                 Limpar Filtros
               </Button>
             )}
+
+            {/* ✅ INDICADOR DE REORDENAÇÃO */}
+            {isReordering && (
+              <div className="flex items-center text-sm text-rmh-primary">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-rmh-primary mr-2"></div>
+                Salvando ordem...
+              </div>
+            )}
           </div>
 
-          {/* Documents Grid */}
+          {/* Documents Grid com Drag & Drop */}
           <div className="space-y-4">
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
@@ -251,56 +401,19 @@ const DocumentsPage = () => {
               </div>
             ) : error ? (
               <div className="text-center py-12">
-                <FileText className="h-16 w-16 text-red-400 mx-auto mb-4 opacity-50" />
-                <h3 className="text-lg font-medium text-red-600 mb-2">
-                  Erro ao carregar documentos
-                </h3>
-                <p className="text-gray-600 mb-4">{error}</p>
-                <Button 
-                  variant="outline" 
-                  onClick={() => window.location.reload()}
-                  className="border-rmh-primary text-rmh-primary hover:bg-rmh-primary hover:text-white"
-                >
+                <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Erro ao carregar documentos</h3>
+                <p className="text-gray-500 mb-4">{error}</p>
+                <Button onClick={() => window.location.reload()}>
                   Tentar Novamente
                 </Button>
               </div>
-            ) : filteredDocuments.length > 0 ? (
-              <>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center space-x-2 text-sm text-rmh-gray">
-                    <FileText className="h-4 w-4" />
-                    <span>
-                      {filteredDocuments.length} documento{filteredDocuments.length !== 1 ? 's' : ''} encontrado{filteredDocuments.length !== 1 ? 's' : ''}
-                    </span>
-                  </div>
-                  
-                  {/* Badge com categoria ativa */}
-                  {selectedCategory !== 'all' && (
-                    <Badge variant="secondary" className="bg-rmh-primary/10 text-rmh-primary">
-                      {selectedCategory}
-                    </Badge>
-                  )}
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 md:gap-6">
-                  {filteredDocuments.map((document) => (
-                    <PDFCard
-                      key={document.id}
-                      document={document}
-                      onEdit={canEdit ? handleEditDocument : undefined}
-                      onDelete={canEdit ? handleDeleteDocument : undefined}
-                    />
-                  ))}
-                </div>
-              </>
-            ) : (
+            ) : localDocuments.length === 0 ? (
               <div className="text-center py-12">
-                <FileText className="h-16 w-16 text-rmh-gray mx-auto mb-4 opacity-50" />
-                <h3 className="text-lg font-medium text-rmh-primary mb-2">
-                  Nenhum documento encontrado
-                </h3>
-                <p className="text-rmh-gray mb-6">
-                  {selectedCategory !== 'all'
+                <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum documento encontrado</h3>
+                <p className="text-gray-500 mb-4">
+                  {selectedCategory !== 'all' 
                     ? 'Tente ajustar os filtros para encontrar documentos.'
                     : 'Não há documentos enviados ainda.'}
                 </p>
@@ -322,6 +435,43 @@ const DocumentsPage = () => {
                   </Button>
                 )}
               </div>
+            ) : (
+              /* ✅ GRID COM DRAG & DROP */
+              <DndContext
+                collisionDetection={closestCorners}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={localDocuments.map(doc => doc.id)}
+                  strategy={rectSortingStrategy}
+                >
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    {localDocuments.map((document) => (
+                      <SortablePDFCard
+                        key={document.id}
+                        document={document}
+                        canEdit={canEdit}
+                        onEdit={handleEditDocument}
+                        onDelete={handleDeleteDocument}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+                
+                {/* ✅ OVERLAY DURANTE O DRAG */}
+                <DragOverlay>
+                  {draggedDocument ? (
+                    <div className="transform rotate-3 shadow-2xl">
+                      <PDFCard
+                        document={draggedDocument}
+                        onEdit={undefined}
+                        onDelete={undefined}
+                      />
+                    </div>
+                  ) : null}
+                </DragOverlay>
+              </DndContext>
             )}
           </div>
         </div>
@@ -334,15 +484,7 @@ const DocumentsPage = () => {
           onClose={handleFormClose}
           onSubmit={handleFormSubmit}
           document={editingDocument}
-          categories={[
-            "Institucional",
-            "Colaboradores",
-            "TI / Acessos",
-            "Escalas e Rotinas",
-            "Documentos Operacionais",
-            "RH / Benefícios",
-            "Capacitação"
-          ]}
+          categories={categories}
           uploadFile={uploadFile}
         />
       )}
@@ -353,7 +495,7 @@ const DocumentsPage = () => {
         onClose={handleCloseConfirmDialog}
         onConfirm={handleConfirmDelete}
         title="Confirmar Exclusão"
-        description={`Tem certeza que deseja excluir o documento "${confirmDialog.documentTitle}"?`}
+        description={`Tem certeza que deseja excluir o documento "${confirmDialog.documentTitle}"? Esta ação não pode ser desfeita.`}
         confirmText="Excluir"
         cancelText="Cancelar"
         variant="destructive"

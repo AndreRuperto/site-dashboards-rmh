@@ -91,6 +91,7 @@ const EmailsProcessos = () => {
   const [modalErroAberto, setModalErroAberto] = useState(false);
   const [processoParaErro, setProcessoParaErro] = useState<ProcessoData | null>(null);
   const [justificativaErro, setJustificativaErro] = useState('');
+  const [filtroJustificativaErro, setFiltroJustificativaErro] = useState('');
   
   // Estados para paginação
   const [dataInicioFiltro, setDataInicioFiltro] = useState('');
@@ -568,7 +569,7 @@ const EmailsProcessos = () => {
     if (!podeEnviarEmails) return;
     
     // ✅ Usar processosPaginaAtual em vez de processosFiltrados para selecionar apenas a página atual
-    const processosVisiveisPagina = processosPaginaAtual.map(p => p.id);
+    const processosVisiveisPagina = processosPaginaAtual.filter(p => !p.erro).map(p => p.id);
     
     // Verificar se todos os processos da página atual estão selecionados
     const todosSelecionados = processosVisiveisPagina.every(id => processosSelecionados.includes(id));
@@ -584,6 +585,17 @@ const EmailsProcessos = () => {
 
   const toggleSelecionarProcesso = (id: number) => {
     if (!podeEnviarEmails) return;
+    
+    // ✅ Verificar se o processo tem erro
+    const processo = processos.find(p => p.id === id);
+    if (processo?.erro) {
+      toast({
+        title: "Processo com erro",
+        description: "Processos marcados como erro não podem ser selecionados para envio em massa",
+        variant: "destructive"
+      });
+      return; // ✅ IMPEDIR seleção
+    }
     
     setProcessosSelecionados(prev => 
       prev.includes(id) 
@@ -997,7 +1009,9 @@ const EmailsProcessos = () => {
                 </div>
 
                 {/* Segunda linha */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div className={`grid grid-cols-1 gap-4 mb-4 ${
+                  filtroEmail === 'Erro' ? 'md:grid-cols-4' : 'md:grid-cols-3'
+                }`}>
                   {/* OBJETO DE ATENDIMENTO */}
                   <div className="relative" data-objeto-selector>
                     <label className="block text-sm font-medium mb-2">Objeto de Atendimento</label>
@@ -1058,7 +1072,7 @@ const EmailsProcessos = () => {
                                 className={`w-full px-3 py-2 text-left text-sm hover:bg-blue-50 flex items-center ${
                                   filtroObjetoAtendimento === objeto ? 'bg-blue-100 text-blue-700' : 'text-gray-700'
                                 }`}
-                                title={objeto} // Tooltip com texto completo
+                                title={objeto}
                               >
                                 <span className="truncate">{objeto}</span>
                                 {filtroObjetoAtendimento === objeto && (
@@ -1075,6 +1089,23 @@ const EmailsProcessos = () => {
                       </div>
                     )}
                   </div>
+
+                  {/* FILTRO DE JUSTIFICATIVA - só aparece quando filtro de erro está ativo */}
+                  {filtroEmail === 'Erro' ? (
+                    <div>
+                      <label className="block text-sm font-medium mb-2">Justificativa do Erro</label>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                        <input
+                          type="text"
+                          value={filtroJustificativaErro}
+                          onChange={(e) => setFiltroJustificativaErro(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+
                   <div>
                     <label className="block text-sm font-medium mb-2">Autuação do processo de</label>
                     <input
@@ -1202,27 +1233,51 @@ const EmailsProcessos = () => {
                       <span className="text-sm text-gray-600">por página</span>
                     </div>
                     
-                    {podeEnviarEmails && (
-                      <div className="flex items-center space-x-2">
-                        <Button
-                          onClick={toggleSelecionarTodos}
-                          variant="outline"
-                          size="sm"
-                        >
-                          {processosSelecionados.length === processosFiltrados.length ? (
-                            <>
-                              <CheckSquare className="h-4 w-4 mr-2" />
-                              Desmarcar Todos
-                            </>
-                          ) : (
-                            <>
-                              <Square className="h-4 w-4 mr-2" />
-                              Selecionar Todos
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    )}
+                    {podeEnviarEmails && (() => {
+                      // Verificar se há processos válidos (sem erro E com email válido) na página atual
+                      const processosValidosPaginaAtual = processosPaginaAtual.filter(p => !p.erro && p.emailValido);
+                      
+                      // Só mostrar o botão se houver pelo menos 1 processo válido
+                      if (processosValidosPaginaAtual.length === 0) {
+                        return null;
+                      }
+                      
+                      return (
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            onClick={toggleSelecionarTodos}
+                            variant="outline"
+                            size="sm"
+                          >
+                            {(() => {
+                              const idsValidosPaginaAtual = processosValidosPaginaAtual.map(p => p.id);
+                              
+                              // Verificar se TODOS os processos válidos da página atual estão selecionados
+                              const todosValidosSelecionados = idsValidosPaginaAtual.length > 0 && 
+                                idsValidosPaginaAtual.every(id => processosSelecionados.includes(id));
+                              
+                              return todosValidosSelecionados ? (
+                                <>
+                                  <CheckSquare className="h-4 w-4 mr-2" />
+                                  Desmarcar Todos
+                                </>
+                              ) : (
+                                <>
+                                  <Square className="h-4 w-4 mr-2" />
+                                  Selecionar Todos
+                                  {/* Mostrar quantos podem ser selecionados */}
+                                  {idsValidosPaginaAtual.length < processosPaginaAtual.length && (
+                                    <span className="ml-1 text-xs text-gray-500">
+                                      ({idsValidosPaginaAtual.length})
+                                    </span>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </Button>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </CardHeader>
@@ -1241,7 +1296,7 @@ const EmailsProcessos = () => {
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3">
-                          {podeEnviarEmails && (
+                          {podeEnviarEmails && !processo.erro && processo.emailValido !== false && (
                             <input
                               type="checkbox"
                               checked={processosSelecionados.includes(processo.id)}
@@ -1330,7 +1385,7 @@ const EmailsProcessos = () => {
                               Erro
                             </Button>
                           )}
-                          {podeEnviarEmails && !processo.erro && (
+                          {podeEnviarEmails && !processo.erro && processo.emailValido &&(
                             <Button
                               onClick={() => enviarEmailIndividual(processo)}
                               disabled={carregando}
