@@ -444,8 +444,11 @@ const EmailsProcessos = () => {
       ) ||
       processo.numeroProcesso?.toLowerCase().includes(termoBusca.toLowerCase());
     const naoEhProcessoAdministrativo = processo.tipoProcesso !== 'Processo administrativo';
+    const matchJustificativa = filtroJustificativaErro === '' || 
+      (processo.justificativaErro && 
+      processo.justificativaErro.toLowerCase().includes(filtroJustificativaErro.toLowerCase()));
     
-    return matchSetor && matchObjetoAtendimento && matchData && matchIdAtendimento && matchBusca && naoEhProcessoAdministrativo;
+    return matchSetor && matchObjetoAtendimento && matchData && matchIdAtendimento && matchBusca && naoEhProcessoAdministrativo && matchJustificativa;
   });
 
   // Filtrar processos para exibição na lista
