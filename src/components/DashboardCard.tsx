@@ -639,9 +639,11 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
               <CardTitle className="text-lg font-heading font-semibold text-corporate-blue line-clamp-1 flex items-center gap-2">
                 {dashboard.titulo}
               </CardTitle>
-              <CardDescription className="text-sm text-corporate-gray line-clamp-2">
-                {dashboard.descricao || 'Sem descrição'}
-              </CardDescription>
+              {dashboard.descricao && (
+                <CardDescription className="text-sm text-corporate-gray line-clamp-2">
+                  {dashboard.descricao}
+                </CardDescription>
+              )}
             </div>
           </div>
 
@@ -716,9 +718,11 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, onEdit, onDele
                 <DialogTitle className="text-lg font-heading font-semibold text-corporate-blue truncate flex items-center gap-2">
                   {dashboard.titulo}
                 </DialogTitle>
-                <p className="text-xs text-corporate-gray mt-0.5 truncate">
-                  {dashboard.descricao || 'Sem descrição'} 
-                </p>
+                {dashboard.descricao && (
+                  <p className="text-xs text-corporate-gray mt-0.5 truncate">
+                    {dashboard.descricao} 
+                  </p>
+                )}
               </div>
               <Button
                 variant="outline"
