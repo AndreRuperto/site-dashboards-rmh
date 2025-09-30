@@ -1,7 +1,7 @@
 // src/types/index.ts - ATUALIZADO com interface User unificada
 export type UserRole = 'usuario' | 'coordenador' | 'admin';
 export type TipoColaborador = 'estagiario' | 'clt_associado';
-export type TipoVisibilidade = 'geral' | 'coordenadores' | 'admin';
+export type TipoVisibilidade = 'geral' | 'coordenadores' | 'admin' | 'setor';
 
 export interface User {
   id: string;

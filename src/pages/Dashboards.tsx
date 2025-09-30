@@ -27,6 +27,13 @@ const Dashboards: React.FC = () => {
   const { dashboards, setores, getFilteredDashboards, deleteDashboard } = useDashboard();
   const { toast } = useToast();
 
+  const setoresDisponiveis = React.useMemo(() => {
+    return setores.filter(setor => 
+      setor.toLowerCase() !== 'geral' && 
+      setor.toLowerCase() !== 'carteira'
+    );
+  }, [setores]);
+
   // Extrair criadores únicos dos dashboards
   const criadores = React.useMemo(() => {
     const uniqueCreators = Array.from(
@@ -125,7 +132,7 @@ const Dashboards: React.FC = () => {
             selectedCriador={selectedCriador}
             onCriadorChange={setSelectedCriador}
             onClearFilters={handleClearFilters}
-            setores={setores}
+            setores={setoresDisponiveis}
             criadores={criadores}
           />
 

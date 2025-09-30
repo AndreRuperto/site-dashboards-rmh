@@ -342,7 +342,6 @@ const Register: React.FC<RegisterProps> = ({
             <div className="space-y-2">
               <Label htmlFor="email_pessoal">
                 Email Pessoal
-                {!isEstagiario && <span className="text-sm text-gray-500 ml-1">(para contracheque)</span>}
               </Label>
               <Input
                 id="email_pessoal"

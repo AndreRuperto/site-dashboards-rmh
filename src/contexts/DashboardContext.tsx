@@ -1,6 +1,7 @@
 // src/contexts/DashboardContext.tsx - VERSÃO SINCRONIZADA COM O BANCO
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 
 // ✅ Interface atualizada com o schema real do banco de dados
 export interface Dashboard {
@@ -16,10 +17,10 @@ export interface Dashboard {
   criado_por_nome?: string;
   criado_em: string;
   atualizado_em: string;
-  tipo_visibilidade?: 'geral' | 'coordenadores' | 'admin';
+  tipo_visibilidade?: 'geral' | 'coordenadores' | 'admin' | 'setor';
   powerbi_report_id?: string;
   powerbi_group_id?: string;
-  powerbi_workspace_id?: string; // Se estiver sendo usado
+  powerbi_workspace_id?: string;
   embed_type?: 'public' | 'secure';
 }
 
@@ -90,12 +91,13 @@ const DashboardContext = createContext<DashboardContextType | undefined>(undefin
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
 export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
   const [dashboards, setDashboards] = useState<Dashboard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [powerbiStatus, setPowerbiStatus] = useState<PowerBIStatus | null>(null);
 
-  // ✅ Função para buscar dashboards da API
+  // Função para buscar dashboards da API
   const fetchDashboards = async () => {
     try {
       setIsLoading(true);
@@ -131,7 +133,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  // ✅ Função para verificar status do Power BI
+  // Função para verificar status do Power BI
   const checkPowerBIStatus = async () => {
     try {
       const token = localStorage.getItem('authToken');
@@ -160,7 +162,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  // ✅ Função para obter token de embed
+  // Função para obter token de embed
   const getEmbedToken = async (dashboardId: string): Promise<PowerBIEmbedToken> => {
     try {
       const token = localStorage.getItem('authToken');
@@ -204,14 +206,63 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     checkPowerBIStatus();
   }, []);
 
-  // ✅ Extrair setores únicos dos dashboards
+  // Extrair setores únicos dos dashboards
   const setores = Array.from(new Set(dashboards.map(d => d.setor))).sort();
 
-  // ✅ Função de filtro avançada (atualizada com tipo_visibilidade)
+  // Função de filtro avançada
   const getFilteredDashboards = (filters: DashboardFilters): Dashboard[] => {
     let filtered = [...dashboards];
 
-    // Filtro por setor
+    console.log('👤 Setor do usuário:', user?.setor);
+    console.log('👤 É coordenador?', user?.is_coordenador);
+    console.log('👤 Tipo de usuário:', user?.tipo_usuario);
+    console.log('📊 Total de dashboards:', dashboards.length);
+
+    // FILTRO DE VISIBILIDADE - Aplica regras de acesso
+    filtered = filtered.filter(dashboard => {
+      const visibility = dashboard.tipo_visibilidade;
+
+      console.log(`\n🔍 Dashboard: ${dashboard.titulo}`);
+      console.log(`   Setor: ${dashboard.setor}`);
+      console.log(`   Visibilidade: ${visibility}`);
+      console.log(`   Setores iguais? ${dashboard.setor === user?.setor}`);
+
+      // Admin vê tudo
+      if (user?.tipo_usuario === 'admin') {
+        console.log('   ✅ Admin - pode ver');
+        return true;
+      }
+
+      // Geral: todos veem
+      if (visibility === 'geral') {
+        console.log('   ✅ Geral - pode ver');
+        return true;
+      }
+
+      // Coordenadores veem tudo do seu setor (visibilidade "coordenadores" e "setor")
+      if (user?.is_coordenador) {
+        if (dashboard.setor === user?.setor) {
+          const podeVer = visibility === 'coordenadores' || visibility === 'setor';
+          console.log(`   ${podeVer ? '✅' : '❌'} Coordenador do setor - ${podeVer ? 'pode' : 'não pode'} ver`);
+          return podeVer;
+        }
+        console.log('   ❌ Coordenador, mas setor diferente');
+        return false;
+      }
+
+      // Usuários normais só veem "setor" do próprio setor
+      if (visibility === 'setor' && dashboard.setor === user?.setor) {
+        console.log('   ✅ Usuário normal - pode ver setor');
+        return true;
+      }
+
+      console.log('   ❌ Não passou em nenhum filtro');
+      return false;
+    });
+
+    console.log(`\n📊 Dashboards após filtro de visibilidade: ${filtered.length}`);
+
+    // Filtro por setor (manual)
     if (filters.setor && filters.setor !== 'all') {
       filtered = filtered.filter(d => d.setor === filters.setor);
     }
@@ -225,7 +276,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
     }
 
-    // ✅ Novo filtro por tipo de visibilidade
+    // Filtro por tipo de visibilidade (manual)
     if (filters.tipoVisibilidade && filters.tipoVisibilidade !== 'all') {
       filtered = filtered.filter(d => d.tipo_visibilidade === filters.tipoVisibilidade);
     }
@@ -242,7 +293,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       );
     }
 
-    // Filtro por período de criação
+    // Filtro por período
     if (filters.periodo && filters.periodo !== 'all') {
       const now = new Date();
       const filterDate = new Date();
@@ -260,13 +311,9 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         case 'ultimo_ano':
           filterDate.setFullYear(now.getFullYear() - 1);
           break;
-        default:
-          break;
       }
 
-      if (filters.periodo !== 'all') {
-        filtered = filtered.filter(d => new Date(d.criado_em) >= filterDate);
-      }
+      filtered = filtered.filter(d => new Date(d.criado_em) >= filterDate);
     }
 
     // Filtro por criador
@@ -276,8 +323,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     return filtered;
   };
-
-  // ✅ Função para adicionar dashboard
+  // Função para adicionar dashboard
   const addDashboard = async (newDashboard: Omit<Dashboard, 'id' | 'criado_em' | 'atualizado_em'>) => {
     try {
       const token = localStorage.getItem('authToken');
@@ -307,7 +353,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  // ✅ Função para atualizar dashboard
+  // Função para atualizar dashboard
   const updateDashboard = async (id: string, updates: Partial<Dashboard>) => {
     try {
       const token = localStorage.getItem('authToken');
@@ -337,7 +383,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  // ✅ Função para deletar dashboard
+  // Função para deletar dashboard
   const deleteDashboard = async (id: string) => {
     try {
       const token = localStorage.getItem('authToken');
@@ -367,34 +413,6 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  // ✅ Estatísticas dos dashboards (função auxiliar)
-  const getDashboardStats = () => {
-    const total = dashboards.length;
-    const ativos = dashboards.filter(d => d.ativo).length;
-    const comEmbedSeguro = dashboards.filter(d => d.powerbi_report_id).length;
-    const porSetor = setores.reduce((acc, setor) => {
-      acc[setor] = dashboards.filter(d => d.setor === setor).length;
-      return acc;
-    }, {} as Record<string, number>);
-
-    // ✅ Estatísticas por tipo de visibilidade
-    const tiposVisibilidade = Array.from(new Set(dashboards.map(d => d.tipo_visibilidade).filter(Boolean)));
-    const porTipoVisibilidade = tiposVisibilidade.reduce((acc, tipo) => {
-      acc[tipo] = dashboards.filter(d => d.tipo_visibilidade === tipo).length;
-      return acc;
-    }, {} as Record<string, number>);
-
-    return {
-      total,
-      ativos,
-      inativos: total - ativos,
-      comEmbedSeguro,
-      publicos: total - comEmbedSeguro,
-      porSetor,
-      porTipoVisibilidade
-    };
-  };
-
   const value: DashboardContextType = {
     dashboards,
     setores,
@@ -409,14 +427,6 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     checkPowerBIStatus,
     getEmbedToken
   };
-
-  // ✅ Log de estatísticas para debug
-  useEffect(() => {
-    if (dashboards.length > 0) {
-      const stats = getDashboardStats();
-      console.log('📈 Estatísticas dos dashboards:', stats);
-    }
-  }, [dashboards]);
 
   return (
     <DashboardContext.Provider value={value}>
@@ -433,7 +443,6 @@ export const useDashboard = (): DashboardContextType => {
   return context;
 };
 
-// ✅ Hook personalizado para estatísticas (atualizado)
 export const useDashboardStats = () => {
   const { dashboards, setores } = useDashboard();
   
@@ -446,10 +455,9 @@ export const useDashboardStats = () => {
       return acc;
     }, {} as Record<string, number>);
 
-    // ✅ Estatísticas por tipo de visibilidade
     const tiposVisibilidade = Array.from(new Set(dashboards.map(d => d.tipo_visibilidade).filter(Boolean)));
     const porTipoVisibilidade = tiposVisibilidade.reduce((acc, tipo) => {
-      acc[tipo] = dashboards.filter(d => d.tipo_visibilidade === tipo).length;
+      if (tipo) acc[tipo] = dashboards.filter(d => d.tipo_visibilidade === tipo).length;
       return acc;
     }, {} as Record<string, number>);
 

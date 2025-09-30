@@ -7130,6 +7130,7 @@ app.get('/api/dashboards', authMiddleware, async (req, res) => {
           AND d.setor = $1
           AND (
             d.tipo_visibilidade = 'geral'
+            OR d.tipo_visibilidade = 'setor'
             OR (d.tipo_visibilidade = 'coordenadores' AND $2 = true)
           )
         ORDER BY d.criado_em DESC

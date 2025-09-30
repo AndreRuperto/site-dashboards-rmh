@@ -18,7 +18,7 @@ interface DashboardFormProps {
   dashboard?: Dashboard | null;
 }
 
-type Visibilidade = 'geral' | 'coordenadores' | 'admin';
+type Visibilidade = 'setor' | 'coordenadores' | 'admin';
 
 interface DashboardFormData {
   titulo: string;
@@ -40,7 +40,7 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
     ativo: true,
     largura: 1200,
     altura: 600,
-    tipo_visibilidade: 'geral'
+    tipo_visibilidade: 'coordenadores'
   });
   const { addDashboard, updateDashboard, setores } = useDashboard();
   const { user } = useAuth();
@@ -56,7 +56,9 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
         ativo: dashboard.ativo,
         largura: dashboard.largura || 1200,
         altura: dashboard.altura || 600,
-        tipo_visibilidade: dashboard.tipo_visibilidade || 'geral'
+        tipo_visibilidade: (dashboard.tipo_visibilidade === 'geral' 
+        ? 'coordenadores' 
+        : dashboard.tipo_visibilidade || 'coordenadores') as Visibilidade
       });
     } else {
       setFormData({
@@ -67,7 +69,7 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
         ativo: true,
         largura: 1200,
         altura: 600,
-        tipo_visibilidade: 'geral'
+        tipo_visibilidade: 'coordenadores'
       });
     }
   }, [dashboard, isOpen]);
@@ -135,11 +137,11 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
 
   const visibilityOptions = [
     {
-      value: 'geral',
-      label: 'Geral',
-      description: 'Visível para todos os usuários',
-      icon: Globe,
-      color: 'bg-green-100 text-green-800 border-green-200'
+    value: 'setor',
+    label: 'Setor',
+    description: 'Visível apenas para usuários do mesmo setor',
+    icon: Users,
+    color: 'bg-purple-100 text-purple-800 border-purple-200'
     },
     {
       value: 'coordenadores',
@@ -251,33 +253,6 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
               placeholder="https://app.fabric.microsoft.com/view?r=..."
               required
             />
-          </div>
-
-          {/* Dimensões */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="largura">Largura (px)</Label>
-              <Input
-                id="largura"
-                type="number"
-                value={formData.largura}
-                onChange={(e) => setFormData(prev => ({ ...prev, largura: parseInt(e.target.value) || 1200 }))}
-                min="600"
-                max="2000"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="altura">Altura (px)</Label>
-              <Input
-                id="altura"
-                type="number"
-                value={formData.altura}
-                onChange={(e) => setFormData(prev => ({ ...prev, altura: parseInt(e.target.value) || 600 }))}
-                min="400"
-                max="1200"
-              />
-            </div>
           </div>
 
           {/* Botões */}

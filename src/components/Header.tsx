@@ -1,7 +1,8 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
-import { LogOut, Shield, Users, Settings, Mail, FileText } from 'lucide-react';
+import { useDashboard } from '@/contexts/DashboardContext';
+import { LogOut, Shield, Users, Settings, Mail, FileText, LayoutDashboard } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   DropdownMenu,
@@ -16,6 +17,7 @@ import RMHLogo from './RMHLogo';
 
 const Header = () => {
   const { user, logout } = useAuth();
+  const { getFilteredDashboards } = useDashboard();
   const navigate = useNavigate();
 
   const getInitials = (name: string) => {
@@ -57,8 +59,9 @@ const Header = () => {
     return user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email;
   };
 
-  // Verificar se o usuário pode ver dashboards (coordenador ou admin)
-  const canViewDashboards = user?.tipo_usuario === 'admin' || user?.is_coordenador;
+  // Verificar se o usuário tem dashboards disponíveis
+  const dashboardsVisiveis = getFilteredDashboards({});
+  const canViewDashboards = dashboardsVisiveis.length > 0;
 
   return (
     <header className="bg-primary border-b border-rmh-lightGray shadow-sm">
@@ -67,7 +70,7 @@ const Header = () => {
           <div className="flex items-center space-x-4">
             <RMHLogo />
 
-            {/* ✅ NAVEGAÇÃO ATUALIZADA - Incluindo Documentos */}
+            {/* NAVEGAÇÃO ATUALIZADA */}
             <nav className="hidden lg:flex items-center space-x-2">
               <Button
                 variant="ghost"
@@ -87,7 +90,6 @@ const Header = () => {
                 </Button>
               )}
               
-              {/* ✅ NOVO: Documentos no menu principal */}
               <Button
                 variant="ghost"
                 onClick={goToDocuments}
@@ -123,7 +125,7 @@ const Header = () => {
               )}
             </div>
 
-            {/* ✅ MENU DO USUÁRIO */}
+            {/* MENU DO USUÁRIO */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-10 w-10 rounded-full">
@@ -161,12 +163,12 @@ const Header = () => {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
 
-                {/* ✅ NAVEGAÇÃO RÁPIDA NO MENU MOBILE */}
+                {/* NAVEGAÇÃO RÁPIDA NO MENU MOBILE */}
                 <div className="lg:hidden">
                   <DropdownMenuLabel>Navegação</DropdownMenuLabel>
                   {canViewDashboards && (
                     <DropdownMenuItem onClick={goToDashboards} className="cursor-pointer">
-                      <span className="mr-2">📊</span>
+                      <LayoutDashboard className="h-4 w-4 mr-2" />
                       Dashboards
                     </DropdownMenuItem>
                   )}
@@ -178,20 +180,21 @@ const Header = () => {
                     <Mail className="h-4 w-4 mr-2" />
                     Emails
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={goToOrganograma} className="cursor-pointer">
+                  {/* ADICIONAR QUANDO FOR MEXER COM ORGANOGRAMA */}
+                  {/* <DropdownMenuItem onClick={goToOrganograma} className="cursor-pointer">
                     <span className="mr-2">👥</span>
                     Organograma
-                  </DropdownMenuItem>
+                  </DropdownMenuItem> */}
                   <DropdownMenuSeparator />
                 </div>
 
-                {/* ✅ CONFIGURAÇÕES PESSOAIS - TODOS OS USUÁRIOS */}
+                {/* CONFIGURAÇÕES PESSOAIS - TODOS OS USUÁRIOS */}
                 <DropdownMenuItem onClick={() => navigate('/configuracoes')} className="cursor-pointer">
                   <Settings className="h-4 w-4 mr-2" />
                   Configurações
                 </DropdownMenuItem>
 
-                {/* ✅ ADMINISTRAÇÃO - SÓ ADMINS */}
+                {/* ADMINISTRAÇÃO - SÓ ADMINS */}
                 {user?.tipo_usuario === 'admin' && (
                   <>
                     <DropdownMenuSeparator />

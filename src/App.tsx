@@ -17,21 +17,30 @@ import AdminUserControl from '@/pages/AdminUserControl';
 import EmailsProcessos from '@/pages/EmailsProcessos';
 import ConfiguracoesPessoais from '@/pages/ConfiguracoesPessoais';
 import Organograma from '@/pages/Organograma';
+import { useDashboard } from "@/contexts/DashboardContext";
 
 const queryClient = new QueryClient();
 
 // Componente wrapper para proteger página de dashboards
 const DashboardsPageProtected = () => {
   const { user } = useAuth();
+  const { dashboards, getFilteredDashboards } = useDashboard();
   
-  // Verificar se é coordenador ou admin
-  if (user?.tipo_usuario === 'usuario' && !user?.is_coordenador) {
+  // Verificar quantos dashboards o usuário pode ver
+  const dashboardsVisiveis = getFilteredDashboards({});
+  
+  if (dashboardsVisiveis.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center p-8">
           <h1 className="text-2xl font-bold text-red-600 mb-4">🚫 Acesso Restrito</h1>
           <p className="text-gray-600 mb-4">
-            A página de dashboards é exclusiva para coordenadores e administradores.
+            Você não tem permissão para visualizar nenhum dashboard.
+          </p>
+          <p className="text-gray-500 text-sm mb-6">
+            {user?.is_coordenador 
+              ? 'Não há dashboards disponíveis para o seu setor.'
+              : 'A página de dashboards é exclusiva para coordenadores e administradores.'}
           </p>
           <button 
             onClick={() => window.location.href = '/'}
