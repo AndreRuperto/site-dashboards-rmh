@@ -58,7 +58,7 @@ const AuthSystem = () => {
     console.log('📝 AuthSystem: Resultado do registro:', data);
     
     if (data.awaiting_admin_approval) {
-      // Estagiário - aguardando aprovação
+      // Estagiário/Menor Aprendiz - aguardando aprovação
       switchView('awaiting-approval', data.email_login || data.email || userEmail, data.nome || userName, data.tipo_colaborador);
     } else if (data.verification_required) {
       // CLT - email enviado, precisa verificar
@@ -224,7 +224,7 @@ const EmailSentView: React.FC<EmailSentViewProps> = ({
               <div className="flex items-center mb-2">
                 <CheckCircle className="h-4 w-4 text-blue-600 mr-2" />
                 <span className="text-sm font-medium text-blue-800">
-                  {tipoColaborador === 'clt_associado' ? 'CLT/Associado' : 'Estagiário'}
+                  {tipoColaborador === 'clt_associado' ? 'CLT/Associado' : 'Estagiário/Menor Aprendiz'}
                 </span>
               </div>
               <h4 className="font-semibold text-blue-800 mb-2">📋 Próximos passos:</h4>
@@ -321,7 +321,7 @@ const AwaitingApprovalView: React.FC<AwaitingApprovalViewProps> = ({
             <div className="flex items-center mb-3">
               <Clock className="h-4 w-4 text-yellow-600 mr-2" />
               <span className="text-sm font-medium text-yellow-800">
-                Estagiário
+                Estagiário/Menor Aprendiz
               </span>
             </div>
             <h4 className="font-semibold text-yellow-800 mb-2">📋 O que acontece agora:</h4>

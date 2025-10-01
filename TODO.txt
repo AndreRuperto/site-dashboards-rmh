@@ -3,7 +3,7 @@
  - Mudar setor da pessoa ✅
  - Revogar acesso ✅
  - Melhorar a questão de Tornar Coordenador (ex: pessoa pode virar coordenador ja sendo coordenador) ✅
- - Adicionar dois cartões de número de pessoas CLT/Associado e Estagiário ✅
+ - Adicionar dois cartões de número de pessoas CLT/Associado e Estagiário/Menor Aprendiz ✅
 - Dashboards
  - Melhorar a seção no Header
  - Não é página principal (a pagina principal vai ser o dashboard geral do escritório e uma leve introdução)
@@ -18,7 +18,7 @@
  - Arrumar o template de email pros estagiários + arrumar página de validação do email
  - Botão reativar não funciona
  - Revogado não mostra aviso
- - Estagiário cadastrado pelo admin e verificado aparece como status indefinido por NULL em aprovado pelo admin
+ - Estagiário/Menor Aprendiz cadastrado pelo admin e verificado aparece como status indefinido por NULL em aprovado pelo admin
 
  OBS:
  verificar a questão dos tokens - token expirado são linhas excluidas??

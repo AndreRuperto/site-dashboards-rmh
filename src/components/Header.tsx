@@ -56,12 +56,13 @@ const Header = () => {
   // Função para obter email de exibição baseado no tipo de colaborador
   const getDisplayEmail = () => {
     if (!user) return '';
-    return user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email;
+    return user.tipo_colaborador === 'estagiario_ma' ? user.email_pessoal : user.email;
   };
 
   // Verificar se o usuário tem dashboards disponíveis
   const dashboardsVisiveis = getFilteredDashboards({});
   const canViewDashboards = dashboardsVisiveis.length > 0;
+  const canViewEmails = user?.tipo_usuario === 'admin' || user?.setor?.toLowerCase().includes('protocolo');
 
   return (
     <header className="bg-primary border-b border-rmh-lightGray shadow-sm">
@@ -98,13 +99,15 @@ const Header = () => {
                 <span>Documentos</span>
               </Button>
               
-              <Button
-                variant="ghost"
-                onClick={goToEmails}
-                className="text-rmh-white hover:text-white hover:bg-rmh-lightGreen/20 flex items-center space-x-2"
-              >
-                <span>Emails</span>
-              </Button>
+              {canViewEmails && (
+                <Button
+                  variant="ghost"
+                  onClick={goToEmails}
+                  className="text-rmh-white hover:text-white hover:bg-rmh-lightGreen/20 flex items-center space-x-2"
+                >
+                  <span>Emails</span>
+                </Button>
+               )}
               {/* ADICIONAR QUANDO FOR MEXER COM ORGANOGRAMA */}
               {/* <Button
                 variant="ghost"
@@ -146,7 +149,7 @@ const Header = () => {
                     </p>
                     <div className="flex items-center mt-1 space-x-2">
                       <span className="text-xs leading-none text-muted-foreground">
-                        {user?.setor} • {user?.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}
+                        {user?.setor} • {user?.tipo_colaborador === 'estagiario_ma' ? 'Estagiário/Menor Aprendiz' : 'CLT/Associado'}
                       </span>
                       {user?.tipo_usuario === 'admin' && (
                         <span className="text-xs bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">

@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type CargoTipo = 'diretor' | 'gerente' | 'coordenador' | 'assistente' | 'estagiario';
+export type CargoTipo = 'diretor' | 'gerente' | 'coordenador' | 'assistente' | 'estagiario_ma';
 
 export interface CargoProps {
   titulo: string;
@@ -21,7 +21,7 @@ const cargoBg = (tipo: CargoTipo): string => {
       return 'linear-gradient(135deg, #4a9fa3 0%, #6bb6ba 100%)';
     case 'assistente':
       return 'linear-gradient(135deg, #8cc8cc 0%, #aad3d6 100%)';
-    case 'estagiario':
+    case 'estagiario_ma':
       return 'linear-gradient(135deg, #b8dde0 0%, #d4e8ea 100%)';
     default:
       return '#165A5D';
@@ -31,7 +31,7 @@ const cargoBg = (tipo: CargoTipo): string => {
 const cargoColor = (tipo: CargoTipo): string => {
   switch (tipo) {
     case 'assistente':
-    case 'estagiario':
+    case 'estagiario_ma':
       return '#0d3638';
     default:
       return '#ffffff';

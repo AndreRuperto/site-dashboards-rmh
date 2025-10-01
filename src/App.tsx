@@ -6,12 +6,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth, ProtectedRoute } from "@/contexts/AuthContext";
 import { DashboardProvider } from "@/contexts/DashboardContext";
-import { PDFProvider } from "@/contexts/PDFContext"; // ✅ NOVO: Provider para documentos
+import { PDFProvider } from "@/contexts/PDFContext";
 import { setupAPIInterceptor } from "@/utils/apiInterceptor";
 import AuthSystem from "@/components/AuthSystem";
 import Home from "@/pages/Home";
 import DashboardsPage from "@/pages/Dashboards";
-import DocumentsPage from "@/pages/Documents"; // ✅ NOVO: Página de documentos
+import DocumentsPage from "@/pages/Documents";
 import NotFound from "./pages/NotFound";
 import AdminUserControl from '@/pages/AdminUserControl';
 import EmailsProcessos from '@/pages/EmailsProcessos';
@@ -56,6 +56,38 @@ const DashboardsPageProtected = () => {
   return <DashboardsPage />;
 };
 
+// ✅ NOVO: Componente wrapper para proteger página de emails
+const EmailsProcessosProtected = () => {
+  const { user } = useAuth();
+  
+  // Verificar se é admin ou do setor de protocolo
+  const temAcesso = user?.tipo_usuario === 'admin' || user?.setor?.toLowerCase().includes('protocolo');
+  
+  if (!temAcesso) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center p-8">
+          <h1 className="text-2xl font-bold text-red-600 mb-4">🚫 Acesso Restrito</h1>
+          <p className="text-gray-600 mb-4">
+            Você não tem permissão para acessar a página de emails e processos.
+          </p>
+          <p className="text-gray-500 text-sm mb-6">
+            Esta página é exclusiva para administradores e usuários do setor de Protocolo.
+          </p>
+          <button 
+            onClick={() => window.location.href = '/'}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+          >
+            Voltar para Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+  
+  return <EmailsProcessos />;
+};
+
 const AppContent = () => {
   const { user, isLoading } = useAuth();
 
@@ -76,7 +108,7 @@ const AppContent = () => {
 
   return (
     <DashboardProvider>
-      <PDFProvider> {/* ✅ NOVO: Provider para documentos */}
+      <PDFProvider>
         <Routes>
           {/* PÁGINA INICIAL - Dashboard Principal */}
           <Route 
@@ -98,7 +130,7 @@ const AppContent = () => {
             } 
           />
           
-          {/* ✅ NOVO: DOCUMENTOS - Todos podem ver */}
+          {/* DOCUMENTOS - Todos podem ver */}
           <Route 
             path="/documentos" 
             element={
@@ -108,12 +140,12 @@ const AppContent = () => {
             } 
           />
           
-          {/* EMAILS - PÁGINA ÚNICA (todos veem, protocolo envia) */}
+          {/* ✅ EMAILS - SÓ PROTOCOLO E ADMINS */}
           <Route 
             path="/emails-processos" 
             element={
               <ProtectedRoute>
-                <EmailsProcessos />
+                <EmailsProcessosProtected />
               </ProtectedRoute>
             } 
           />
@@ -147,6 +179,7 @@ const AppContent = () => {
               </ProtectedRoute>
             } 
           />
+          
           {/* REDIRECIONAMENTOS */}
           <Route path="/admin" element={<Navigate to="/admin/usuarios" replace />} />
           <Route path="/admin/emails" element={<Navigate to="/emails-processos" replace />} />
@@ -155,8 +188,6 @@ const AppContent = () => {
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="/dashboard" element={<Navigate to="/" replace />} />
           <Route path="/home" element={<Navigate to="/" replace />} />
-          
-          {/* ✅ REDIRECIONAMENTOS PARA DOCUMENTOS */}
           <Route path="/pdfs" element={<Navigate to="/documentos" replace />} />
           <Route path="/arquivos" element={<Navigate to="/documentos" replace />} />
           <Route path="/documents" element={<Navigate to="/documentos" replace />} />
@@ -164,7 +195,7 @@ const AppContent = () => {
           {/* 404 - NOT FOUND */}
           <Route path="*" element={<NotFound />} />
         </Routes>
-      </PDFProvider> {/* ✅ NOVO: Fechar provider */}
+      </PDFProvider>
     </DashboardProvider>
   );
 };

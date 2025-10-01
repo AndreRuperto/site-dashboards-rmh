@@ -9,7 +9,7 @@ export interface Usuario {
   setor: string;
   cargo: string;
   tipo_usuario: 'usuario' | 'admin';
-  tipo_colaborador: 'estagiario' | 'clt_associado';
+  tipo_colaborador: 'estagiario_ma' | 'clt_associado';
   is_coordenador: boolean;
 }
 
@@ -24,8 +24,8 @@ const OrganogramaTree: React.FC<OrganogramaTreeProps> = ({ usuarios }) => {
     const diretores = usuarios.filter(u => u.tipo_usuario === 'admin' || u.cargo?.toLowerCase().includes('diretor'));
     const gerentes = usuarios.filter(u => u.cargo?.toLowerCase().includes('gerente') && !diretores.some(d => d.id === u.id));
     const coordenadores = usuarios.filter(u => (u.is_coordenador || u.cargo?.toLowerCase().includes('coordenador')) && !diretores.some(d => d.id === u.id) && !gerentes.some(g => g.id === u.id));
-    const assistentes = usuarios.filter(u => !diretores.some(d => d.id === u.id) && !gerentes.some(g => g.id === u.id) && !coordenadores.some(c => c.id === u.id) && u.tipo_colaborador !== 'estagiario');
-    const estagiarios = usuarios.filter(u => u.tipo_colaborador === 'estagiario');
+    const assistentes = usuarios.filter(u => !diretores.some(d => d.id === u.id) && !gerentes.some(g => g.id === u.id) && !coordenadores.some(c => c.id === u.id) && u.tipo_colaborador !== 'estagiario_ma');
+    const estagiario_mas = usuarios.filter(u => u.tipo_colaborador === 'estagiario_ma');
     
     // Agrupa por setor para melhor organização
     const agruparPorSetor = (pessoas: Usuario[]) => {
@@ -44,7 +44,7 @@ const OrganogramaTree: React.FC<OrganogramaTreeProps> = ({ usuarios }) => {
       gerentes: agruparPorSetor(gerentes), 
       coordenadores: agruparPorSetor(coordenadores), 
       assistentes: agruparPorSetor(assistentes), 
-      estagiarios: agruparPorSetor(estagiarios) 
+      estagiario_mas: agruparPorSetor(estagiario_mas) 
     };
   }, [usuarios]);
 
@@ -52,7 +52,7 @@ const OrganogramaTree: React.FC<OrganogramaTreeProps> = ({ usuarios }) => {
   const diretorRefs = useRef(hierarquia.diretores.flatMap(([_, pessoas]) => pessoas).map(() => React.createRef<HTMLDivElement>()));
   const gerenteRefs = useRef(hierarquia.gerentes.flatMap(([_, pessoas]) => pessoas).map(() => React.createRef<HTMLDivElement>()));
   const coordRefs = useRef(hierarquia.coordenadores.flatMap(([_, pessoas]) => pessoas).map(() => React.createRef<HTMLDivElement>()));
-  const equipeRefs = useRef([...hierarquia.assistentes.flatMap(([_, pessoas]) => pessoas), ...hierarquia.estagiarios.flatMap(([_, pessoas]) => pessoas)].map(() => React.createRef<HTMLDivElement>()));
+  const equipeRefs = useRef([...hierarquia.assistentes.flatMap(([_, pessoas]) => pessoas), ...hierarquia.estagiario_mas.flatMap(([_, pessoas]) => pessoas)].map(() => React.createRef<HTMLDivElement>()));
 
   return (
     <div ref={containerRef} style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -106,19 +106,19 @@ const OrganogramaTree: React.FC<OrganogramaTreeProps> = ({ usuarios }) => {
       )}
 
       {/* Equipe */}
-      {(hierarquia.assistentes.length + hierarquia.estagiarios.length) > 0 && (
+      {(hierarquia.assistentes.length + hierarquia.estagiario_mas.length) > 0 && (
         <Nivel titulo="EQUIPE">
-          {[...hierarquia.assistentes, ...hierarquia.estagiarios].map(([setor, pessoas], setorIndex) => (
+          {[...hierarquia.assistentes, ...hierarquia.estagiario_mas].map(([setor, pessoas], setorIndex) => (
             <div key={setor} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '0 10px' }}>
               {setor !== 'Geral' && <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#165A5D', marginBottom: '5px' }}>{setor}</div>}
               {pessoas.map((e, i) => {
                 const assistentesLength = hierarquia.assistentes.flatMap(([_, p]) => p).length;
-                const isEstagiario = e.tipo_colaborador === 'estagiario';
+                const isEstagiario = e.tipo_colaborador === 'estagiario_ma';
                 const refIndex = isEstagiario ? 
-                  assistentesLength + hierarquia.estagiarios.slice(0, setorIndex - hierarquia.assistentes.length).flatMap(([_, p]) => p).length + i :
+                  assistentesLength + hierarquia.estagiario_mas.slice(0, setorIndex - hierarquia.assistentes.length).flatMap(([_, p]) => p).length + i :
                   hierarquia.assistentes.slice(0, setorIndex).flatMap(([_, p]) => p).length + i;
                 return (
-                  <Cargo key={e.id} ref={equipeRefs.current[refIndex]} titulo={e.cargo || (isEstagiario ? 'ESTAGIÁRIO' : 'ASSISTENTE')} nome={e.nome} setor={e.setor} tipo={isEstagiario ? 'estagiario' : 'assistente'} />
+                  <Cargo key={e.id} ref={equipeRefs.current[refIndex]} titulo={e.cargo || (isEstagiario ? 'ESTAGIÁRIO' : 'ASSISTENTE')} nome={e.nome} setor={e.setor} tipo={isEstagiario ? 'estagiario_ma' : 'assistente'} />
                 );
               })}
             </div>

@@ -905,7 +905,7 @@ const schemaRegistro = Joi.object({
   email_pessoal: Joi.string().email().required(),
   senha: Joi.string().min(6).required(),
   setor: Joi.string().required(),
-  tipo_colaborador: Joi.string().valid('estagiario', 'clt_associado').required()
+  tipo_colaborador: Joi.string().valid('estagiario_ma', 'clt_associado').required()
 });
 
 const schemaLogin = Joi.object({
@@ -934,8 +934,8 @@ const validateRegistro = (data) => {
     return { error: 'Setor é obrigatório' };
   }
 
-  if (!tipo_colaborador || !['estagiario', 'clt_associado'].includes(tipo_colaborador)) {
-    return { error: 'Tipo de colaborador deve ser "estagiario" ou "clt_associado"' };
+  if (!tipo_colaborador || !['estagiario_ma', 'clt_associado'].includes(tipo_colaborador)) {
+    return { error: 'Tipo de colaborador deve ser "estagiario_ma" ou "clt_associado"' };
   }
 
   // Validação específica para CLT/Associado
@@ -977,7 +977,7 @@ const authMiddleware = async (req, res, next) => {
          u.email_verificado, u.is_coordenador,
          COALESCE(ual.ativo, true) as ativo,
          CASE 
-           WHEN u.tipo_colaborador = 'estagiario' THEN u.email_pessoal 
+           WHEN u.tipo_colaborador = 'estagiario_ma' THEN u.email_pessoal 
            ELSE u.email 
          END as email_login
        FROM usuarios u
@@ -1005,7 +1005,7 @@ const authMiddleware = async (req, res, next) => {
 
     req.user = user;
     console.log('✅ AUTH: Usuário autenticado:', 
-      user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email
+      user.tipo_colaborador === 'estagiario_ma' ? user.email_pessoal : user.email
     );
     next();
   } catch (error) {
@@ -2652,7 +2652,7 @@ app.post('/api/documents', authMiddleware, upload.single('thumbnail'), async (re
     const thumbnailFile = req.file;
 
     // Validar visibilidade
-    const visibilidadesValidas = ['todos', 'estagiarios', 'clt_associados'];
+    const visibilidadesValidas = ['todos', 'estagiario_mas', 'clt_associados'];
     if (!visibilidadesValidas.includes(visibilidade)) {
       return res.status(400).json({ error: 'Visibilidade inválida' });
     }
@@ -2998,7 +2998,7 @@ app.put('/api/documents/:id', authMiddleware, upload.single('thumbnail'), async 
     const thumbnailFile = req.file;
 
     // Validar visibilidade se fornecida
-    if (visibilidade && !['todos', 'estagiarios', 'clt_associados'].includes(visibilidade)) {
+    if (visibilidade && !['todos', 'estagiario_mas', 'clt_associados'].includes(visibilidade)) {
       return res.status(400).json({ error: 'Visibilidade inválida' });
     }
 
@@ -3079,7 +3079,7 @@ app.put('/api/documents/:id/upload', authMiddleware, upload.fields([
     }
 
     // ✅ Validar visibilidade se fornecida
-    if (visibilidade && !['todos', 'estagiarios', 'clt_associados'].includes(visibilidade)) {
+    if (visibilidade && !['todos', 'estagiario_mas', 'clt_associados'].includes(visibilidade)) {
       return res.status(400).json({ error: 'Visibilidade inválida' });
     }
 
@@ -3593,8 +3593,8 @@ app.get('/api/documents/stats', authMiddleware, async (req, res) => {
 // ===============================================
 
 async function gerarTemplateVerificacao(nome, codigo, email, tipo_colaborador) {
-  const tipoTexto = tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado';
-  const emailInfo = tipo_colaborador === 'estagiario' 
+  const tipoTexto = tipo_colaborador === 'estagiario_ma' ? 'Estagiário/Menor Aprendiz' : 'CLT/Associado';
+  const emailInfo = tipo_colaborador === 'estagiario_ma' 
     ? 'Este é seu email de login para a plataforma.'
     : 'Este email será usado para login corporativo.';
 
@@ -3655,7 +3655,7 @@ async function gerarTemplateVerificacao(nome, codigo, email, tipo_colaborador) {
       .tipo-badge {
         display: inline-block;
         padding: 6px 12px;
-        background-color: ${tipo_colaborador === 'estagiario' ? '#165A5D' : '#165A5D'};
+        background-color: ${tipo_colaborador === 'estagiario_ma' ? '#165A5D' : '#165A5D'};
         color: white;
         border-radius: 20px;
         font-size: 14px;
@@ -3849,7 +3849,7 @@ async function gerarTemplateValidacaoEstagiario(nome, linkValidacao, email) {
         </div>
         <div class="content">
           <h2>Olá, ${nome}!</h2>
-          <div class="tipo-badge">Estagiário</div>
+          <div class="tipo-badge">Estagiário/Menor Aprendiz</div>
           <p>Seu cadastro foi aprovado pelo administrador! Clique no botão abaixo para ativar automaticamente seu acesso:</p>
           
           <div class="link-box">
@@ -3980,7 +3980,7 @@ async function gerarTemplateEstagiarioAdicionadoPorAdmin(nome, linkValidacao, em
         </div>
         <div class="content">
           <h2>Olá, ${nome}!</h2>
-          <div class="tipo-badge">Estagiário</div>
+          <div class="tipo-badge">Estagiário/Menor Aprendiz</div>
           <p>Você foi adicionado à plataforma de dashboards da RMH por um administrador!</p>
           
           <div class="link-box">
@@ -4014,7 +4014,7 @@ async function gerarTemplateEstagiarioAdicionadoPorAdmin(nome, linkValidacao, em
 
 // TEMPLATE: Email de configuração de conta
 async function gerarTemplateConfiguracaoConta(nome, linkAtivacao, emailLogin, tipoColaborador) {
-  const tipoTexto = tipoColaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado';
+  const tipoTexto = tipoColaborador === 'estagiario_ma' ? 'Estagiário/Menor Aprendiz' : 'CLT/Associado';
   
   return `
     <!DOCTYPE html>
@@ -4279,7 +4279,7 @@ async function gerarTemplateConfigurarSenha(nome, linkConfiguracao, email) {
         </div>
         <div class="content">
           <h2>Olá, ${nome}!</h2>
-          <div class="tipo-badge">Estagiário</div>
+          <div class="tipo-badge">Estagiário/Menor Aprendiz</div>
           <p>Você foi adicionado à plataforma de dashboards da RMH! Agora precisa definir sua senha para acessar a plataforma.</p>
           
           <div class="link-box">
@@ -6318,7 +6318,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     const { nome, email, email_pessoal, senha, setor, tipo_colaborador } = validation.value;
 
     // Determinar qual email usar para verificação de duplicata
-    const emailLogin = tipo_colaborador === 'estagiario' ? email_pessoal : email;
+    const emailLogin = tipo_colaborador === 'estagiario_ma' ? email_pessoal : email;
 
     console.log(`🔍 REGISTRO: Tipo ${tipo_colaborador}, Email login: ${emailLogin}`);
 
@@ -6326,7 +6326,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     const userExists = await client.query(
       `SELECT id, email_verificado, tipo_colaborador 
        FROM usuarios 
-       WHERE (tipo_colaborador = 'estagiario' AND email_pessoal = $1) 
+       WHERE (tipo_colaborador = 'estagiario_ma' AND email_pessoal = $1) 
           OR (tipo_colaborador = 'clt_associado' AND email = $1)`,
       [emailLogin]
     );
@@ -6432,7 +6432,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
       // ========== ESTAGIÁRIO: AGUARDAR APROVAÇÃO DO ADMIN ==========
       
       await client.query('COMMIT');
-      console.log('✅ TRANSAÇÃO: Commitada com sucesso (Estagiário)');
+      console.log('✅ TRANSAÇÃO: Commitada com sucesso (Estagiário/Menor Aprendiz)');
 
       console.log(`
       ⏳ ========== ESTAGIÁRIO AGUARDANDO APROVAÇÃO ==========
@@ -6494,7 +6494,7 @@ app.post('/api/auth/verify-email', async (req, res) => {
     const userResult = await client.query(
       `SELECT id, nome, email, email_pessoal, tipo_colaborador, email_verificado 
        FROM usuarios 
-       WHERE (tipo_colaborador = 'estagiario' AND email_pessoal = $1) 
+       WHERE (tipo_colaborador = 'estagiario_ma' AND email_pessoal = $1) 
           OR (tipo_colaborador = 'clt_associado' AND email = $1)`,
       [email]
     );
@@ -6555,7 +6555,7 @@ app.post('/api/auth/verify-email', async (req, res) => {
     const token = jwt.sign(
       { 
         id: user.id, 
-        email: user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email,
+        email: user.tipo_colaborador === 'estagiario_ma' ? user.email_pessoal : user.email,
         tipo_usuario: 'usuario'
       },
       process.env.JWT_SECRET,
@@ -6783,13 +6783,13 @@ app.get('/api/auth/validar-email/:token', async (req, res) => {
     if (usuarioJaVerificado) {
       const conteudo = `
         <h2>Olá, ${verification.nome}!</h2>
-        <div class="badge">${verification.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}</div>
+        <div class="badge">${verification.tipo_colaborador === 'estagiario_ma' ? 'Estagiário/Menor Aprendiz' : 'CLT/Associado'}</div>
         <p>Sua conta já foi verificada anteriormente e está ativa.</p>
         
         <div class="success-box">
           <strong>Status:</strong> Email já verificado<br>
           <strong>Email:</strong> ${verification.email_pessoal}<br>
-          <strong>Tipo:</strong> ${verification.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}
+          <strong>Tipo:</strong> ${verification.tipo_colaborador === 'estagiario_ma' ? 'Estagiário/Menor Aprendiz' : 'CLT/Associado'}
         </div>
         
         <p>Você já pode fazer login na plataforma!</p>
@@ -6803,7 +6803,7 @@ app.get('/api/auth/validar-email/:token', async (req, res) => {
       
       const conteudo = `
         <h2>Olá, ${verification.nome}!</h2>
-        <div class="badge">${verification.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}</div>
+        <div class="badge">${verification.tipo_colaborador === 'estagiario_ma' ? 'Estagiário/Menor Aprendiz' : 'CLT/Associado'}</div>
         <p>Este link de validação já foi usado anteriormente.</p>
         
         <div class="warning-box">
@@ -6829,7 +6829,7 @@ app.get('/api/auth/validar-email/:token', async (req, res) => {
       
       const conteudo = `
         <h2>Olá, ${verification.nome}!</h2>
-        <div class="badge">${verification.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}</div>
+        <div class="badge">${verification.tipo_colaborador === 'estagiario_ma' ? 'Estagiário/Menor Aprendiz' : 'CLT/Associado'}</div>
         <p>Este link de validação expirou e não pode mais ser usado.</p>
         
         <div class="error-box">
@@ -6870,7 +6870,7 @@ app.get('/api/auth/validar-email/:token', async (req, res) => {
     // PÁGINA DE SUCESSO
     const conteudoSucesso = `
       <h2>Parabéns, ${verification.nome}!</h2>
-      <div class="badge">${verification.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}</div>
+      <div class="badge">${verification.tipo_colaborador === 'estagiario_ma' ? 'Estagiário/Menor Aprendiz' : 'CLT/Associado'}</div>
       <p>Seu email foi verificado automaticamente e sua conta está ativa.</p>
       <p>Agora você pode fazer login na plataforma com suas credenciais!</p>
     `;
@@ -6913,7 +6913,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
       `SELECT id, nome, email, email_pessoal, senha, setor, tipo_usuario, tipo_colaborador, 
               email_verificado, COALESCE(is_coordenador, false) as is_coordenador
        FROM usuarios 
-       WHERE (tipo_colaborador = 'estagiario' AND email_pessoal = $1) 
+       WHERE (tipo_colaborador = 'estagiario_ma' AND email_pessoal = $1) 
           OR (tipo_colaborador = 'clt_associado' AND email = $1)`,
       [email]
     );
@@ -6935,7 +6935,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 
     // Verificar se email foi verificado
     if (!user.email_verificado) {
-      const emailLogin = user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email;
+      const emailLogin = user.tipo_colaborador === 'estagiario_ma' ? user.email_pessoal : user.email;
       console.log(`⚠️ LOGIN: Email não verificado: ${emailLogin}`);
       return res.status(401).json({ 
         error: 'Email não verificado. Verifique sua caixa de entrada.',
@@ -6955,7 +6955,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     const token = jwt.sign(
       { 
         id: user.id, 
-        email: user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email,
+        email: user.tipo_colaborador === 'estagiario_ma' ? user.email_pessoal : user.email,
         tipo_usuario: user.tipo_usuario 
       },
       process.env.JWT_SECRET,
@@ -7074,7 +7074,7 @@ app.get('/api/auth/validar-token-configuracao-senha/:token', async (req, res) =>
       valido: true,
       usuario: {
         nome: verification.nome,
-        email_login: verification.tipo_colaborador === 'estagiario' ? verification.email_pessoal : verification.email,
+        email_login: verification.tipo_colaborador === 'estagiario_ma' ? verification.email_pessoal : verification.email,
         tipo_colaborador: verification.tipo_colaborador
       }
     });
@@ -8093,7 +8093,7 @@ const adminMiddleware = async (req, res, next) => {
          u.email_verificado, u.is_coordenador,
          COALESCE(ual.ativo, true) as ativo,
          CASE 
-           WHEN u.tipo_colaborador = 'estagiario' THEN u.email_pessoal 
+           WHEN u.tipo_colaborador = 'estagiario_ma' THEN u.email_pessoal 
            ELSE u.email 
          END as email_login
        FROM usuarios u
@@ -8214,11 +8214,11 @@ app.get('/api/admin/usuarios-pendentes', adminMiddleware, async (req, res) => {
         AND v.tipo_token = 'verificacao_email' 
         AND v.usado_em IS NULL
       WHERE 
-        (u.tipo_colaborador = 'estagiario' AND u.aprovado_admin IS NULL)
+        (u.tipo_colaborador = 'estagiario_ma' AND u.aprovado_admin IS NULL)
         OR (u.email_verificado = false)
       ORDER BY 
         CASE 
-          WHEN u.tipo_colaborador = 'estagiario' AND u.aprovado_admin IS NULL THEN 1
+          WHEN u.tipo_colaborador = 'estagiario_ma' AND u.aprovado_admin IS NULL THEN 1
           WHEN v.expira_em < NOW() THEN 2
           WHEN v.token IS NULL THEN 3
           ELSE 4
@@ -8228,14 +8228,14 @@ app.get('/api/admin/usuarios-pendentes', adminMiddleware, async (req, res) => {
 
     const usuarios = result.rows.map(user => ({
       ...user,
-      email_login: user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email,
-      status: user.tipo_colaborador === 'estagiario' 
+      email_login: user.tipo_colaborador === 'estagiario_ma' ? user.email_pessoal : user.email,
+      status: user.tipo_colaborador === 'estagiario_ma' 
         ? (user.aprovado_admin === null ? 'pendente_aprovacao' : 'aprovado')
         : 'corporativo',
       codigo_ativo: user.codigo_verificacao && user.codigo_expira_em > new Date(),
       pode_reenviar: user.email_verificado === false && (
         user.tipo_colaborador === 'clt_associado' || 
-        (user.tipo_colaborador === 'estagiario' && user.aprovado_admin === true)
+        (user.tipo_colaborador === 'estagiario_ma' && user.aprovado_admin === true)
       ),
       tempo_expirado_horas: user.horas_para_expiracao < 0 ? Math.abs(user.horas_para_expiracao) : 0
     }));
@@ -8284,7 +8284,7 @@ app.post('/api/admin/aprovar-usuario/:userId', adminMiddleware, async (req, res)
     // Buscar usuário - ESTA LINHA ESTAVA FALTANDO!
     const userResult = await client.query(
       'SELECT * FROM usuarios WHERE id = $1 AND tipo_colaborador = $2',
-      [userId, 'estagiario']
+      [userId, 'estagiario_ma']
     );
 
     if (userResult.rows.length === 0) {
@@ -8384,7 +8384,7 @@ app.delete('/api/admin/rejeitar-usuario/:userId', adminMiddleware, async (req, r
     // Verificar se é estagiário
     const userResult = await client.query(
       'SELECT nome, email_pessoal FROM usuarios WHERE id = $1 AND tipo_colaborador = $2',
-      [userId, 'estagiario']
+      [userId, 'estagiario_ma']
     );
 
     if (userResult.rows.length === 0) {
@@ -8435,7 +8435,7 @@ app.get('/api/admin/usuarios', adminMiddleware, async (req, res) => {
       whereConditions.push('u.email_verificado = false');
     }
     
-    if (tipo && ['estagiario', 'clt_associado'].includes(tipo)) {
+    if (tipo && ['estagiario_ma', 'clt_associado'].includes(tipo)) {
       whereConditions.push(`u.tipo_colaborador = ${params.length + 1}`);
       params.push(tipo);
     }
@@ -8452,7 +8452,7 @@ app.get('/api/admin/usuarios', adminMiddleware, async (req, res) => {
         u.email,
         u.email_pessoal,
         CASE 
-          WHEN u.tipo_colaborador = 'estagiario' THEN u.email_pessoal 
+          WHEN u.tipo_colaborador = 'estagiario_ma' THEN u.email_pessoal 
           ELSE u.email 
         END as email_login,
         u.tipo_colaborador,
@@ -8478,7 +8478,7 @@ app.get('/api/admin/usuarios', adminMiddleware, async (req, res) => {
         -- Status calculado
         CASE 
           WHEN COALESCE(ual.ativo, true) = false THEN 'revogado'
-          WHEN u.tipo_colaborador = 'estagiario' 
+          WHEN u.tipo_colaborador = 'estagiario_ma' 
                AND u.aprovado_admin IS NULL 
                AND ual.criado_por_admin IS NULL
                THEN 'pendente_aprovacao'
@@ -8513,7 +8513,7 @@ app.get('/api/admin/usuarios', adminMiddleware, async (req, res) => {
         total: usuarios.length,
         // ✅ CORREÇÃO: Apenas estagiários que se cadastraram sozinhos (sem criado_por_admin)
         pendentes_aprovacao: usuarios.filter(u => 
-          u.tipo_colaborador === 'estagiario' && 
+          u.tipo_colaborador === 'estagiario_ma' && 
           !u.aprovado_admin && 
           !u.criado_por_admin
         ).length,
@@ -8523,8 +8523,8 @@ app.get('/api/admin/usuarios', adminMiddleware, async (req, res) => {
         clt_associados: usuarios.filter(u => 
           u.tipo_colaborador === 'clt_associado' && u.email_verificado === true
         ).length,
-        estagiarios: usuarios.filter(u => 
-          u.tipo_colaborador === 'estagiario' && 
+        estagiario_mas: usuarios.filter(u => 
+          u.tipo_colaborador === 'estagiario_ma' && 
           u.aprovado_admin === true && 
           u.email_verificado === true
         ).length,
@@ -8574,7 +8574,7 @@ app.get('/api/organograma/colaboradores', authMiddleware, async (req, res) => {
           WHEN UPPER(cargo) LIKE '%AUX%' THEN 5
           -- Técnicos
           WHEN UPPER(cargo) LIKE '%TECNICO%' OR UPPER(cargo) LIKE '%TÉCNICO%' THEN 6
-          -- Estagiários
+          -- Estagiários/Menores Aprendizes
           WHEN UPPER(cargo) LIKE '%ESTAGIARIO%' OR UPPER(cargo) LIKE '%ESTAGIÁRIO%' THEN 7
           -- Menores aprendizes
           WHEN UPPER(cargo) LIKE '%MENOR%' OR UPPER(cargo) LIKE '%APRENDIZ%' THEN 8
@@ -8611,7 +8611,7 @@ app.get('/api/organograma/colaboradores', authMiddleware, async (req, res) => {
         c.cargo.toUpperCase().includes('ESTAGIÁRIO') ||
         c.cargo.toUpperCase().includes('MENOR') ||
         c.cargo.toUpperCase().includes('APRENDIZ')
-      )) ? 'estagiario' : 'clt_associado',
+      )) ? 'estagiario_ma' : 'clt_associado',
       is_coordenador: c.cargo && c.cargo.toUpperCase().includes('COORD'),
       email_verificado: true, // Assumindo que estão ativos
       ativo: c.status === 'ATIVO'
@@ -8623,7 +8623,7 @@ app.get('/api/organograma/colaboradores', authMiddleware, async (req, res) => {
       setores: [...new Set(colaboradoresProcessados.map(c => c.setor))].length,
       admins: colaboradoresProcessados.filter(c => c.tipo_usuario === 'admin').length,
       coordenadores: colaboradoresProcessados.filter(c => c.is_coordenador === true).length,
-      estagiarios: colaboradoresProcessados.filter(c => c.tipo_colaborador === 'estagiario').length,
+      estagiario_mas: colaboradoresProcessados.filter(c => c.tipo_colaborador === 'estagiario_ma').length,
       clt_associados: colaboradoresProcessados.filter(c => c.tipo_colaborador === 'clt_associado').length,
       // Estatísticas por cargo
       advogados: colaboradores.filter(c => c.cargo && c.cargo.toUpperCase().includes('ADVOGADO')).length,
@@ -8687,7 +8687,7 @@ app.post('/api/admin/reenviar-codigo/:userId', adminMiddleware, async (req, res)
     }
 
     // Determinar email de destino
-    const emailLogin = user.tipo_colaborador === 'estagiario' ? 
+    const emailLogin = user.tipo_colaborador === 'estagiario_ma' ? 
       user.email_pessoal : user.email;
 
     if (!emailLogin) {
@@ -8697,17 +8697,17 @@ app.post('/api/admin/reenviar-codigo/:userId', adminMiddleware, async (req, res)
     }
 
     // Para estagiários, verificar se foi aprovado
-    if (user.tipo_colaborador === 'estagiario' && !user.aprovado_admin) {
+    if (user.tipo_colaborador === 'estagiario_ma' && !user.aprovado_admin) {
       await client.query('ROLLBACK');
       client.release();
-      return res.status(400).json({ error: 'Estagiário ainda não foi aprovado. Aprove primeiro.' });
+      return res.status(400).json({ error: 'Estagiário/Menor Aprendiz ainda não foi aprovado. Aprove primeiro.' });
     }
 
     // Gerar novo token/código dependendo do tipo
     let novoToken, tipoToken, templateHtml;
     const expiraEm = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    if (user.tipo_colaborador === 'estagiario') {
+    if (user.tipo_colaborador === 'estagiario_ma') {
       // Para estagiários: gerar LINK de validação
       novoToken = crypto.randomBytes(32).toString('hex');
       tipoToken = 'verificacao_email';
@@ -8740,13 +8740,13 @@ app.post('/api/admin/reenviar-codigo/:userId', adminMiddleware, async (req, res)
       const emailResult = await resend.emails.send({
         from: 'andre.macedo@resendemh.com.br',
         to: [emailLogin],
-        subject: user.tipo_colaborador === 'estagiario' 
+        subject: user.tipo_colaborador === 'estagiario_ma' 
           ? 'Novo link de validação - Site RMH'
           : 'Novo código de verificação - Site RMH',
         html: templateHtml
       });
 
-      console.log(`📧 ADMIN: ${user.tipo_colaborador === 'estagiario' ? 'Link' : 'Código'} reenviado para ${emailLogin} pelo admin ${req.user.nome}`);
+      console.log(`📧 ADMIN: ${user.tipo_colaborador === 'estagiario_ma' ? 'Link' : 'Código'} reenviado para ${emailLogin} pelo admin ${req.user.nome}`);
 
       // Log da ação admin
       await pool.query(
@@ -8761,12 +8761,12 @@ app.post('/api/admin/reenviar-codigo/:userId', adminMiddleware, async (req, res)
     }
 
     res.json({
-      message: user.tipo_colaborador === 'estagiario' 
+      message: user.tipo_colaborador === 'estagiario_ma' 
         ? 'Novo link de validação enviado com sucesso'
         : 'Novo código de verificação enviado com sucesso',
       email_enviado_para: emailLogin,
       tipo_colaborador: user.tipo_colaborador,
-      tipo_envio: user.tipo_colaborador === 'estagiario' ? 'link' : 'codigo'
+      tipo_envio: user.tipo_colaborador === 'estagiario_ma' ? 'link' : 'codigo'
     });
 
   } catch (error) {
@@ -8807,9 +8807,9 @@ app.post('/api/admin/reenviar-codigo-problema/:userId', adminMiddleware, async (
     }
 
     // Verificar se pode reenviar
-    if (user.tipo_colaborador === 'estagiario' && !user.aprovado_admin) {
+    if (user.tipo_colaborador === 'estagiario_ma' && !user.aprovado_admin) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Estagiário ainda não foi aprovado pelo admin' });
+      return res.status(400).json({ error: 'Estagiário/Menor Aprendiz ainda não foi aprovado pelo admin' });
     }
 
     // Contar tentativas de reenvio nas últimas 24h
@@ -8836,12 +8836,12 @@ app.post('/api/admin/reenviar-codigo-problema/:userId', adminMiddleware, async (
     );
 
     // Gerar novo token/código baseado no tipo
-    const emailDestino = user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email;
+    const emailDestino = user.tipo_colaborador === 'estagiario_ma' ? user.email_pessoal : user.email;
     let novoToken, tipoToken, assunto, templateHtml;
     const expiraEm = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 dias
 
-    if (user.tipo_colaborador === 'estagiario') {
-      // Estagiários: gerar link de validação
+    if (user.tipo_colaborador === 'estagiario_ma') {
+      // Estagiários/Menores Aprendizes: gerar link de validação
       novoToken = require('crypto').randomBytes(32).toString('hex');
       tipoToken = 'verificacao_email';
       assunto = '🔗 Novo link de verificação - Dashboards RMH';
@@ -8874,7 +8874,7 @@ app.post('/api/admin/reenviar-codigo-problema/:userId', adminMiddleware, async (
          SET observacoes = $1, atualizado_em = NOW()
          WHERE usuario_id = $2`,
         [
-          `Novo ${user.tipo_colaborador === 'estagiario' ? 'link' : 'código'} reenviado pelo admin ${req.user.nome} em ${new Date().toLocaleString('pt-BR')}`,
+          `Novo ${user.tipo_colaborador === 'estagiario_ma' ? 'link' : 'código'} reenviado pelo admin ${req.user.nome} em ${new Date().toLocaleString('pt-BR')}`,
           userId
         ]
       );
@@ -8903,7 +8903,7 @@ app.post('/api/admin/reenviar-codigo-problema/:userId', adminMiddleware, async (
         html: templateHtml
       });
 
-      console.log(`✅ ADMIN: ${user.tipo_colaborador === 'estagiario' ? 'Link' : 'Código'} reenviado para ${emailDestino} pelo admin ${req.user.nome}`);
+      console.log(`✅ ADMIN: ${user.tipo_colaborador === 'estagiario_ma' ? 'Link' : 'Código'} reenviado para ${emailDestino} pelo admin ${req.user.nome}`);
 
     } catch (emailError) {
       console.error('❌ Erro ao enviar email:', emailError);
@@ -8911,12 +8911,12 @@ app.post('/api/admin/reenviar-codigo-problema/:userId', adminMiddleware, async (
     }
 
     res.json({
-      message: user.tipo_colaborador === 'estagiario' 
+      message: user.tipo_colaborador === 'estagiario_ma' 
         ? 'Novo link de verificação enviado com sucesso'
         : 'Novo código de verificação enviado com sucesso',
       email_enviado_para: emailDestino,
       tipo_colaborador: user.tipo_colaborador,
-      tipo_envio: user.tipo_colaborador === 'estagiario' ? 'link' : 'codigo',
+      tipo_envio: user.tipo_colaborador === 'estagiario_ma' ? 'link' : 'codigo',
       tentativas_hoje: parseInt(tentativasRecentes.rows[0].total) + 1
     });
 
@@ -8947,7 +8947,7 @@ app.get('/api/admin/usuarios-tokens-expirados', adminMiddleware, async (req, res
         
         -- Email de login
         CASE 
-          WHEN u.tipo_colaborador = 'estagiario' THEN u.email_pessoal 
+          WHEN u.tipo_colaborador = 'estagiario_ma' THEN u.email_pessoal 
           ELSE u.email 
         END as email_login,
         
@@ -8998,8 +8998,8 @@ app.get('/api/admin/usuarios-tokens-expirados', adminMiddleware, async (req, res
           -- CLT não verificado há mais de 1 dia
           (u.tipo_colaborador = 'clt_associado' AND u.criado_em < NOW() - INTERVAL '1 day')
           OR
-          -- Estagiário aprovado não verificado há mais de 1 dia
-          (u.tipo_colaborador = 'estagiario' AND u.aprovado_admin = true AND u.criado_em < NOW() - INTERVAL '1 day')
+          -- Estagiário/Menor Aprendiz aprovado não verificado há mais de 1 dia
+          (u.tipo_colaborador = 'estagiario_ma' AND u.aprovado_admin = true AND u.criado_em < NOW() - INTERVAL '1 day')
           OR
           -- Qualquer usuário com token expirado
           (v.expira_em < NOW())
@@ -9021,7 +9021,7 @@ app.get('/api/admin/usuarios-tokens-expirados', adminMiddleware, async (req, res
       ...user,
       dias_expirado: user.horas_desde_expiracao > 0 ? Math.floor(user.horas_desde_expiracao / 24) : 0,
       pode_reenviar: user.tipo_colaborador === 'clt_associado' || 
-                     (user.tipo_colaborador === 'estagiario' && user.aprovado_admin),
+                     (user.tipo_colaborador === 'estagiario_ma' && user.aprovado_admin),
       prioridade: (() => {
         if (user.categoria_problema === 'muito_antigo') return 'alta';
         if (user.categoria_problema === 'antigo') return 'media';
@@ -10265,7 +10265,7 @@ app.get('/api/admin/usuario/:userId', adminMiddleware, async (req, res) => {
       SELECT 
         u.*,
         CASE 
-          WHEN u.tipo_colaborador = 'estagiario' THEN u.email_pessoal 
+          WHEN u.tipo_colaborador = 'estagiario_ma' THEN u.email_pessoal 
           ELSE u.email 
         END as email_login,
         admin_criador.nome as criado_por_nome,
@@ -10323,7 +10323,7 @@ app.delete('/api/admin/excluir-usuario-problema/:userId', adminMiddleware, async
     }
 
     const user = userResult.rows[0];
-    const emailLogin = user.tipo_colaborador === 'estagiario' ? user.email_pessoal : user.email;
+    const emailLogin = user.tipo_colaborador === 'estagiario_ma' ? user.email_pessoal : user.email;
 
     // Log da exclusão
     console.log(`🗑️ Excluindo usuário: ${user.nome} (${emailLogin}) - ${Math.floor(user.dias_desde_criacao)} dias de conta`);
@@ -10488,7 +10488,7 @@ app.post('/api/admin/excluir-lote-problemas', adminMiddleware, async (req, res) 
       logs_removidos: logsResult.rowCount,
       detalhes: usuariosParaExcluir.map(u => ({
         nome: u.nome,
-        email: u.tipo_colaborador === 'estagiario' ? u.email_pessoal : u.email,
+        email: u.tipo_colaborador === 'estagiario_ma' ? u.email_pessoal : u.email,
         tipo: u.tipo_colaborador
       })),
       motivo
@@ -10535,10 +10535,10 @@ app.get('/api/admin/estatisticas-tokens', adminMiddleware, async (req, res) => {
         
         COUNT(*) FILTER (
           WHERE email_verificado = false 
-          AND tipo_colaborador = 'estagiario'
+          AND tipo_colaborador = 'estagiario_ma'
           AND aprovado_admin = true
           AND criado_em < NOW() - INTERVAL '1 day'
-        ) as estagiarios_nao_verificados,
+        ) as estagiario_mas_nao_verificados,
         
         -- Total geral
         COUNT(*) FILTER (WHERE email_verificado = false) as total_nao_verificados
@@ -10583,13 +10583,13 @@ app.get('/api/admin/estatisticas', adminMiddleware, async (req, res) => {
         -- Total de usuários ativos (excluindo revogados)
         COUNT(*) FILTER (WHERE ativo = true) as total_usuarios,
         
-        -- Estagiários ativos e aprovados
+        -- Estagiários/Menores Aprendizes ativos e aprovados
         COUNT(*) FILTER (
-          WHERE tipo_colaborador = 'estagiario' 
+          WHERE tipo_colaborador = 'estagiario_ma' 
           AND ativo = true
           AND aprovado_admin = true 
           AND email_verificado = true
-        ) as total_estagiarios,
+        ) as total_estagiario_mas,
         
         -- CLT/Associados ativos e verificados
         COUNT(*) FILTER (
@@ -10614,12 +10614,12 @@ app.get('/api/admin/estatisticas', adminMiddleware, async (req, res) => {
         COUNT(*) FILTER (
           WHERE email_verificado = false 
           AND ativo = true
-          AND NOT (tipo_colaborador = 'estagiario' AND aprovado_admin IS NULL)
+          AND NOT (tipo_colaborador = 'estagiario_ma' AND aprovado_admin IS NULL)
         ) as nao_verificados,
         
-        -- Estagiários pendentes de aprovação
+        -- Estagiários/Menores Aprendizes pendentes de aprovação
         COUNT(*) FILTER (
-          WHERE tipo_colaborador = 'estagiario' 
+          WHERE tipo_colaborador = 'estagiario_ma' 
           AND aprovado_admin IS NULL 
           AND ativo = true
         ) as pendentes_aprovacao,
@@ -10641,10 +10641,10 @@ app.get('/api/admin/estatisticas', adminMiddleware, async (req, res) => {
         setor,
         COUNT(*) as total,
         COUNT(*) FILTER (
-          WHERE tipo_colaborador = 'estagiario' 
+          WHERE tipo_colaborador = 'estagiario_ma' 
           AND aprovado_admin = true 
           AND email_verificado = true
-        ) as estagiarios,
+        ) as estagiario_mas,
         COUNT(*) FILTER (
           WHERE tipo_colaborador = 'clt_associado' 
           AND email_verificado = true
@@ -10684,7 +10684,7 @@ app.get('/api/admin/historico-acoes', adminMiddleware, async (req, res) => {
         'aprovacao' as tipo_acao,
         u.nome as usuario_afetado,
         CASE 
-          WHEN u.tipo_colaborador = 'estagiario' THEN u.email_pessoal 
+          WHEN u.tipo_colaborador = 'estagiario_ma' THEN u.email_pessoal 
           ELSE u.email 
         END as email_login,
         admin.nome as admin_responsavel,
@@ -10700,7 +10700,7 @@ app.get('/api/admin/historico-acoes', adminMiddleware, async (req, res) => {
         'revogacao' as tipo_acao,
         u.nome as usuario_afetado,
         CASE 
-          WHEN u.tipo_colaborador = 'estagiario' THEN u.email_pessoal 
+          WHEN u.tipo_colaborador = 'estagiario_ma' THEN u.email_pessoal 
           ELSE u.email 
         END as email_login,
         admin.nome as admin_responsavel,
@@ -10716,7 +10716,7 @@ app.get('/api/admin/historico-acoes', adminMiddleware, async (req, res) => {
         'criacao' as tipo_acao,
         u.nome as usuario_afetado,
         CASE 
-          WHEN u.tipo_colaborador = 'estagiario' THEN u.email_pessoal 
+          WHEN u.tipo_colaborador = 'estagiario_ma' THEN u.email_pessoal 
           ELSE u.email 
         END as email_login,
         admin.nome as admin_responsavel,

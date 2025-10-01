@@ -1,6 +1,6 @@
 // src/types/index.ts - ATUALIZADO com interface User unificada
 export type UserRole = 'usuario' | 'coordenador' | 'admin';
-export type TipoColaborador = 'estagiario' | 'clt_associado';
+export type TipoColaborador = 'estagiario_ma' | 'clt_associado';
 export type TipoVisibilidade = 'geral' | 'coordenadores' | 'admin' | 'setor';
 
 export interface User {
@@ -93,7 +93,7 @@ export interface UsuariosStats {
   admins: number;
   coordenadores?: number;
   clt_associados?: number;
-  estagiarios?: number;
+  estagiario_mas?: number;
   revogados?: number;
 }
 
@@ -179,7 +179,7 @@ export interface AprovarUsuarioResponse {
 
 // Utilitários para validação
 export const getLoginEmail = (user: User): string => {
-  if (user.tipo_colaborador === 'estagiario') {
+  if (user.tipo_colaborador === 'estagiario_ma') {
     return user.email_pessoal || '';
   }
   return user.email || '';
@@ -190,7 +190,7 @@ export const getDisplayEmail = (user: User): string => {
 };
 
 export const isEstagiario = (user: User): boolean => {
-  return user.tipo_colaborador === 'estagiario';
+  return user.tipo_colaborador === 'estagiario_ma';
 };
 
 export const isCltAssociado = (user: User): boolean => {
@@ -209,7 +209,7 @@ export const isCoordenador = (user: User): boolean => {
 export const getUserStatus = (usuario: User): string => {
   if (usuario.tipo_usuario === 'admin') return 'admin';
   
-  if (usuario.tipo_colaborador === 'estagiario') {
+  if (usuario.tipo_colaborador === 'estagiario_ma') {
     if (usuario.status === 'pendente_aprovacao' || !usuario.aprovado_admin) {
       return 'pendente_aprovacao';
     }
@@ -233,21 +233,20 @@ export const getUserStatus = (usuario: User): string => {
 };
 
 export const isPendenteAprovacao = (usuario: User): boolean => {
-  return usuario.tipo_colaborador === 'estagiario' && 
+  return usuario.tipo_colaborador === 'estagiario_ma' && 
          (usuario.status === 'pendente_aprovacao' || !usuario.aprovado_admin);
 };
 
 export const isAguardandoVerificacao = (usuario: User): boolean => {
   return !usuario.email_verificado && 
          (usuario.tipo_colaborador === 'clt_associado' || 
-          (usuario.tipo_colaborador === 'estagiario' && usuario.aprovado_admin));
+          (usuario.tipo_colaborador === 'estagiario_ma' && usuario.aprovado_admin));
 };
 
 // 🆕 SETORES DISPONÍVEIS
 export const SETORES = [
     "Administrativo",
     "Atendimento",
-    "Carteira",
     "Carteira de clientes",
     "Comercial/marketing",
     "Cálculo e Protocolo",
@@ -262,7 +261,7 @@ export const SETORES = [
     "Financeiro",
     "Instituto Propositivo",
     "Mutirão",
-    "Projetos & Processos"
+    "Projetos e Processos"
   ] as const;
 
 export type Setor = typeof SETORES[number];

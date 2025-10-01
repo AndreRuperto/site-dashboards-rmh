@@ -56,7 +56,7 @@ interface Usuario {
   email?: string;
   email_pessoal?: string;
   setor: string;
-  tipo_colaborador: 'estagiario' | 'clt_associado';
+  tipo_colaborador: 'estagiario_ma' | 'clt_associado';
   tipo_usuario: UserRole;
   email_verificado: boolean;
   aprovado_admin?: boolean;
@@ -78,7 +78,7 @@ interface UsuariosStats {
   admins: number;
   coordenadores: number;
   clt_associados: number; // NOVO
-  estagiarios: number; // NOVO
+  estagiario_mas: number; // NOVO
   revogados: number; // NOVO
 }
 
@@ -93,7 +93,7 @@ interface NovoUsuarioData {
   email: string;
   email_pessoal: string;
   setor: string;
-  tipo_colaborador: 'estagiario' | 'clt_associado';
+  tipo_colaborador: 'estagiario_ma' | 'clt_associado';
 }
 
 interface EditarUsuarioData {
@@ -105,7 +105,7 @@ interface EditarUsuarioData {
 
 // Funções utilitárias
 const isPendenteAprovacao = (usuario: Usuario): boolean => {
-  return usuario.tipo_colaborador === 'estagiario' && 
+  return usuario.tipo_colaborador === 'estagiario_ma' && 
          !usuario.aprovado_admin && 
          !usuario.criado_por_admin;
 };
@@ -128,7 +128,7 @@ const AdminUserControl: React.FC = () => {
     admins: 0,
     coordenadores: 0,
     clt_associados: 0,
-    estagiarios: 0,
+    estagiario_mas: 0,
     revogados: 0
   });
 
@@ -136,7 +136,7 @@ const AdminUserControl: React.FC = () => {
   
   // Estados para filtros
   const [activeTab, setActiveTab] = useState('geral');
-  const [filter, setFilter] = useState<'todos' | 'pendentes_aprovacao' | 'pendentes_verificacao' | 'corporativos' | 'estagiarios' | 'admins' | 'coordenadores' | 'revogados'>('pendentes_aprovacao'); 
+  const [filter, setFilter] = useState<'todos' | 'pendentes_aprovacao' | 'pendentes_verificacao' | 'corporativos' | 'estagiario_mas' | 'admins' | 'coordenadores' | 'revogados'>('pendentes_aprovacao'); 
   const [setorSelecionado, setSetorSelecionado] = useState<string>('todos');
   const [searchTerm, setSearchTerm] = useState<string>('');
   
@@ -154,7 +154,7 @@ const AdminUserControl: React.FC = () => {
     email: '',
     email_pessoal: '',
     setor: '',
-    tipo_colaborador: 'estagiario'
+    tipo_colaborador: 'estagiario_ma'
   });
   const [editarUsuarioData, setEditarUsuarioData] = useState<EditarUsuarioData>({
     id: '',
@@ -233,7 +233,7 @@ const AdminUserControl: React.FC = () => {
         admins: parseInt(statsData.geral.total_admins) || 0,
         coordenadores: parseInt(statsData.geral.total_coordenadores) || 0,
         clt_associados: parseInt(statsData.geral.total_clt_associados) || 0,
-        estagiarios: parseInt(statsData.geral.total_estagiarios) || 0,
+        estagiario_mas: parseInt(statsData.geral.total_estagiario_mas) || 0,
         revogados: parseInt(statsData.geral.revogados) || 0
       });
 
@@ -274,8 +274,8 @@ const AdminUserControl: React.FC = () => {
             return isPendenteVerificacao(usuario) && !isPendenteAprovacao(usuario) && usuario.ativo !== false;
           case 'corporativos':
             return usuario.tipo_colaborador === 'clt_associado' && !isPendenteVerificacao(usuario) && usuario.ativo !== false;
-          case 'estagiarios':
-            return usuario.tipo_colaborador === 'estagiario' && !isPendenteAprovacao(usuario) && !isPendenteVerificacao(usuario) && usuario.ativo !== false;
+          case 'estagiario_mas':
+            return usuario.tipo_colaborador === 'estagiario_ma' && !isPendenteAprovacao(usuario) && !isPendenteVerificacao(usuario) && usuario.ativo !== false;
           case 'admins':
             return usuario.tipo_usuario === 'admin' && usuario.ativo !== false;
           case 'coordenadores':
@@ -323,7 +323,7 @@ const AdminUserControl: React.FC = () => {
         email: '',
         email_pessoal: '',
         setor: '',
-        tipo_colaborador: 'estagiario'
+        tipo_colaborador: 'estagiario_ma'
       });
 
     } catch (error) {
@@ -555,8 +555,8 @@ const AdminUserControl: React.FC = () => {
       return (
         <Badge variant="default" className="bg-green-600">
           <CheckCircle className="h-3 w-3 mr-1" />
-          {usuario.tipo_colaborador === 'estagiario'
-            ? 'Estagiário Ativo'
+          {usuario.tipo_colaborador === 'estagiario_ma'
+            ? 'Estagiário/Menor Aprendiz Ativo'
             : 'CLT Ativo'}
         </Badge>
       );
@@ -587,8 +587,8 @@ const AdminUserControl: React.FC = () => {
         return isPendenteVerificacao(usuario) && !isPendenteAprovacao(usuario) && usuario.ativo !== false; // ✅ Excluir revogados
       case 'corporativos':
         return usuario.tipo_colaborador === 'clt_associado' && !isPendenteVerificacao(usuario) && usuario.ativo !== false; // ✅ Excluir revogados
-      case 'estagiarios':
-        return usuario.tipo_colaborador === 'estagiario' && !isPendenteAprovacao(usuario) && !isPendenteVerificacao(usuario) && usuario.ativo !== false; // ✅ Excluir revogados
+      case 'estagiario_mas':
+        return usuario.tipo_colaborador === 'estagiario_ma' && !isPendenteAprovacao(usuario) && !isPendenteVerificacao(usuario) && usuario.ativo !== false; // ✅ Excluir revogados
       case 'admins':
         return usuario.tipo_usuario === 'admin' && usuario.ativo !== false; // ✅ Excluir revogados
       case 'coordenadores':
@@ -706,8 +706,8 @@ const AdminUserControl: React.FC = () => {
             <div className="flex items-center space-x-2">
               <GraduationCap className="h-5 w-5 text-green-500" />
               <div>
-                <p className="text-sm font-medium text-gray-600">Estagiários</p>
-                <p className="text-2xl font-bold text-green-500">{stats.estagiarios}</p>
+                <p className="text-sm font-medium text-gray-600">Estagiários/Menores Aprendizes</p>
+                <p className="text-2xl font-bold text-green-500">{stats.estagiario_mas}</p>
               </div>
             </div>
           </CardContent>
@@ -814,12 +814,12 @@ const AdminUserControl: React.FC = () => {
             CLT/Associados ({stats.clt_associados})
           </Button>
           <Button
-            variant={filter === 'estagiarios' ? 'default' : 'outline'}
-            onClick={() => setFilter('estagiarios')}
+            variant={filter === 'estagiario_mas' ? 'default' : 'outline'}
+            onClick={() => setFilter('estagiario_mas')}
             size="sm"
           >
             <GraduationCap className="h-4 w-4 mr-1" />
-            Estagiários ({stats.estagiarios})
+            Estagiários/Menores Aprendizes ({stats.estagiario_mas})
           </Button>
           <Button
             variant={filter === 'coordenadores' ? 'default' : 'outline'}
@@ -885,7 +885,7 @@ const AdminUserControl: React.FC = () => {
                               {getStatusBadge(usuario)}
                             </div>
                             <p className="text-sm text-gray-600 mt-1">
-                              {usuario.email_login} • {usuario.setor} • {usuario.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}
+                              {usuario.email_login} • {usuario.setor} • {usuario.tipo_colaborador === 'estagiario_ma' ? 'Estagiário/Menor Aprendiz' : 'CLT/Associado'}
                             </p>
                           </div>
                         </div>
@@ -1008,8 +1008,8 @@ const AdminUserControl: React.FC = () => {
                           return isPendenteVerificacao(usuario) && !isPendenteAprovacao(usuario);
                         case 'corporativos':
                           return usuario.tipo_colaborador === 'clt_associado' && !isPendenteVerificacao(usuario);
-                        case 'estagiarios':
-                          return usuario.tipo_colaborador === 'estagiario' && !isPendenteAprovacao(usuario) && !isPendenteVerificacao(usuario);
+                        case 'estagiario_mas':
+                          return usuario.tipo_colaborador === 'estagiario_ma' && !isPendenteAprovacao(usuario) && !isPendenteVerificacao(usuario);
                         case 'admins':
                           return usuario.tipo_usuario === 'admin';
                         case 'coordenadores':
@@ -1041,9 +1041,9 @@ const AdminUserControl: React.FC = () => {
                           <div className="flex space-x-4 text-sm">
                             <div className="text-center">
                               <p className="text-2xl font-bold text-green-600">
-                                {usuariosDoSetor.filter(u => u.tipo_colaborador === 'estagiario' && !isPendenteAprovacao(u) && !isPendenteVerificacao(u)).length}
+                                {usuariosDoSetor.filter(u => u.tipo_colaborador === 'estagiario_ma' && !isPendenteAprovacao(u) && !isPendenteVerificacao(u)).length}
                               </p>
-                              <p className="text-gray-500">Estagiários</p>
+                              <p className="text-gray-500">Estagiários/Menores Aprendizes</p>
                             </div>
                             <div className="text-center">
                               <p className="text-2xl font-bold text-blue-600">
@@ -1072,7 +1072,7 @@ const AdminUserControl: React.FC = () => {
                                     {getStatusBadge(usuario)}
                                   </div>
                                   <p className="text-sm text-gray-600 mt-1">
-                                    {usuario.email_login} • {usuario.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}
+                                    {usuario.email_login} • {usuario.tipo_colaborador === 'estagiario_ma' ? 'Estagiário/Menor Aprendiz' : 'CLT/Associado'}
                                   </p>
                                 </div>
                               </div>
@@ -1198,7 +1198,7 @@ const AdminUserControl: React.FC = () => {
               <Label htmlFor="tipo_colaborador">Tipo de Colaborador</Label>
               <Select 
                 value={novoUsuarioData.tipo_colaborador} 
-                onValueChange={(value: 'estagiario' | 'clt_associado') => 
+                onValueChange={(value: 'estagiario_ma' | 'clt_associado') => 
                   setNovoUsuarioData(prev => ({ ...prev, tipo_colaborador: value }))
                 }
               >
@@ -1206,10 +1206,10 @@ const AdminUserControl: React.FC = () => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="estagiario">
+                  <SelectItem value="estagiario_ma">
                     <div className="flex items-center">
                       <GraduationCap className="h-4 w-4 mr-2" />
-                      Estagiário
+                      Estagiário/Menor Aprendiz
                     </div>
                   </SelectItem>
                   <SelectItem value="clt_associado">

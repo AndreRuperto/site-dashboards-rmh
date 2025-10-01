@@ -13,7 +13,7 @@ import ForgotPasswordView from './ForgotPasswordView';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
 interface LoginProps {
-  onSwitchToRegister: (tipoPreSelecionado?: 'estagiario' | 'clt_associado') => void;
+  onSwitchToRegister: (tipoPreSelecionado?: 'estagiario_ma' | 'clt_associado') => void;
   onSwitchToForgotPassword: () => void;
   onSwitchToVerification: (email: string) => void;
 }
@@ -130,9 +130,9 @@ const Login: React.FC<LoginProps> = ({
         if (tipo === 'clt') {
           console.log('🏢 Chamando onSwitchToRegister com clt_associado');
           onSwitchToRegister('clt_associado');
-        } else if (tipo === 'estagiario') {
-          console.log('👨‍🎓 Chamando onSwitchToRegister com estagiario');
-          onSwitchToRegister('estagiario');
+        } else if (tipo === 'estagiario_ma') {
+          console.log('👨‍🎓 Chamando onSwitchToRegister com estagiario_ma');
+          onSwitchToRegister('estagiario_ma');
         } else {
           console.log('🔄 Chamando onSwitchToRegister sem parâmetro');
           onSwitchToRegister();
@@ -208,7 +208,7 @@ const Login: React.FC<LoginProps> = ({
                   ) : (
                     <>
                       <Users className="h-4 w-4 text-green-600" />
-                      <span className="text-green-600 font-medium">Email Pessoal (Estagiário)</span>
+                      <span className="text-green-600 font-medium">Email Pessoal (Estagiário/Menor Aprendiz)</span>
                     </>
                   )}
                 </div>
@@ -296,7 +296,7 @@ const Login: React.FC<LoginProps> = ({
           <div className="text-center text-sm text-gray-600 mt-4">
             <p className="text-xs">
               • <strong>CLT/Associado:</strong> Use seu email corporativo (@resendemh.com.br)<br/>
-              • <strong>Estagiário:</strong> Use seu email pessoal cadastrado
+              • <strong>Estagiário/Menor Aprendiz:</strong> Use seu email pessoal cadastrado
             </p>
           </div>
         </CardContent>

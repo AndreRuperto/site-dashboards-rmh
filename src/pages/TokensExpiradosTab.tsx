@@ -21,7 +21,7 @@ interface UsuarioComProblema {
   nome: string;
   email_login: string;
   setor: string;
-  tipo_colaborador: 'estagiario' | 'clt_associado';
+  tipo_colaborador: 'estagiario_ma' | 'clt_associado';
   criado_em: string;
   status_token: 'sem_codigo' | 'codigo_expirado' | 'codigo_ativo' | 'token_expirado_limpo';
   dias_desde_criacao: number;
@@ -330,11 +330,11 @@ export const TokensExpiradosTab: React.FC<TokensExpiradosProps> = ({
                         <h4 className="font-medium text-gray-900">{usuario.nome}</h4>
                         {getStatusBadge(usuario.status_token)}
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          usuario.tipo_colaborador === 'estagiario' 
+                          usuario.tipo_colaborador === 'estagiario_ma' 
                             ? 'bg-blue-100 text-blue-800' 
                             : 'bg-green-100 text-green-800'
                         }`}>
-                          {usuario.tipo_colaborador === 'estagiario' ? 'Estagiário' : 'CLT/Associado'}
+                          {usuario.tipo_colaborador === 'estagiario_ma' ? 'Estagiário/Menor Aprendiz' : 'CLT/Associado'}
                         </span>
                       </div>
                       

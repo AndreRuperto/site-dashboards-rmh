@@ -8,7 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Eye, EyeOff, Users, ArrowLeft, Loader2 } from 'lucide-react';
 
 // Types definition - alinhado com o projeto
-type TipoColaborador = 'estagiario' | 'clt_associado';
+type TipoColaborador = 'estagiario_ma' | 'clt_associado';
 
 // Interface compatível com o AuthSystem do projeto
 interface RegistrationResult {
@@ -92,7 +92,7 @@ const Register: React.FC<RegisterProps> = ({
       ...prev,
       tipo_colaborador: value,
       // Limpar emails ao mudar tipo para evitar confusão
-      email: value === 'estagiario' ? '' : prev.email,
+      email: value === 'estagiario_ma' ? '' : prev.email,
       email_pessoal: value === 'clt_associado' ? '' : prev.email_pessoal
     }));
   };
@@ -102,7 +102,7 @@ const Register: React.FC<RegisterProps> = ({
       return 'Nome é obrigatório';
     }
 
-    if (formData.tipo_colaborador === 'estagiario') {
+    if (formData.tipo_colaborador === 'estagiario_ma') {
       if (!formData.email_pessoal.trim()) {
         return 'Email pessoal é obrigatório para estagiários';
       }
@@ -188,7 +188,7 @@ const Register: React.FC<RegisterProps> = ({
         setor: formData.setor.trim(), // Setor mantém como está (já vem do select)
         tipo_colaborador: formData.tipo_colaborador,
         senha: formData.senha,
-        ...(formData.tipo_colaborador === 'estagiario' 
+        ...(formData.tipo_colaborador === 'estagiario_ma' 
           ? { email_pessoal: formData.email_pessoal.trim().toLowerCase() } // 🔧 Email sempre minúsculo
           : { 
               email: formData.email.trim().toLowerCase(), // 🔧 Email sempre minúsculo
@@ -217,11 +217,11 @@ const Register: React.FC<RegisterProps> = ({
           nome: formData.nome,
           tipo_colaborador: formData.tipo_colaborador,
           email: formData.tipo_colaborador === 'clt_associado' ? formData.email : undefined,
-          email_login: formData.tipo_colaborador === 'estagiario' ? formData.email_pessoal : formData.email,
-          email_enviado_para: formData.tipo_colaborador === 'estagiario' ? formData.email_pessoal : formData.email
+          email_login: formData.tipo_colaborador === 'estagiario_ma' ? formData.email_pessoal : formData.email,
+          email_enviado_para: formData.tipo_colaborador === 'estagiario_ma' ? formData.email_pessoal : formData.email
         };
 
-        const emailForVerification = formData.tipo_colaborador === 'estagiario' 
+        const emailForVerification = formData.tipo_colaborador === 'estagiario_ma' 
           ? formData.email_pessoal 
           : formData.email;
         
@@ -261,7 +261,7 @@ const Register: React.FC<RegisterProps> = ({
     }
   };
 
-  const isEstagiario = formData.tipo_colaborador === 'estagiario';
+  const isEstagiario = formData.tipo_colaborador === 'estagiario_ma';
 
   return (
     <div className="min-h-screen bg-primary flex items-center justify-center p-4">
@@ -312,10 +312,10 @@ const Register: React.FC<RegisterProps> = ({
                 </div>
                 
                 <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-gray-50 transition-colors">
-                  <RadioGroupItem value="estagiario" id="estagiario" />
-                  <Label htmlFor="estagiario" className="flex items-center space-x-2 cursor-pointer flex-1">
+                  <RadioGroupItem value="estagiario_ma" id="estagiario_ma" />
+                  <Label htmlFor="estagiario_ma" className="flex items-center space-x-2 cursor-pointer flex-1">
                     <div>
-                      <div className="font-medium">Estagiário</div>
+                      <div className="font-medium">Estagiário/Menor Aprendiz</div>
                       <div className="text-sm text-gray-500">Login com email pessoal</div>
                     </div>
                   </Label>

@@ -117,7 +117,6 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
   const setoresPredefinidos = [
     "Administrativo",
     "Atendimento",
-    "Carteira",
     "Carteira de clientes",
     "Comercial/marketing",
     "Cálculo e Protocolo",
@@ -132,7 +131,7 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
     "Financeiro",
     "Instituto Propositivo",
     "Mutirão",
-    "Projetos & Processos"
+    "Projetos e Processos"
   ];
 
   const visibilityOptions = [

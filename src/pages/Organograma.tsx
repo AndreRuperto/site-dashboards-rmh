@@ -19,7 +19,7 @@ interface Usuario {
   telefone?: string;
   status: string;
   tipo_usuario: 'usuario' | 'admin';
-  tipo_colaborador: 'estagiario' | 'clt_associado';
+  tipo_colaborador: 'estagiario_ma' | 'clt_associado';
   is_coordenador: boolean;
   ativo: boolean;
   email_verificado: boolean;

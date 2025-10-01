@@ -8,7 +8,7 @@
 - [x] Funcionalidade de mudar setor
 - [x] Revogar acesso de usuários
 - [x] Corrigir "Coordenador pode virar coordenador"
-- [x] Adicionar cartões de estatísticas CLT/Associado e Estagiário
+- [x] Adicionar cartões de estatísticas CLT/Associado e Estagiário/Menor Aprendiz
 
 ---
 
@@ -69,7 +69,7 @@
 ### 📧 Sistema de Email
 - [ ] Arrumar template de email para estagiários
 - [ ] Corrigir página de validação de email
-- [ ] Estagiário cadastrado pelo admin aparece com status indefinido (NULL em aprovado_admin)
+- [ ] Estagiário/Menor Aprendiz cadastrado pelo admin aparece com status indefinido (NULL em aprovado_admin)
 
 ---
 
