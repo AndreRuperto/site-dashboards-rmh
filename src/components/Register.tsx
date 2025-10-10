@@ -60,7 +60,6 @@ const Register: React.FC<RegisterProps> = ({
 
   // Setores específicos da RMH - mantidos conforme o contexto
   const setores = [
-    "Administrativo",
     "Atendimento",
     "Carteira de clientes",
     "Comercial/marketing",
@@ -76,7 +75,8 @@ const Register: React.FC<RegisterProps> = ({
     "Financeiro",
     "Instituto Propositivo",
     "Mutirão",
-    "Projetos e Processos"
+    "Projetos e Processos",
+    "Administrativo"
   ];
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {

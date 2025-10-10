@@ -245,7 +245,6 @@ export const isAguardandoVerificacao = (usuario: User): boolean => {
 
 // 🆕 SETORES DISPONÍVEIS
 export const SETORES = [
-    "Administrativo",
     "Atendimento",
     "Carteira de clientes",
     "Comercial/marketing",
@@ -261,7 +260,8 @@ export const SETORES = [
     "Financeiro",
     "Instituto Propositivo",
     "Mutirão",
-    "Projetos e Processos"
+    "Projetos e Processos",
+    "Administrativo"
   ] as const;
 
 export type Setor = typeof SETORES[number];

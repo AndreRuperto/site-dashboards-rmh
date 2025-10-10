@@ -7817,7 +7817,7 @@ app.post('/api/powerbi/embed-token', authMiddleware, async (req, res) => {
       expiration: embedToken.expiration,
       reportId: finalReportId,
       groupId: finalGroupId,
-      embedUrl: `https://app.powerbi.com/reportEmbed?reportId=${finalReportId}&groupId=${finalGroupId}`,
+      embedUrl: `https://app.powerbi.com/reportEmbed?reportId=${finalReportId}&groupId=${finalGroupId}&pageName=ReportSection`,
       generatedAt: new Date().toISOString(),
       validFor: 60, // minutos
       user: {
@@ -9084,25 +9084,25 @@ app.patch('/api/admin/usuarios/:userId/promover', adminMiddleware, async (req, r
 
     const user = userResult.rows[0];
 
-    // Verificar se já existe coordenador no setor
-    const coordenadorExistente = await client.query(
-      'SELECT id, nome FROM v_usuarios_completo WHERE setor = $1 AND is_coordenador = true AND id != $2',
-      [user.setor, userId]
-    );
+    // // Verificar se já existe coordenador no setor
+    // const coordenadorExistente = await client.query(
+    //   'SELECT id, nome FROM v_usuarios_completo WHERE setor = $1 AND is_coordenador = true AND id != $2',
+    //   [user.setor, userId]
+    // );
 
-    let coordenadorSubstituido = null;
+    // let coordenadorSubstituido = null;
 
-    // Se existe coordenador, remover coordenação dele primeiro
-    if (coordenadorExistente.rows.length > 0) {
-      coordenadorSubstituido = coordenadorExistente.rows[0];
+    // // Se existe coordenador, remover coordenação dele primeiro
+    // if (coordenadorExistente.rows.length > 0) {
+    //   coordenadorSubstituido = coordenadorExistente.rows[0];
       
-      await client.query(
-        'UPDATE usuarios SET is_coordenador = FALSE WHERE id = $1',
-        [coordenadorSubstituido.id]
-      );
+    //   await client.query(
+    //     'UPDATE usuarios SET is_coordenador = FALSE WHERE id = $1',
+    //     [coordenadorSubstituido.id]
+    //   );
       
-      console.log(`👤 ADMIN: Coordenação removida de ${coordenadorSubstituido.nome} (${user.setor})`);
-    }
+    //   console.log(`👤 ADMIN: Coordenação removida de ${coordenadorSubstituido.nome} (${user.setor})`);
+    // }
 
     // Promover o novo coordenador
     const result = await client.query(
