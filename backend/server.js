@@ -5926,7 +5926,7 @@ app.post('/api/auth/request-reset-code', authLimiter, async (req, res) => {
       const emailResult = await resend.emails.send({
         from: 'admin@resendemh.com.br',
         to: [email],
-        subject: 'Código para redefinir sua senha - Andifes RMH',
+        subject: 'Código para redefinir sua senha - RMH',
         html: await gerarTemplateResetSenha(user.nome, codigoVerificacao, email)
       });
 
@@ -6022,32 +6022,98 @@ app.post('/api/auth/verify-reset-code', async (req, res) => {
 // SOLUÇÃO 1: Usar flag para controlar release
 app.post('/api/auth/reset-password-with-code', async (req, res) => {
   const client = await pool.connect();
-  let clientReleased = false;
   
   try {
     await client.query('BEGIN');
     
     const { token, newPassword } = req.body;
     
+    // Validação dos campos obrigatórios
     if (!token || !newPassword) {
       await client.query('ROLLBACK');
-      client.release();
-      clientReleased = true; // ← Marca como liberado
       return res.status(400).json({ error: 'Token e nova senha são obrigatórios' });
     }
     
+    // Validação do tamanho da senha
     if (newPassword.length < 6) {
       await client.query('ROLLBACK');
-      client.release();
-      clientReleased = true; // ← Marca como liberado
       return res.status(400).json({ error: 'Nova senha deve ter pelo menos 6 caracteres' });
     }
     
-    // ... resto do código ...
+    console.log(`🔍 RESET PASSWORD: Verificando token: ${token}`);
+    
+    // Buscar e validar o token
+    const tokenResult = await client.query(
+      `SELECT v.*, u.id as usuario_id, u.nome, u.email 
+       FROM verificacoes_email v
+       JOIN usuarios u ON v.usuario_id = u.id
+       WHERE v.token = $1 
+         AND v.tipo_token = 'reset_senha'
+         AND v.usado_em IS NULL 
+         AND v.expira_em > NOW()`,
+      [token]
+    );
+
+    if (tokenResult.rows.length === 0) {
+      console.log(`❌ RESET PASSWORD: Token inválido ou expirado`);
+      await client.query('ROLLBACK');
+      return res.status(400).json({ 
+        error: 'Token inválido ou expirado. Solicite um novo código.' 
+      });
+    }
+
+    const verification = tokenResult.rows[0];
+    console.log(`✅ RESET PASSWORD: Token válido para usuário ${verification.nome} (ID: ${verification.usuario_id})`);
+    
+    // Fazer hash da nova senha
+    const bcrypt = require('bcrypt');
+    const saltRounds = 10;
+    const senhaHash = await bcrypt.hash(newPassword, saltRounds);
+    console.log(`🔐 RESET PASSWORD: Hash da senha gerado`);
+    
+    // Atualizar a senha no banco
+    const updateResult = await client.query(
+      'UPDATE usuarios SET senha = $1, atualizado_em = NOW() WHERE id = $2 RETURNING id, nome, email',
+      [senhaHash, verification.usuario_id]
+    );
+    
+    if (updateResult.rows.length === 0) {
+      console.log(`❌ RESET PASSWORD: Falha ao atualizar senha`);
+      await client.query('ROLLBACK');
+      return res.status(500).json({ error: 'Erro ao atualizar senha' });
+    }
+    
+    console.log(`✅ RESET PASSWORD: Senha atualizada no banco para usuário ${verification.usuario_id}`);
+    
+    // Marcar token como usado
+    await client.query(
+      'UPDATE verificacoes_email SET usado_em = NOW() WHERE token = $1',
+      [token]
+    );
+    
+    console.log(`✅ RESET PASSWORD: Token marcado como usado`);
+    
+    // Invalidar outros tokens de reset do mesmo usuário (opcional - segurança extra)
+    await client.query(
+      `UPDATE verificacoes_email 
+       SET usado_em = NOW() 
+       WHERE usuario_id = $1 
+         AND tipo_token = 'reset_senha' 
+         AND usado_em IS NULL 
+         AND token != $2`,
+      [verification.usuario_id, token]
+    );
     
     await client.query('COMMIT');
-    client.release();
-    clientReleased = true; // ← Marca como liberado
+    
+    console.log(`
+    🎉 ========== SENHA REDEFINIDA COM SUCESSO ==========
+    👤 Usuário: ${verification.nome}
+    📧 Email: ${verification.email}
+    🆔 ID: ${verification.usuario_id}
+    🕐 Data/Hora: ${new Date().toLocaleString('pt-BR')}
+    ===================================================
+    `);
     
     res.json({
       message: 'Senha redefinida com sucesso!',
@@ -6061,17 +6127,11 @@ app.post('/api/auth/reset-password-with-code', async (req, res) => {
       console.error('❌ Erro no rollback:', rollbackError);
     }
     
-    console.error('❌ Erro ao redefinir senha:', error);
+    console.error('❌ RESET PASSWORD: Erro ao redefinir senha:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   } finally {
-    // ✅ Só libera se ainda não foi liberado
-    if (!clientReleased) {
-      try {
-        client.release();
-      } catch (releaseError) {
-        console.error('❌ Erro ao liberar conexão:', releaseError);
-      }
-    }
+    client.release();
+    console.log('🔌 RESET PASSWORD: Conexão liberada');
   }
 });
 
@@ -10905,14 +10965,27 @@ app.put('/api/usuario/atualizar-dados', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Nome é obrigatório' });
     }
 
-    // Verificar se usuário existe
+    // Verificar se usuário existe e está ativo (COM JOIN)
     const userResult = await pool.query(
-      'SELECT id, tipo_usuario FROM usuarios WHERE id = $1 AND ativo = true',
+      `SELECT 
+        u.id, 
+        u.tipo_usuario,
+        COALESCE(ual.ativo, true) as ativo
+      FROM usuarios u
+      LEFT JOIN usuarios_admin_log ual ON u.id = ual.usuario_id
+      WHERE u.id = $1`,
       [userId]
     );
     
     if (userResult.rows.length === 0) {
       return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const user = userResult.rows[0];
+
+    // Verificar se está ativo
+    if (!user.ativo) {
+      return res.status(403).json({ error: 'Usuário inativo ou revogado' });
     }
 
     // Preparar campos para atualização
@@ -10946,11 +11019,11 @@ app.put('/api/usuario/atualizar-dados', authMiddleware, async (req, res) => {
     camposParaAtualizar.push(`atualizado_em = NOW()`);
     valores.push(userId);
 
-    // Construir e executar query
+    // Construir e executar query (sem WHERE ativo pois já verificamos acima)
     const query = `
       UPDATE usuarios 
       SET ${camposParaAtualizar.join(', ')} 
-      WHERE id = $${valorIndex} AND ativo = true
+      WHERE id = $${valorIndex}
       RETURNING id, nome, email_pessoal, setor, tipo_colaborador
     `;
 

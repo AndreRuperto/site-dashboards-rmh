@@ -1644,22 +1644,7 @@ const AdminUserControl: React.FC = () => {
                 <>
                   Deseja promover <strong>{usuarioParaPromover?.nome}</strong> a coordenador do setor?
                   <br />
-                  {(() => {
-                    const usuarioAtual = usuarios.find(u => u.id === usuarioParaPromover?.id);
-                    const coordenadorExistente = usuarios.find(u => 
-                      u.setor === usuarioAtual?.setor && 
-                      u.is_coordenador === true && 
-                      u.id !== usuarioParaPromover?.id
-                    );
-                    
-                    return coordenadorExistente ? (
-                      <span className="text-orange-600 font-medium">
-                        ⚠️ Isso removerá automaticamente a coordenação de {coordenadorExistente.nome}.
-                      </span>
-                    ) : (
-                      "Isso permitirá que ele tenha acesso aos dashboards restritos do setor."
-                    );
-                  })()}
+                  Isso permitirá que ele tenha acesso aos dashboards restritos do setor.
                 </>
               )}
             </AlertDialogDescription>

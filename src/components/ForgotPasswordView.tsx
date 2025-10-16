@@ -218,7 +218,7 @@ const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({ onBackToLogin }
                   <Input
                     id="email"
                     type="email"
-                    placeholder="seu.email@andifes.org.br"
+                    placeholder="seu.email@exemplo.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-primary-500"
