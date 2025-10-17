@@ -681,7 +681,7 @@ const AdminUserControl: React.FC = () => {
     // Tag de Coordenador (independente de ser admin ou não)
     if (usuario.is_coordenador) {
       badges.push(
-        <Badge key="coordenador" variant="default" className="bg-yellow-500">
+        <Badge key="coordenador" variant="default" className="bg-yellow-500 hover:bg-yellow-500">
           <Crown className="h-3 w-3 mr-1" />
           Coordenador
         </Badge>

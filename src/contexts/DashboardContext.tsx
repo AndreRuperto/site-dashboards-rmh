@@ -17,7 +17,7 @@ export interface Dashboard {
   criado_por_nome?: string;
   criado_em: string;
   atualizado_em: string;
-  tipo_visibilidade?: 'geral' | 'coordenadores' | 'admin' | 'setor';
+  tipo_visibilidade?: 'geral' | 'coordenador' | 'coordenadores' | 'admin' | 'setor';
   powerbi_report_id?: string;
   powerbi_group_id?: string;
   powerbi_workspace_id?: string;
@@ -239,21 +239,31 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return true;
       }
 
-      // Coordenadores veem tudo do seu setor (visibilidade "coordenadores" e "setor")
-      if (user?.is_coordenador) {
-        if (dashboard.setor === user?.setor) {
-          const podeVer = visibility === 'coordenadores' || visibility === 'setor';
-          console.log(`   ${podeVer ? '✅' : '❌'} Coordenador do setor - ${podeVer ? 'pode' : 'não pode'} ver`);
-          return podeVer;
-        }
-        console.log('   ❌ Coordenador, mas setor diferente');
+      // Admin: apenas administradores
+      if (visibility === 'admin') {
+        console.log('   ❌ Apenas para admin');
         return false;
       }
 
-      // Usuários normais só veem "setor" do próprio setor
-      if (visibility === 'setor' && dashboard.setor === user?.setor) {
-        console.log('   ✅ Usuário normal - pode ver setor');
-        return true;
+      // Coordenadores (TODOS): todos os coordenadores veem
+      if (visibility === 'coordenadores') {
+        const podeVer = user?.is_coordenador || false;
+        console.log(`   ${podeVer ? '✅' : '❌'} Coordenadores - ${podeVer ? 'pode' : 'não pode'} ver`);
+        return podeVer;
+      }
+
+      // Coordenador (DO SETOR): apenas coordenadores do mesmo setor
+      if (visibility === 'coordenador') {
+        const podeVer = user?.is_coordenador && dashboard.setor === user?.setor;
+        console.log(`   ${podeVer ? '✅' : '❌'} Coordenador do setor - ${podeVer ? 'pode' : 'não pode'} ver`);
+        return podeVer;
+      }
+
+      // Setor: pessoas do mesmo setor
+      if (visibility === 'setor') {
+        const podeVer = dashboard.setor === user?.setor;
+        console.log(`   ${podeVer ? '✅' : '❌'} Setor - ${podeVer ? 'pode' : 'não pode'} ver`);
+        return podeVer;
       }
 
       console.log('   ❌ Não passou em nenhum filtro');

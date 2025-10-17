@@ -18,7 +18,7 @@ interface DashboardFormProps {
   dashboard?: Dashboard | null;
 }
 
-type Visibilidade = 'setor' | 'coordenadores' | 'admin';
+type Visibilidade = 'geral' | 'coordenador' | 'coordenadores' | 'admin' | 'setor';
 
 interface DashboardFormData {
   titulo: string;
@@ -136,18 +136,32 @@ const DashboardForm: React.FC<DashboardFormProps> = ({ isOpen, onClose, dashboar
 
   const visibilityOptions = [
     {
-    value: 'setor',
-    label: 'Setor',
-    description: 'Visível apenas para usuários do mesmo setor',
-    icon: Users,
-    color: 'bg-purple-100 text-purple-800 border-purple-200'
+      value: 'geral',
+      label: 'Geral',
+      description: 'Visível para todos os usuários',
+      icon: Globe,
+      color: 'bg-green-100 text-green-800 border-green-200'
+    },
+    {
+      value: 'setor',
+      label: 'Setor',
+      description: 'Visível apenas para usuários do mesmo setor',
+      icon: Users,
+      color: 'bg-purple-100 text-purple-800 border-purple-200'
+    },
+    {
+      value: 'coordenador',
+      label: 'Coordenador do Setor',
+      description: 'Visível apenas para coordenador(es) do mesmo setor',
+      icon: Users,
+      color: 'bg-blue-100 text-blue-800 border-blue-200'
     },
     {
       value: 'coordenadores',
-      label: 'Coordenadores',
-      description: 'Visível apenas para coordenadores e admins',
+      label: 'Todos os Coordenadores',
+      description: 'Visível para todos os coordenadores de todos os setores',
       icon: Users,
-      color: 'bg-blue-100 text-blue-800 border-blue-200'
+      color: 'bg-cyan-100 text-cyan-800 border-cyan-200'
     },
     {
       value: 'admin',

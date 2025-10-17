@@ -7155,7 +7155,7 @@ app.get('/api/dashboards', authMiddleware, async (req, res) => {
     console.log(`🔍 DEBUG: is_coordenador = ${req.user.is_coordenador}`);
     
     let query;
-    let params = [];
+    let params;
 
     // ADMINS veem TODOS os dashboards
     if (req.user.tipo_usuario === 'admin') {
@@ -7172,6 +7172,7 @@ app.get('/api/dashboards', authMiddleware, async (req, res) => {
         WHERE d.ativo = true
         ORDER BY d.criado_em DESC
       `;
+      params = [];
     } else {
       // USUÁRIOS NORMAIS: baseado no tipo_visibilidade
       console.log(`👤 USUÁRIO: Buscando dashboards para setor: ${req.user.setor}`);
@@ -7187,10 +7188,10 @@ app.get('/api/dashboards', authMiddleware, async (req, res) => {
         FROM dashboards d
         LEFT JOIN usuarios u ON d.criado_por = u.id
         WHERE d.ativo = true 
-          AND d.setor = $1
           AND (
             d.tipo_visibilidade = 'geral'
-            OR d.tipo_visibilidade = 'setor'
+            OR (d.tipo_visibilidade = 'setor' AND d.setor = $1)
+            OR (d.tipo_visibilidade = 'coordenador' AND d.setor = $1 AND $2 = true)
             OR (d.tipo_visibilidade = 'coordenadores' AND $2 = true)
           )
         ORDER BY d.criado_em DESC
@@ -9177,7 +9178,7 @@ app.patch('/api/admin/usuarios/:userId/promover', adminMiddleware, async (req, r
     res.json({
       message: 'Usuário promovido a coordenador com sucesso',
       usuario: result.rows[0],
-      coordenador_substituido: coordenadorSubstituido?.nome || null,
+      //coordenador_substituido: coordenadorSubstituido?.nome || null,
       setor: user.setor
     });
 
